@@ -55,7 +55,7 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
 tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("target_vocab_size", 40000, "French vocabulary size.")
+tf.app.flags.DEFINE_integer("trg_vocab_size", 40000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
@@ -117,7 +117,7 @@ def read_data(source_path, target_path, max_size=None):
 def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
   model = seq2seq_model.Seq2SeqModel(
-      FLAGS.src_vocab_size, FLAGS.target_vocab_size, _buckets,
+      FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm = False,
       forward_only=forward_only)
@@ -145,13 +145,13 @@ def create_model(session, forward_only):
 def train():
   """Train a en->fr translation model."""
   # Prepare WMT data.
-  #print("Preparing WMT data in %s" % FLAGS.data_dir)
- # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
- #     FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
+  # print("Preparing WMT data in %s" % FLAGS.data_dir)
+  # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
+  #     FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
 
   print("Preparing data in %s" % FLAGS.data_dir)
   en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_data(
-      FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
+      FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.trg_vocab_size)
       
   with tf.Session() as sess:
     # Create model.
@@ -229,7 +229,7 @@ def decode():
     en_vocab_path = os.path.join(FLAGS.data_dir,
                                  "vocab%d.src" % FLAGS.src_vocab_size)
     fr_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.target" % FLAGS.target_vocab_size)
+                                 "vocab%d.trg" % FLAGS.trg_vocab_size)
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
     _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
@@ -250,11 +250,11 @@ def decode():
       _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
       # This is a greedy decoder - outputs are just argmaxes of output_logits.
-#==============================================================================
-#       print("outputs logits",output_logits)
-#       print("outputs logits",len(output_logits))
-      #[print(logit[0][3857]) for logit in output_logits]
-#==============================================================================
+
+      # print("outputs logits", output_logits)
+      # print("outputs logits", len(output_logits))
+      # [print(logit[0][3857]) for logit in output_logits]
+
       outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
       #outputs = [print(logit[0][int(np.argmax(logit, axis=1))]) for logit in output_logits]
    

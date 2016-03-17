@@ -293,21 +293,21 @@ def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
   
   # Create vocabularies of the appropriate sizes. (vocab40000)
   fr_vocab_path = os.path.join(data_dir, "vocab%d.src" % fr_vocabulary_size)
-  en_vocab_path = os.path.join(data_dir, "vocab%d.target" % en_vocabulary_size)
+  en_vocab_path = os.path.join(data_dir, "vocab%d.trg" % en_vocabulary_size)
   create_vocabulary(fr_vocab_path, train_path + ".src", fr_vocabulary_size)
-  create_vocabulary(en_vocab_path, train_path + ".target", en_vocabulary_size)
+  create_vocabulary(en_vocab_path, train_path + ".trg", en_vocabulary_size)
 
   # Create token ids for the training data. (giga-fren.release2.ids40000)
   fr_train_ids_path = train_path + (".ids%d.src" % fr_vocabulary_size)
-  en_train_ids_path = train_path + (".ids%d.target" % en_vocabulary_size)
+  en_train_ids_path = train_path + (".ids%d.trg" % en_vocabulary_size)
   data_to_token_ids(train_path + ".src", fr_train_ids_path, fr_vocab_path)
-  data_to_token_ids(train_path + ".target", en_train_ids_path, en_vocab_path)
+  data_to_token_ids(train_path + ".trg", en_train_ids_path, en_vocab_path)
 
   # Create token ids for the development data. (newstest2013.ids40000)
   fr_dev_ids_path = dev_path + (".ids%d.src" % fr_vocabulary_size)
-  en_dev_ids_path = dev_path + (".ids%d.target" % en_vocabulary_size)
+  en_dev_ids_path = dev_path + (".ids%d.trg" % en_vocabulary_size)
   data_to_token_ids(dev_path + ".src", fr_dev_ids_path, fr_vocab_path)
-  data_to_token_ids(dev_path + ".target", en_dev_ids_path, en_vocab_path)
+  data_to_token_ids(dev_path + ".trg", en_dev_ids_path, en_vocab_path)
 
   return (en_train_ids_path, fr_train_ids_path,
           en_dev_ids_path, fr_dev_ids_path,
