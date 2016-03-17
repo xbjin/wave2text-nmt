@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import division
 from itertools import izip
+from collections import defaultdict
 import argparse
 
 help_msg = """\
@@ -34,13 +35,28 @@ if __name__ == '__main__':
     output_files = output1, output2, output_shared = [open(output + '.' + ext, 'w')
                                                       for ext in (lang1, lang2, shared_lang)]
 
-    lines = dict(izip(*input_files1))   # memory-expensive
+    d = defaultdict(list)
+    for i, (line_shared, line1) in enumerate(izip(*input_files1)):
+        if line_shared.strip() and line1.strip():
+            d[line_shared].append((i, line1))
+
+    indices = []
+
     for line_shared, line2 in izip(*input_files2):
-        if line_shared in lines:
-            line1 = lines[line_shared]
-            output1.write(line1)
-            output2.write(line2)
-            output_shared.write(line_shared)
+        lines = d[line_shared]
+
+        if not lines:
+            continue
+
+        i, line1 = lines.pop(0)  # rather sloppy alignment
+        indices.append(i)
+
+        output1.write(line1)
+        output2.write(line2)
+        output_shared.write(line_shared)
+
+    monotonicity = sum(1 for x, y in zip(indices, indices[1:]) if y > x) / len(indices)
+    print 'Monotonicity rate: {}'.format(monotonicity)
 
     for f in output_files:
         f.close()
