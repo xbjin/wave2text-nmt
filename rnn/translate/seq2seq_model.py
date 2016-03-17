@@ -115,6 +115,10 @@ class Seq2SeqModel(object):
     self.encoder_inputs = []
     self.decoder_inputs = []
     self.target_weights = []
+    
+    #encodeur inputs contient 40 tenseurs de 0 a 39
+    #decodeur inputs contient 51 tenseurs nommes de 0 a 50  
+    #targets contient 50 tenseurs nommes de 1 a 50
     for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
       self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                 name="encoder{0}".format(i)))

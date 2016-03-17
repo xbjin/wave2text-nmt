@@ -66,7 +66,7 @@ def gunzip_file(gz_path, new_path):
   """Unzips from gz_path into new_path."""
   print("Unpacking %s to %s" % (gz_path, new_path))
   with gzip.open(gz_path, "rb") as gz_file:
-    with open(new_path, "wb") as new_file:
+    with open(new_path, "w") as new_file:
       for line in gz_file:
         new_file.write(line)
 
@@ -110,6 +110,8 @@ def basic_tokenizer(sentence):
   return [w for w in words if w]
 
 
+""" split les phrases en mot et pour chaque mot trouve incremente son index de 1"""
+""" retourne la liste des max_vocabulary_size mots les plus utilises"""
 def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
                       tokenizer=None, normalize_digits=True):
   """Create vocabulary file (if it does not exist yet) from data file.
@@ -262,19 +264,19 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
   train_path = get_wmt_enfr_train_set(data_dir)
   dev_path = get_wmt_enfr_dev_set(data_dir)
 
-  # Create vocabularies of the appropriate sizes.
+  # Create vocabularies of the appropriate sizes. (vocab40000)
   fr_vocab_path = os.path.join(data_dir, "vocab%d.fr" % fr_vocabulary_size)
   en_vocab_path = os.path.join(data_dir, "vocab%d.en" % en_vocabulary_size)
   create_vocabulary(fr_vocab_path, train_path + ".fr", fr_vocabulary_size)
   create_vocabulary(en_vocab_path, train_path + ".en", en_vocabulary_size)
 
-  # Create token ids for the training data.
+  # Create token ids for the training data. (giga-fren.release2.ids40000)
   fr_train_ids_path = train_path + (".ids%d.fr" % fr_vocabulary_size)
   en_train_ids_path = train_path + (".ids%d.en" % en_vocabulary_size)
   data_to_token_ids(train_path + ".fr", fr_train_ids_path, fr_vocab_path)
   data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path)
 
-  # Create token ids for the development data.
+  # Create token ids for the development data. (newstest2013.ids40000)
   fr_dev_ids_path = dev_path + (".ids%d.fr" % fr_vocabulary_size)
   en_dev_ids_path = dev_path + (".ids%d.en" % en_vocabulary_size)
   data_to_token_ids(dev_path + ".fr", fr_dev_ids_path, fr_vocab_path)
@@ -283,3 +285,31 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
   return (en_train_ids_path, fr_train_ids_path,
           en_dev_ids_path, fr_dev_ids_path,
           en_vocab_path, fr_vocab_path)
+          
+          
+def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
+  train_path = os.path.join(data_dir, "train")
+  dev_path = os.path.join(data_dir, "dev")
+  
+  # Create vocabularies of the appropriate sizes. (vocab40000)
+  fr_vocab_path = os.path.join(data_dir, "vocab%d.src" % fr_vocabulary_size)
+  en_vocab_path = os.path.join(data_dir, "vocab%d.target" % en_vocabulary_size)
+  create_vocabulary(fr_vocab_path, train_path + ".src", fr_vocabulary_size)
+  create_vocabulary(en_vocab_path, train_path + ".target", en_vocabulary_size)
+
+  # Create token ids for the training data. (giga-fren.release2.ids40000)
+  fr_train_ids_path = train_path + (".ids%d.src" % fr_vocabulary_size)
+  en_train_ids_path = train_path + (".ids%d.target" % en_vocabulary_size)
+  data_to_token_ids(train_path + ".src", fr_train_ids_path, fr_vocab_path)
+  data_to_token_ids(train_path + ".target", en_train_ids_path, en_vocab_path)
+
+  # Create token ids for the development data. (newstest2013.ids40000)
+  fr_dev_ids_path = dev_path + (".ids%d.src" % fr_vocabulary_size)
+  en_dev_ids_path = dev_path + (".ids%d.target" % en_vocabulary_size)
+  data_to_token_ids(dev_path + ".src", fr_dev_ids_path, fr_vocab_path)
+  data_to_token_ids(dev_path + ".target", en_dev_ids_path, en_vocab_path)
+
+  return (en_train_ids_path, fr_train_ids_path,
+          en_dev_ids_path, fr_dev_ids_path,
+          en_vocab_path, fr_vocab_path)
+

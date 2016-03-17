@@ -52,20 +52,22 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 40000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("fr_vocab_size", 40000, "French vocabulary size.")
+tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
+tf.app.flags.DEFINE_integer("target_vocab_size", 40000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50,
                             "How many training steps to do per checkpoint.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
+
+
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -73,7 +75,7 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 _buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
 
-
+  
 def read_data(source_path, target_path, max_size=None):
   """Read data from source and target files and put into buckets.
 
@@ -115,14 +117,25 @@ def read_data(source_path, target_path, max_size=None):
 def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
   model = seq2seq_model.Seq2SeqModel(
-      FLAGS.en_vocab_size, FLAGS.fr_vocab_size, _buckets,
+      FLAGS.src_vocab_size, FLAGS.target_vocab_size, _buckets,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
+      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm = False,
       forward_only=forward_only)
-  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-    model.saver.restore(session, ckpt.model_checkpoint_path)
+      
+  file_name = os.path.dirname(sys.argv[0])        
+  path = os.path.abspath(file_name)
+  
+  full_train_path = path+"/"+FLAGS.train_dir
+  ckpt = tf.train.get_checkpoint_state(full_train_path)
+#==============================================================================
+#   print("exists", path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path)
+#   print("exists", tf.gfile.Exists(path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path))
+#==============================================================================
+  
+  
+  if ckpt and tf.gfile.Exists(full_train_path+"/"+ckpt.model_checkpoint_path):
+    print("Reading model parameters from %s" % full_train_path+"/"+ckpt.model_checkpoint_path)
+    model.saver.restore(session, full_train_path+"/"+ckpt.model_checkpoint_path)
   else:
     print("Created model with fresh parameters.")
     session.run(tf.initialize_all_variables())
@@ -130,12 +143,16 @@ def create_model(session, forward_only):
 
 
 def train():
-  """Train a en->fr translation model using WMT data."""
+  """Train a en->fr translation model."""
   # Prepare WMT data.
-  print("Preparing WMT data in %s" % FLAGS.data_dir)
-  en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
-      FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
+  #print("Preparing WMT data in %s" % FLAGS.data_dir)
+ # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
+ #     FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
 
+  print("Preparing data in %s" % FLAGS.data_dir)
+  en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_data(
+      FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
+      
   with tf.Session() as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
@@ -210,9 +227,9 @@ def decode():
 
     # Load vocabularies.
     en_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.en" % FLAGS.en_vocab_size)
+                                 "vocab%d.src" % FLAGS.src_vocab_size)
     fr_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.fr" % FLAGS.fr_vocab_size)
+                                 "vocab%d.target" % FLAGS.target_vocab_size)
     en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
     _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
 
@@ -233,7 +250,16 @@ def decode():
       _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
       # This is a greedy decoder - outputs are just argmaxes of output_logits.
+#==============================================================================
+#       print("outputs logits",output_logits)
+#       print("outputs logits",len(output_logits))
+      #[print(logit[0][3857]) for logit in output_logits]
+#==============================================================================
       outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+      #outputs = [print(logit[0][int(np.argmax(logit, axis=1))]) for logit in output_logits]
+   
+      
+      print(outputs)
       # If there is an EOS symbol in outputs, cut them at that point.
       if data_utils.EOS_ID in outputs:
         outputs = outputs[:outputs.index(data_utils.EOS_ID)]
