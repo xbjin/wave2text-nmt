@@ -67,6 +67,8 @@ tf.app.flags.DEFINE_boolean("decode", False,
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 
+tf.app.flags.DEFINE_string("src_extension", "src", "Extension of source files.")
+tf.app.flags.DEFINE_string("trg_extension", "trg", "Extension of target files.")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -119,23 +121,13 @@ def create_model(session, forward_only):
   model = seq2seq_model.Seq2SeqModel(
       FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm = False,
+      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm=False,
       forward_only=forward_only)
-      
-  file_name = os.path.dirname(sys.argv[0])        
-  path = os.path.abspath(file_name)
-  
-  full_train_path = path+"/"+FLAGS.train_dir
-  ckpt = tf.train.get_checkpoint_state(full_train_path)
-#==============================================================================
-#   print("exists", path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path)
-#   print("exists", tf.gfile.Exists(path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path))
-#==============================================================================
-  
-  
-  if ckpt and tf.gfile.Exists(full_train_path+"/"+ckpt.model_checkpoint_path):
-    print("Reading model parameters from %s" % full_train_path+"/"+ckpt.model_checkpoint_path)
-    model.saver.restore(session, full_train_path+"/"+ckpt.model_checkpoint_path)
+
+  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+    model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
     print("Created model with fresh parameters.")
     session.run(tf.initialize_all_variables())
@@ -143,15 +135,11 @@ def create_model(session, forward_only):
 
 
 def train():
-  """Train a en->fr translation model."""
-  # Prepare WMT data.
-  # print("Preparing WMT data in %s" % FLAGS.data_dir)
-  # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
-  #     FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
 
   print("Preparing data in %s" % FLAGS.data_dir)
-  en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_data(
-      FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.trg_vocab_size)
+  src_train, trg_train, src_dev, trg_dev, _, _ = data_utils.prepare_data(
+      FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.trg_vocab_size,
+      FLAGS.src_extension, FLAGS.trg_extension)
       
   with tf.Session() as sess:
     # Create model.
@@ -161,8 +149,8 @@ def train():
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
-    dev_set = read_data(en_dev, fr_dev)
-    train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
+    dev_set = read_data(src_dev, trg_dev)
+    train_set = read_data(src_train, trg_train, FLAGS.max_train_data_size)
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
 
@@ -226,12 +214,14 @@ def decode():
     model.batch_size = 1  # We decode one sentence at a time.
 
     # Load vocabularies.
-    en_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.src" % FLAGS.src_vocab_size)
-    fr_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.trg" % FLAGS.trg_vocab_size)
-    en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
-    _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
+    src_vocab_path = os.path.join(FLAGS.data_dir,
+      "vocab{}.{}".format(FLAGS.src_vocab_size, FLAGS.src_extension))
+
+    trg_vocab_path = os.path.join(FLAGS.data_dir,
+      "vocab{}.{}".format(FLAGS.trg_vocab_size, FLAGS.trg_extension))
+
+    src_vocab, _ = data_utils.initialize_vocabulary(src_vocab_path)
+    _, rev_trg_vocab = data_utils.initialize_vocabulary(trg_vocab_path)
 
     # Decode from standard input.
     sys.stdout.write("> ")
@@ -239,10 +229,10 @@ def decode():
     sentence = sys.stdin.readline()
     while sentence:
       # Get token-ids for the input sentence.
-      token_ids = data_utils.sentence_to_token_ids(sentence, en_vocab)
+      token_ids = data_utils.sentence_to_token_ids(sentence, src_vocab)
       # Which bucket does it belong to?
-      bucket_id = min([b for b in xrange(len(_buckets))
-                       if _buckets[b][0] > len(token_ids)])
+      bucket_id = min(b for b in xrange(len(_buckets))
+                      if _buckets[b][0] > len(token_ids))
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           {bucket_id: [(token_ids, [])]}, bucket_id)
@@ -264,7 +254,7 @@ def decode():
       if data_utils.EOS_ID in outputs:
         outputs = outputs[:outputs.index(data_utils.EOS_ID)]
       # Print out French sentence corresponding to outputs.
-      print(" ".join([rev_fr_vocab[output] for output in outputs]))
+      print(" ".join([rev_trg_vocab[output] for output in outputs]))
       print("> ", end="")
       sys.stdout.flush()
       sentence = sys.stdin.readline()
