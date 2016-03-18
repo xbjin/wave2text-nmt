@@ -56,8 +56,8 @@ tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
 tf.app.flags.DEFINE_integer("trg_vocab_size", 40000, "French vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
+tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50,
@@ -75,7 +75,9 @@ FLAGS = tf.app.flags.FLAGS
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
+# FIXME: depends on language and translation direction,
+# those are optimized for en->fr (French is more verbose than English)
+_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)] # (src max len, trg max len)
 
   
 def read_data(source_path, target_path, max_size=None):
@@ -230,9 +232,13 @@ def decode():
     while sentence:
       # Get token-ids for the input sentence.
       token_ids = data_utils.sentence_to_token_ids(sentence, src_vocab)
+      print(len(token_ids))
       # Which bucket does it belong to?
       bucket_id = min(b for b in xrange(len(_buckets))
                       if _buckets[b][0] > len(token_ids))
+      # FIXME: error if sentence is too long (temporary fix: manually call
+      # scripts/clean-corpus.py
+
       # Get a 1-element batch to feed the sentence to the model.
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           {bucket_id: [(token_ids, [])]}, bucket_id)
