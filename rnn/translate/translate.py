@@ -77,7 +77,7 @@ FLAGS = tf.app.flags.FLAGS
 # See seq2seq_model.Seq2SeqModel for details of how they work.
 # FIXME: depends on language and translation direction,
 # those are optimized for en->fr (French is more verbose than English)
-_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)] # (src max len, trg max len)
+_buckets = [(5, 10), (10, 15), (20, 25), (50, 50)] # (src max len, trg max len)
 
   
 def read_data(source_path, target_path, max_size=None):
@@ -200,6 +200,9 @@ def train():
         step_time, loss = 0.0, 0.0
         # Run evals on development set and print their perplexity.
         for bucket_id in xrange(len(_buckets)):
+          if train_bucket_sizes[bucket_id] == 0:
+            continue
+
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
