@@ -52,17 +52,17 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
 tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
 tf.app.flags.DEFINE_integer("trg_vocab_size", 40000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50,
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_integer("steps_per_eval", 1000,
+tf.app.flags.DEFINE_integer("steps_per_eval", 4000,
                             "How many training steps to do per BLEU evaluation.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
@@ -236,7 +236,7 @@ def train():
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
-      if current_step % FLAGS.steps_per_eval == 0:
+      if FLAGS.steps_per_eval > 0 and current_step % FLAGS.steps_per_eval == 0:
         print("Starting BLEU evaluation")
         output_file = os.path.join(FLAGS.train_dir, "eval.{}.out".format(current_step))
         bleu = evaluation(sess, model, src_vocab, rev_trg_vocab, output_file)
