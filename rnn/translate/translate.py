@@ -68,6 +68,8 @@ tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
+tf.app.flags.DEFINE_integer("gpu", 0, "Id of the GPU used for tensorflow.")
+
 
 tf.app.flags.DEFINE_string("src_extension", "src", "Extension of source files.")
 tf.app.flags.DEFINE_string("trg_extension", "trg", "Extension of target files.")
@@ -171,7 +173,13 @@ def train():
   with tf.Session() as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
-    model = create_model(sess, False)
+
+    if FLAGS.gpu != 0:
+      with tf.device('/gpu:{}'.format(FLAGS.gpu)):
+        model = create_model(sess, False)
+    else:
+      model = create_model(sess, False)
+    
     writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph_def)
 
     # Read data into buckets and compute their sizes.
