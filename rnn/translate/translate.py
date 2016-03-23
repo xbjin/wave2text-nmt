@@ -172,7 +172,7 @@ def train():
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
     model = create_model(sess, False)
-    writer = tf.train.SummaryWriter(FLAGS.train_path, sess.graph_def)
+    writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph_def)
 
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
@@ -292,7 +292,8 @@ def decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab=None):
 
 def decode():
   with tf.Session() as sess:
-    model = create_model(sess, False)
+    # forward_only means no back-propagation...
+    model = create_model(sess, forward_only=True)
     model.batch_size = 1  # decode one sentence at a time.
 
     src_vocab, _ = data_utils.initialize_vocabulary(FLAGS.src_vocab)
