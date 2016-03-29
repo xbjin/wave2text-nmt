@@ -174,12 +174,13 @@ def train():
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
 
-    if FLAGS.gpu != 0:
-      with tf.device('/gpu:{}'.format(FLAGS.gpu)):
-        model = create_model(sess, False)
-    else:
-      model = create_model(sess, False)
-    
+    #if FLAGS.gpu != 0:   # FIXME
+    #  with tf.device('/gpu:{}'.format(FLAGS.gpu)):
+    #    model = create_model(sess, False)
+    #else:
+    #  model = create_model(sess, False)
+    model = create_model(sess, False)
+
     writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph_def)
 
     # Read data into buckets and compute their sizes.
