@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gzip
 import os
 import re
-import tarfile
-
-from six.moves import urllib
+import tempfile
+import subprocess
+from collections import namedtuple
 
 from tensorflow.python.platform import gfile
 
@@ -40,27 +39,20 @@ EOS_ID = 2
 UNK_ID = 3
 
 # Regular expressions used to tokenize.
-_WORD_SPLIT = re.compile("([.,!?\"':;)(])")
 _DIGIT_RE = re.compile(r"\d")
 
 
-def basic_tokenizer(sentence):
-  """Very basic tokenizer: split the sentence into a list of tokens."""
-  words = []
-  for space_separated_fragment in sentence.strip().split():
-    words.extend(re.split(_WORD_SPLIT, space_separated_fragment))
-  return [w for w in words if w]
-
-
-def no_tokenizer(sentence):
-  """ Use this when corpus is already tokenized (e.g. using Moses' tokenizer.perl) """
-  return sentence.split()
+def preprocess(sentence, normalize_digits=True):
+  """ Apply whatever preprocessing there is to do (tokenizing, mapping digits, etc.) """
+  if normalize_digits:
+    return ' '.join(re.sub(_DIGIT_RE, "0", w) for w in sentence.split())
+  else:
+    return sentence
 
 
 """ split les phrases en mot et pour chaque mot trouve incremente son index de 1"""
 """ retourne la liste des max_vocabulary_size mots les plus utilises"""
-def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
-                      tokenizer=None, normalize_digits=True):
+def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size, normalize_digits=True):
   """Create vocabulary file (if it does not exist yet) from data file.
 
   Data file is assumed to contain one sentence per line. Each sentence is
@@ -84,9 +76,9 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
       for counter, line in enumerate(f, 1):
         if counter % 100000 == 0:
           print("  processing line %d" % counter)
-        tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
+        tokens = line.split()
         for w in tokens:
-          word = re.sub(_DIGIT_RE, "0", w) if normalize_digits else w
+          word = re.sub(_DIGIT_RE, "0", w) if normalize_digits else w   # FIXME: preprocessing
           vocab[word] = vocab.get(word, 0) + 1
       vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
       if len(vocab_list) > max_vocabulary_size:
@@ -126,8 +118,7 @@ def initialize_vocabulary(vocabulary_path):
     raise ValueError("Vocabulary file %s not found.", vocabulary_path)
 
 
-def sentence_to_token_ids(sentence, vocabulary,
-                          tokenizer=None, normalize_digits=True):
+def sentence_to_token_ids(sentence, vocabulary, normalize_digits=True):
   """Convert a string to list of integers representing token-ids.
 
   For example, a sentence "I have a dog" may become tokenized into
@@ -137,25 +128,19 @@ def sentence_to_token_ids(sentence, vocabulary,
   Args:
     sentence: a string, the sentence to convert to token-ids.
     vocabulary: a dictionary mapping tokens to integers.
-    tokenizer: a function to use to tokenize each sentence;
-      if None, basic_tokenizer will be used.
     normalize_digits: Boolean; if true, all digits are replaced by 0s.
 
   Returns:
     a list of integers, the token-ids for the sentence.
   """
-  if tokenizer:
-    words = tokenizer(sentence)
-  else:
-    words = basic_tokenizer(sentence)
+  words = sentence.split()
   if not normalize_digits:
     return [vocabulary.get(w, UNK_ID) for w in words]
   # Normalize digits by 0 before looking words up in the vocabulary.
   return [vocabulary.get(re.sub(_DIGIT_RE, "0", w), UNK_ID) for w in words]
 
 
-def data_to_token_ids(data_path, target_path, vocabulary_path,
-                      tokenizer=None, normalize_digits=True):
+def data_to_token_ids(data_path, target_path, vocabulary_path, normalize_digits=True):
   """Tokenize data file and turn into token-ids using given vocabulary file.
 
   This function loads data line-by-line from data_path, calls the above
@@ -166,8 +151,6 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
     data_path: path to the data file in one-sentence-per-line format.
     target_path: path where the file with token-ids will be created.
     vocabulary_path: path to the vocabulary file.
-    tokenizer: a function to use to tokenize each sentence;
-      if None, basic_tokenizer will be used.
     normalize_digits: Boolean; if true, all digits are replaced by 0s.
   """
   if not gfile.Exists(target_path):
@@ -178,51 +161,32 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
         for counter, line in enumerate(data_file, 1):
           if counter % 100000 == 0:
             print("  tokenizing line %d" % counter)
-          token_ids = sentence_to_token_ids(line, vocab, tokenizer,
-                                            normalize_digits)
+          token_ids = sentence_to_token_ids(line, vocab, normalize_digits)
           tokens_file.write(" ".join(str(tok) for tok in token_ids) + "\n")
-          
-          
-def prepare_data(data_dir, src_vocabulary_size, trg_vocabulary_size,
-                 src_extension, trg_extension, tokenized=True):
 
-  tokenizer = no_tokenizer if tokenized else None
 
-  train_path = os.path.join(data_dir, "train")
-  dev_path = os.path.join(data_dir, "dev")
+def prepare_data(flags):
+  create_vocabulary(flags.src_vocab, flags.src_train, flags.src_vocab_size)
+  create_vocabulary(flags.trg_vocab, flags.trg_train, flags.trg_vocab_size)
 
-  # Create vocabularies of the appropriate sizes. (vocab40000)
-  trg_vocab_path = os.path.join(data_dir, "vocab{}.{}"
-                                .format(trg_vocabulary_size, trg_extension))
-  src_vocab_path = os.path.join(data_dir, "vocab{}.{}"
-                                .format(src_vocabulary_size, src_extension))
+  data_to_token_ids(flags.src_train, flags.src_train_ids, flags.src_vocab)
+  data_to_token_ids(flags.trg_train, flags.trg_train_ids, flags.trg_vocab)
 
-  create_vocabulary(trg_vocab_path, "{}.{}".format(train_path, trg_extension),
-                    trg_vocabulary_size, tokenizer=tokenizer)
-  create_vocabulary(src_vocab_path, "{}.{}".format(train_path, src_extension),
-                    src_vocabulary_size, tokenizer=tokenizer)
+  data_to_token_ids(flags.src_dev, flags.src_dev_ids, flags.src_vocab)
+  data_to_token_ids(flags.trg_dev, flags.trg_dev_ids, flags.trg_vocab)
 
-  # Create token ids for the training data. (giga-fren.release2.ids40000)
-  trg_train_ids_path = "{}.ids{}.{}".format(train_path, trg_vocabulary_size,
-                                            trg_extension)
-  src_train_ids_path = "{}.ids{}.{}".format(train_path, src_vocabulary_size,
-                                            src_extension)
-  data_to_token_ids("{}.{}".format(train_path, trg_extension),
-                    trg_train_ids_path, trg_vocab_path, tokenizer=tokenizer)
-  data_to_token_ids("{}.{}".format(train_path, src_extension),
-                    src_train_ids_path, src_vocab_path, tokenizer=tokenizer)
 
-  # Create token ids for the development data. (newstest2013.ids40000)
-  trg_dev_ids_path = "{}.ids{}.{}".format(dev_path, trg_vocabulary_size,
-                                          trg_extension)
-  src_dev_ids_path = "{}.ids{}.{}".format(dev_path, src_vocabulary_size,
-                                          src_extension)
-  data_to_token_ids("{}.{}".format(dev_path, trg_extension), trg_dev_ids_path,
-                    trg_vocab_path, tokenizer=tokenizer)
-  data_to_token_ids("{}.{}".format(dev_path, src_extension), src_dev_ids_path,
-                    src_vocab_path,
-                    tokenizer=tokenizer)
+def bleu_score(bleu_script, hypotheses, references):
+  with tempfile.NamedTemporaryFile(delete=False) as f:
+    for ref in references:
+      f.write(ref + '\n')
 
-  return (src_train_ids_path, trg_train_ids_path,
-          src_dev_ids_path, trg_dev_ids_path,
-          src_vocab_path, trg_vocab_path)
+  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                       stderr=open('/dev/null', 'w'))
+
+  output, _ = p.communicate('\n'.join(hypotheses))
+
+  m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
+  values = [float(m.group(i)) for i in range(1, 4)]
+
+  return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)

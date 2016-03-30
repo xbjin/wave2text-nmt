@@ -1,10 +1,8 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 from __future__ import division
-import sys
 import random
 import argparse
-import shutil
 
 help_msg = """\
 Shuffles a corpus.

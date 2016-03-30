@@ -119,14 +119,20 @@ class Seq2SeqModel(object):
     #encodeur inputs contient 40 tenseurs de 0 a 39
     #decodeur inputs contient 51 tenseurs nommes de 0 a 50  
     #targets contient 50 tenseurs nommes de 1 a 50
-    for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                name="encoder{0}".format(i)))
-    for i in xrange(buckets[-1][1] + 1):
-      self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                name="decoder{0}".format(i)))
-      self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-                                                name="weight{0}".format(i)))
+
+    with tf.name_scope('encoder_inputs') as scope:
+      for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
+        self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                  name="encoder{0}".format(i)))
+
+    with tf.name_scope('decoder_inputs') as scope:
+      for i in xrange(buckets[-1][1] + 1):
+        self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                  name="decoder{0}".format(i)))
+    with tf.name_scope('decoder_masks') as scope:
+      for i in xrange(buckets[-1][1] + 1):
+        self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
+                                                  name="weight{0}".format(i)))
 
     # Our targets are decoder inputs shifted by one.
     targets = [self.decoder_inputs[i + 1]
