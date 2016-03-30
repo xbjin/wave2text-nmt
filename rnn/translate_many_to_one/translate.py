@@ -42,7 +42,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import data_utils
-from tensorflow.models.rnn.translate import seq2seq_model
+import seq2seq_model
 
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -50,10 +50,10 @@ tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size", 64,
+tf.app.flags.DEFINE_integer("batch_size", 3,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 256, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
 tf.app.flags.DEFINE_integer("target_vocab_size", 40000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
@@ -67,52 +67,57 @@ tf.app.flags.DEFINE_boolean("decode", False,
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 tf.app.flags.DEFINE_string("lang", "en,fr",
-                            "Languages to process")
+                            "Languages to process : source1,source2,sourcen...,target")
 
 
 FLAGS = tf.app.flags.FLAGS
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
+_buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
 
-  
-def read_data(source_path, target_path, max_size=None):
-  """Read data from source and target files and put into buckets.
-
-  Args:
-    source_path: path to the files with token-ids for the source language.
-    target_path: path to the file with token-ids for the target language;
-      it must be aligned with the source file: n-th line contains the desired
-      output for n-th line from the source_path.
-    max_size: maximum number of lines to read, all other will be ignored;
-      if 0 or None, data files will be read completely (no limit).
-
-  Returns:
-    data_set: a list of length len(_buckets); data_set[n] contains a list of
-      (source, target) pairs read from the provided data files that fit
-      into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
-      len(target) < _buckets[n][1]; source and target are lists of token-ids.
+def read_data(paths, max_size=None):
+  """path vaut les path des fichiers langues comme suit :
+  [langue_source1,langue_source2,..., langue_sourceN,langue_Target]
   """
-  data_set = [[] for _ in _buckets]
-  with tf.gfile.GFile(source_path, mode="r") as source_file:
-    with tf.gfile.GFile(target_path, mode="r") as target_file:
-      source, target = source_file.readline(), target_file.readline()
-      counter = 0
-      while source and target and (not max_size or counter < max_size):
-        counter += 1
-        if counter % 100000 == 0:
+  
+  """[  [bucket1], [bucket2]  ]
+  
+  couple : [ [source] , [target] ]
+  si dans bucket 1
+  [  [ [ [source] , [target] ] ], [bucket2]  ]
+  """
+  data_set = [[] for _ in _buckets]  
+  
+  filedata = [open(filename) for filename in paths]
+  read = True
+  counter = 0
+  while read and (not max_size or counter < max_size):
+      counter+=1
+      if counter % 100000 == 0:
           print("  reading data line %d" % counter)
-          sys.stdout.flush()
-        source_ids = [int(x) for x in source.split()]
-        target_ids = [int(x) for x in target.split()]
-        target_ids.append(data_utils.EOS_ID)
-        for bucket_id, (source_size, target_size) in enumerate(_buckets):
-          if len(source_ids) < source_size and len(target_ids) < target_size:
-            data_set[bucket_id].append([source_ids, target_ids])
-            break
-        source, target = source_file.readline(), target_file.readline()
-  return data_set
+      sentence = []
+      #pour chaque langue, on lit la ligne
+      for value in filedata: 
+          line = value.readline()
+          if line == '':
+              read = False
+              break
+          sentence.append([int(x) for x in line.split()])
+      if(len(sentence)!=0):
+          sentence[-1].append(data_utils.EOS_ID)
+          #placage de la phrase multi langue dans le bucket correspondant
+          for bucket_id, (source_size, target_size) in enumerate(_buckets):
+              pick = True
+              for i in range(len(sentence)-1):
+                 if(len(sentence[i])>=source_size):
+                     pick=False
+              if(len(sentence[-1])>=target_size):
+                  pick=False
+              if pick :
+                  data_set[bucket_id].append(sentence)
+                  break
+  return data_set                
 
 
 def create_model(session, forward_only):
@@ -120,20 +125,15 @@ def create_model(session, forward_only):
   model = seq2seq_model.Seq2SeqModel(
       FLAGS.src_vocab_size, FLAGS.target_vocab_size, _buckets,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm = False,
-      forward_only=forward_only)
-      
+      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm = True,
+      forward_only=forward_only, langs = FLAGS.lang)
+       
+  #rajout jb
   file_name = os.path.dirname(sys.argv[0])        
-  path = os.path.abspath(file_name)
-  
+  path = os.path.abspath(file_name)  
   full_train_path = path+"/"+FLAGS.train_dir
   ckpt = tf.train.get_checkpoint_state(full_train_path)
-#==============================================================================
-#   print("exists", path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path)
-#   print("exists", tf.gfile.Exists(path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path))
-#==============================================================================
-  
-  
+
   if ckpt and tf.gfile.Exists(full_train_path+"/"+ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % full_train_path+"/"+ckpt.model_checkpoint_path)
     model.saver.restore(session, full_train_path+"/"+ckpt.model_checkpoint_path)
@@ -153,11 +153,10 @@ def train():
   print("Preparing data in %s" % FLAGS.data_dir)
   ret = data_utils.prepare_data(
       FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size, FLAGS.lang)  
-  
-  #en_vocab, en_train, en_dev, fr_vocab, fr_train, fr_dev = ret
-
-  return 1
-      
+  #vocabs = ret[0::3]
+  trains = ret[1::3]
+  devs = ret[2::3]
+ 
   with tf.Session() as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
@@ -166,8 +165,10 @@ def train():
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
-    dev_set = read_data(en_dev, fr_dev)
-    train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
+    dev_set = read_data(devs)
+    train_set = read_data(trains, FLAGS.max_train_data_size)
+   
+    #nombre de phrases par bucket
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
 
@@ -190,9 +191,12 @@ def train():
 
       # Get a batch and make a step.
       start_time = time.time()
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+      encoder_inputs_dict, decoder_inputs, target_weights = model.get_batch(
           train_set, bucket_id)
-      _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+          
+   
+      
+      _, step_loss, _ = model.step(sess, encoder_inputs_dict, decoder_inputs,
                                    target_weights, bucket_id, False)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       loss += step_loss / FLAGS.steps_per_checkpoint

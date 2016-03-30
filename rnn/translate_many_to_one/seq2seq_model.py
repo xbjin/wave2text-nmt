@@ -20,10 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-
+import sys
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+import many2one as sq
+import rnn_cell
+
+
 
 from tensorflow.models.rnn.translate import data_utils
 
@@ -45,12 +49,12 @@ class Seq2SeqModel(object):
 
   def __init__(self, source_vocab_size, target_vocab_size, buckets, size,
                num_layers, max_gradient_norm, batch_size, learning_rate,
-               learning_rate_decay_factor, use_lstm=False,
-               num_samples=512, forward_only=False):
+               learning_rate_decay_factor, use_lstm=True,
+               num_samples=512, forward_only=False,langs="en,fr"):
     """Create the model.
 
     Args:
-      source_vocab_size: size of the source vocabulary.
+      MODIF JB : source_vocab_size: size of the sources vocabularies.
       target_vocab_size: size of the target vocabulary.
       buckets: a list of pairs (I, O), where I specifies maximum input length
         that will be processed in that bucket, and O specifies maximum output
@@ -69,7 +73,7 @@ class Seq2SeqModel(object):
       num_samples: number of samples for sampled softmax.
       forward_only: if set, we do not construct the backward pass in the model.
     """
-    self.source_vocab_size = source_vocab_size
+    
     self.target_vocab_size = target_vocab_size
     self.buckets = buckets
     self.batch_size = batch_size
@@ -77,6 +81,11 @@ class Seq2SeqModel(object):
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
     self.global_step = tf.Variable(0, trainable=False)
+    self.source_lang_number = len(langs.split(","))-1
+    
+    #ici on suppose que les langues sources ont le meme nombre de symboles
+    #si on veut different, envoyer les valeurs du dico dans les parametres
+    source_vocab_size_dict = dict((i,int(source_vocab_size)) for i in range(self.source_lang_number))
 
     # If we use sampled softmax, we need an output projection.
     output_projection = None
@@ -97,45 +106,51 @@ class Seq2SeqModel(object):
       softmax_loss_function = sampled_loss
 
     # Create the internal multi-layer cell for our RNN.
-    single_cell = tf.nn.rnn_cell.GRUCell(size)
+    single_cell = rnn_cell.GRUCell(size)
     if use_lstm:
-      single_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
+      single_cell = rnn_cell.BasicLSTMCell(size)
     cell = single_cell
     if num_layers > 1:
-      cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
+      cell = rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
     # The seq2seq function: we use embedding for the input and attention.
-    def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-      return tf.nn.seq2seq.embedding_attention_seq2seq(
-          encoder_inputs, decoder_inputs, cell, source_vocab_size,
+    def seq2seq_f(encoder_inputs_dict, decoder_inputs, do_decode):
+      return sq.many2one_rnn_seq2seq(
+          encoder_inputs_dict, decoder_inputs, cell, source_vocab_size_dict,
           target_vocab_size, output_projection=output_projection,
           feed_previous=do_decode)
 
     # Feeds for inputs.
-    self.encoder_inputs = []
+    self.encoder_inputs_dict = {}
     self.decoder_inputs = []
     self.target_weights = []
+
     
-    #encodeur inputs contient 40 tenseurs de 0 a 39
+    #encoder_inputs_dict[0] contient 51 tenseurs de 0 a 50
+    #encoder_inputs_dict[1] contient 51 tenseurs de 51 a 101...
     #decodeur inputs contient 51 tenseurs nommes de 0 a 50  
     #targets contient 50 tenseurs nommes de 1 a 50
-    for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                name="encoder{0}".format(i)))
+    
+    for k in range(self.source_lang_number):
+        self.encoder_inputs_dict[k] = []
+        for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.      
+          self.encoder_inputs_dict[k].append(tf.placeholder(tf.int32, shape=[None],
+                                                name="encoder{0}".format(i+(k*buckets[-1][0]))))
+                                           
     for i in xrange(buckets[-1][1] + 1):
       self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                 name="decoder{0}".format(i)))
       self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
                                                 name="weight{0}".format(i)))
-
     # Our targets are decoder inputs shifted by one.
     targets = [self.decoder_inputs[i + 1]
                for i in xrange(len(self.decoder_inputs) - 1)]
 
     # Training outputs and losses.
+    #decode
     if forward_only:
-      self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
-          self.encoder_inputs, self.decoder_inputs, targets,
+      self.outputs, self.losses = sq.model_with_buckets(
+          self.encoder_inputs_dict, self.decoder_inputs, targets,
           self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
           softmax_loss_function=softmax_loss_function)
       # If we use output projection, we need to project outputs for decoding.
@@ -145,9 +160,10 @@ class Seq2SeqModel(object):
               tf.matmul(output, output_projection[0]) + output_projection[1]
               for output in self.outputs[b]
           ]
+    #train      
     else:
-      self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
-          self.encoder_inputs, self.decoder_inputs, targets,
+      self.outputs, self.losses = sq.model_with_buckets(
+          self.encoder_inputs_dict, self.decoder_inputs, targets,
           self.target_weights, buckets,
           lambda x, y: seq2seq_f(x, y, False),
           softmax_loss_function=softmax_loss_function)
@@ -168,7 +184,7 @@ class Seq2SeqModel(object):
 
     self.saver = tf.train.Saver(tf.all_variables())
 
-  def step(self, session, encoder_inputs, decoder_inputs, target_weights,
+  def step(self, session, encoder_inputs_dict, decoder_inputs, target_weights,
            bucket_id, forward_only):
     """Run a step of the model feeding the given inputs.
 
@@ -188,11 +204,16 @@ class Seq2SeqModel(object):
       ValueError: if length of encoder_inputs, decoder_inputs, or
         target_weights disagrees with bucket size for the specified bucket_id.
     """
+    
+    # rappel encoder_inputs_dict = 
+    # [array([1, 4, 7], dtype=int32), array([2, 5, 8], dtype=int32),array([3, 6, 9], dtype=int32)]
+    # cad une liste pour chaque langue d'array contenant les "t" = 1,...,n des encoder inputs
+    # [1, 4, 7] : t = 1 pour phrase 1 2 3
     # Check if the sizes match.
     encoder_size, decoder_size = self.buckets[bucket_id]
-    if len(encoder_inputs) != encoder_size:
+    if len(encoder_inputs_dict[0]) != encoder_size:
       raise ValueError("Encoder length must be equal to the one in bucket,"
-                       " %d != %d." % (len(encoder_inputs), encoder_size))
+                       " %d != %d." % (len(encoder_inputs_dict[0]), encoder_size))
     if len(decoder_inputs) != decoder_size:
       raise ValueError("Decoder length must be equal to the one in bucket,"
                        " %d != %d." % (len(decoder_inputs), decoder_size))
@@ -201,12 +222,20 @@ class Seq2SeqModel(object):
                        " %d != %d." % (len(target_weights), decoder_size))
 
     # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
+
+    #fou dans chaque encodeur input les mots a chaque instant t du batch (des phrases)
+    #cf description plus haut
     input_feed = {}
-    for l in xrange(encoder_size):
-      input_feed[self.encoder_inputs[l].name] = encoder_inputs[l]
+    for i in range(self.source_lang_number):        
+        for l in xrange(encoder_size):
+          input_feed[self.encoder_inputs_dict[i][l].name] = encoder_inputs_dict[i][l]
+
+
+
     for l in xrange(decoder_size):
       input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
       input_feed[self.target_weights[l].name] = target_weights[l]
+      
 
     # Since our targets are decoder inputs shifted by one, we need one more.
     last_target = self.decoder_inputs[decoder_size].name
@@ -223,6 +252,7 @@ class Seq2SeqModel(object):
         output_feed.append(self.outputs[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
+#    print("#######################""ouputs",outputs)
     if not forward_only:
       return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
     else:
@@ -245,31 +275,60 @@ class Seq2SeqModel(object):
       the constructed batch that has the proper format to call step(...) later.
     """
     encoder_size, decoder_size = self.buckets[bucket_id]
-    encoder_inputs, decoder_inputs = [], []
+    decoder_inputs = []
+    
+    #rajout many to one
+    encoder_inputs_dict  = {}
+    batch_encoder_inputs_dict = {}
+
+    
+    #initialisation des dicos, une liste par langue
+    for i in range(self.source_lang_number):
+        encoder_inputs_dict[i]        =  []
+        batch_encoder_inputs_dict[i]  =  []
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
     for _ in xrange(self.batch_size):
-      encoder_input, decoder_input = random.choice(data[bucket_id])
+      sentences = random.choice(data[bucket_id])
+      _encoder_inputs = sentences[0:-1]
+      decoder_input = sentences[-1]
+      # _encoder_inputs contient une phrase source par langue
+      #decoder_input comprend la phrase source
 
+     
       # Encoder inputs are padded and then reversed.
-      encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(encoder_input))
-      encoder_inputs.append(list(reversed(encoder_input + encoder_pad)))
-
+      #pour chaque phrase source, on la fou dans son dictionnaire respectif
+      counter=0
+      for encoder_input in _encoder_inputs:
+          encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(encoder_input))
+          encoder_inputs_dict[counter].append(list(reversed(encoder_input + encoder_pad)))
+          counter+=1
+          
+  
       # Decoder inputs get an extra "GO" symbol, and are padded then.
       decoder_pad_size = decoder_size - len(decoder_input) - 1
       decoder_inputs.append([data_utils.GO_ID] + decoder_input +
                             [data_utils.PAD_ID] * decoder_pad_size)
 
+
     # Now we create batch-major vectors from the data selected above.
-    batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
+    batch_decoder_inputs, batch_weights = [], []
+    
+    #imaginons qu'une langue a trois batch (phrase) : [1 2 3] [4 5 6] [7 8 9]
+    #batch_encoder_inputs devient :
+    # [array([1, 4, 7], dtype=int32), array([2, 5, 8], dtype=int32),array([3, 6, 9], dtype=int32)]
+    # cad une liste pour chaque langue d'array contenant les "t" = 1,...,n des encoder inputs
+    # [1, 4, 7] : t = 1 pour phrase 1 2 3
+    # Check if the sizes match
+    #on fait ca pour chaque langue source et on la fou dans son dico respectif (dans batch_encoder_inputs)
+    for i in range(self.source_lang_number):
+        for length_idx in xrange(encoder_size):
+          batch_encoder_inputs_dict[i].append(
+              np.array([encoder_inputs_dict[i][batch_idx][length_idx]
+                        for batch_idx in xrange(self.batch_size)], dtype=np.int32))
 
-    # Batch encoder inputs are just re-indexed encoder_inputs.
-    for length_idx in xrange(encoder_size):
-      batch_encoder_inputs.append(
-          np.array([encoder_inputs[batch_idx][length_idx]
-                    for batch_idx in xrange(self.batch_size)], dtype=np.int32))
-
+   
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
@@ -286,4 +345,4 @@ class Seq2SeqModel(object):
         if length_idx == decoder_size - 1 or target == data_utils.PAD_ID:
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
-    return batch_encoder_inputs, batch_decoder_inputs, batch_weights
+    return batch_encoder_inputs_dict, batch_decoder_inputs, batch_weights
