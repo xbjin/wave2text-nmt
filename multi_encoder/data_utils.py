@@ -23,9 +23,10 @@ import os
 import re
 import tarfile
 import subprocess
-import signal
 import shlex
+import tempfile
 
+from collections import namedtuple
 from six.moves import urllib
 
 from tensorflow.python.platform import gfile
@@ -105,18 +106,15 @@ def get_wmt_enfr_dev_set(directory):
   return dev_path
 
 
+def no_tokenizer(sentence):
+  return sentence.split()
+
+
 def basic_tokenizer(sentence):
   """Very basic tokenizer: split the sentence into a list of tokens."""
   words = []
   for space_separated_fragment in sentence.strip().split():
     words.extend(re.split(_WORD_SPLIT, space_separated_fragment))
-  return [w for w in words if w]
-  
-  
-      
-def _tokenizer(sentence):
-  #nothing to do
-  words = sentence.split()  
   return [w for w in words if w]
 
 
@@ -149,7 +147,7 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
         counter += 1
         if counter % 100000 == 0:
           print("  processing line %d" % counter)
-        tokens = _tokenizer(line) if tokenizer else basic_tokenizer(line)
+        tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
         for w in tokens:
           word = re.sub(_DIGIT_RE, "0", w) if normalize_digits else w
           if word in vocab:
@@ -213,7 +211,7 @@ def sentence_to_token_ids(sentence, vocabulary,
     a list of integers, the token-ids for the sentence.
   """
   if tokenizer:
-    words = _tokenizer(sentence)
+    words = tokenizer(sentence)
   else:
     words = basic_tokenizer(sentence)
   if not normalize_digits:
@@ -297,9 +295,9 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
           en_vocab_path, fr_vocab_path)
           
           
-def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size, lang):
+def prepare_data_JB(data_dir, en_vocabulary_size, fr_vocabulary_size, lang):
   #nom des fichiers train et developpement
-  filenames = ["data.train", "data.dev"]
+  filenames = ["train", "dev"]
   train_path = os.path.join(data_dir, filenames[0])
   dev_path = os.path.join(data_dir, filenames[1])
   
@@ -342,3 +340,75 @@ def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size, lang):
   return ret
 
 
+
+def extract_filenames(FLAGS):
+  """ Add filenames to the FLAGS namespace """
+  src_ext = FLAGS.src_ext.split(',')
+  trg_ext = FLAGS.trg_ext
+
+  FLAGS.train_path = os.path.join(FLAGS.data_dir, "train")
+
+  FLAGS.src_train = ["{}.{}".format(FLAGS.train_path, ext) for ext in src_ext]
+  FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, trg_ext)
+
+  FLAGS.src_train_ids = [
+    "{}.ids{}.{}".format(FLAGS.train_path, FLAGS.src_vocab_size, ext)
+    for ext in src_ext]
+  FLAGS.trg_train_ids = "{}.ids{}.{}".format(
+    FLAGS.train_path, FLAGS.trg_vocab_size, trg_ext)
+
+  FLAGS.dev_path = os.path.join(FLAGS.data_dir, "dev")
+  FLAGS.src_dev = ["{}.{}".format(FLAGS.dev_path, ext) for ext in src_ext]
+  FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, trg_ext)
+
+  FLAGS.src_dev_ids = [
+    "{}.ids{}.{}".format(FLAGS.dev_path, FLAGS.src_vocab_size, ext)
+    for ext in src_ext]
+  FLAGS.trg_dev_ids = "{}.ids{}.{}".format(
+    FLAGS.dev_path, FLAGS.trg_vocab_size, trg_ext)
+
+  FLAGS.src_vocab = [os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
+    FLAGS.src_vocab_size, ext)) for ext in src_ext]
+
+  FLAGS.trg_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
+    FLAGS.trg_vocab_size, trg_ext))
+
+
+def prepare_data(FLAGS):
+  """ Create vocabularies and tokenize data. """
+
+  tokenizer = no_tokenizer if not FLAGS.tokenize else None
+
+  #if FLAGS.download:  # FIXME
+  #  get_wmt_enfr_train_set(FLAGS.data_dir)
+  #  get_wmt_enfr_dev_set(FLAGS.data_dir)
+
+  for vocab, train, train_ids, dev, dev_ids in zip(FLAGS.src_vocab,
+      FLAGS.src_train, FLAGS.src_train_ids, FLAGS.src_dev, FLAGS.src_dev_ids):
+    create_vocabulary(vocab, train, FLAGS.src_vocab_size, tokenizer=tokenizer)
+    data_to_token_ids(train, train_ids, vocab, tokenizer=tokenizer)
+    data_to_token_ids(dev, dev_ids, vocab, tokenizer=tokenizer)
+
+
+  create_vocabulary(FLAGS.trg_vocab, FLAGS.trg_train, FLAGS.trg_vocab_size,
+                    tokenizer=tokenizer)
+  data_to_token_ids(FLAGS.trg_train, FLAGS.trg_train_ids, FLAGS.trg_vocab,
+                    tokenizer=tokenizer)
+  data_to_token_ids(FLAGS.trg_dev, FLAGS.trg_dev_ids, FLAGS.trg_vocab,
+                    tokenizer=tokenizer)
+
+
+def bleu_score(bleu_script, hypotheses, references):
+  with tempfile.NamedTemporaryFile(delete=False) as f:
+    for ref in references:
+      f.write(ref + '\n')
+
+  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                       stderr=open('/dev/null', 'w'))
+
+  output, _ = p.communicate('\n'.join(hypotheses))
+
+  m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
+  values = [float(m.group(i)) for i in range(1, 4)]
+
+  return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)

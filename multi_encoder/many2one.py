@@ -14,13 +14,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 
 from itertools import chain
 
-import sys
-import rnn
-import rnn_cell
 
 def sequence_loss_by_example(logits, targets, weights,
                              average_across_timesteps=True,

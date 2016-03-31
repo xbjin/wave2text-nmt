@@ -25,7 +25,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.models.rnn.translate import data_utils
+from translate import data_utils
 
 
 class Seq2SeqModel(object):
@@ -33,14 +33,17 @@ class Seq2SeqModel(object):
 
   This class implements a multi-layer recurrent neural network as encoder,
   and an attention-based decoder. This is the same as the model described in
-  this paper: http://arxiv.org/abs/1412.7449 - please look there for details,
-  or into the seq2seq library for complete model implementation.
+  this paper: http://arxiv.org/abs/1412.7449 (Grammar as a Foreign Language)
+  - please look there for details, or into the seq2seq library for complete
+  model implementation.
   This class also allows to use GRU cells in addition to LSTM cells, and
   sampled softmax to handle large output vocabulary size. A single-layer
   version of this model, but with bi-directional encoder, was presented in
-    http://arxiv.org/abs/1409.0473
+    http://arxiv.org/abs/1409.0473 (Neural Machine Translation by Jointly
+    Learning to Align and Translate)
   and sampled softmax is described in Section 3 of the following paper.
-    http://arxiv.org/abs/1412.2007
+    http://arxiv.org/abs/1412.2007 (On Using Very Large Target Vocabulary
+    for Neural Machine Translation)
   """
 
   def __init__(self, source_vocab_size, target_vocab_size, buckets, size,
@@ -115,24 +118,14 @@ class Seq2SeqModel(object):
     self.encoder_inputs = []
     self.decoder_inputs = []
     self.target_weights = []
-    
-    #encodeur inputs contient 40 tenseurs de 0 a 39
-    #decodeur inputs contient 51 tenseurs nommes de 0 a 50  
-    #targets contient 50 tenseurs nommes de 1 a 50
-
-    with tf.name_scope('encoder_inputs') as scope:
-      for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-        self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                  name="encoder{0}".format(i)))
-
-    with tf.name_scope('decoder_inputs') as scope:
-      for i in xrange(buckets[-1][1] + 1):
-        self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                  name="decoder{0}".format(i)))
-    with tf.name_scope('decoder_masks') as scope:
-      for i in xrange(buckets[-1][1] + 1):
-        self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-                                                  name="weight{0}".format(i)))
+    for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
+      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                name="encoder{0}".format(i)))
+    for i in xrange(buckets[-1][1] + 1):
+      self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                name="decoder{0}".format(i)))
+      self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
+                                                name="weight{0}".format(i)))
 
     # Our targets are decoder inputs shifted by one.
     targets = [self.decoder_inputs[i + 1]

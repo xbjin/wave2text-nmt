@@ -18,5 +18,5 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from rnn.translate import data_utils
-from rnn.translate import seq2seq_model
+from translate import data_utils
+from translate import seq2seq_model

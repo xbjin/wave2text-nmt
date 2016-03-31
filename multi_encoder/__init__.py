@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Libraries to build Recurrent Neural Networks."""
+"""Makes helper libraries available in the translate package."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from multi_encoder import data_utils
+from multi_encoder import seq2seq_model

@@ -41,8 +41,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from rnn.translate import seq2seq_model
-from rnn.translate import data_utils
+from multi_encoder import data_utils
+from multi_encoder import seq2seq_model
 
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -53,103 +53,97 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
 tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("trg_vocab_size", 40000, "French vocabulary size.")
+tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "Source vocabulary size.")
+tf.app.flags.DEFINE_integer("trg_vocab_size", 40000, "Target vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_integer("steps_per_eval", 4000,
-                            "How many training steps to do per BLEU evaluation.")
-tf.app.flags.DEFINE_boolean("decode", False,
-                            "Set to True for interactive decoding.")
+tf.app.flags.DEFINE_integer("steps_per_eval", 4000, "How many training steps to"
+                                                    " do per BLEU evaluation.")
+tf.app.flags.DEFINE_string("decode", None, "Corpus to translate.")
+tf.app.flags.DEFINE_boolean("eval", False,
+                            "Set to True for BLEU evaluation.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
-tf.app.flags.DEFINE_integer("gpu", 0, "Id of the GPU used for tensorflow.")
+tf.app.flags.DEFINE_boolean("download", False, "Download WMT data.")
+tf.app.flags.DEFINE_boolean("tokenize", False, "Tokenize data on the fly.")
+tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU.")
 
+tf.app.flags.DEFINE_string("src_ext", "en", "Source files' extension(s),"
+                                            "separated by commas")
+tf.app.flags.DEFINE_string("trg_ext", "fr", "Target files' extension.")
 
-tf.app.flags.DEFINE_string("src_extension", "src", "Extension of source files.")
-tf.app.flags.DEFINE_string("trg_extension", "trg", "Extension of target files.")
-
-tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl", "Path of the BLEU scripts.")
-
+tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl",
+                           "Path to BLEU script.")
+tf.app.flags.DEFINE_string("output_file", None, "Output file of the decoder "
+                                                "(defaults to stdout).")
 
 FLAGS = tf.app.flags.FLAGS
 
-# Path to files
-
-FLAGS.train_path = os.path.join(FLAGS.data_dir, "train")
-FLAGS.src_train = "{}.{}".format(FLAGS.train_path, FLAGS.src_extension)
-FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, FLAGS.trg_extension)
-FLAGS.src_train_ids = "{}.ids{}.{}".format(FLAGS.train_path, FLAGS.src_vocab_size, FLAGS.src_extension)
-FLAGS.trg_train_ids = "{}.ids{}.{}".format(FLAGS.train_path, FLAGS.trg_vocab_size, FLAGS.trg_extension)
-
-FLAGS.dev_path = os.path.join(FLAGS.data_dir, "dev")
-FLAGS.src_dev = "{}.{}".format(FLAGS.dev_path, FLAGS.src_extension)
-FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, FLAGS.trg_extension)
-FLAGS.src_dev_ids = "{}.ids{}.{}".format(FLAGS.dev_path, FLAGS.src_vocab_size, FLAGS.src_extension)
-FLAGS.trg_dev_ids = "{}.ids{}.{}".format(FLAGS.dev_path, FLAGS.trg_vocab_size, FLAGS.trg_extension)
-
-FLAGS.src_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(FLAGS.src_vocab_size, FLAGS.src_extension))
-FLAGS.trg_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(FLAGS.trg_vocab_size, FLAGS.trg_extension))
-
+data_utils.extract_filenames(FLAGS)  # add filenames to namespace
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-# FIXME: depends on language and translation direction,
-# those are optimized for en->fr (French is more verbose than English)
-_buckets = [(5, 10), (10, 15), (20, 25), (51, 51)] # (src max len, trg max len)
+# TODO: pick bucket sizes automatically
+# The same bucket size is used for all encoders.
+_buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
 
-  
-def read_data(source_path, target_path, max_size=None):
-  """Read data from source and target files and put into buckets.
+if FLAGS.trg_ext == 'en':  # temporary hack for fr->en
+  _buckets = [tuple(reversed(bucket)) for bucket in _buckets]
 
-  Args:
-    source_path: path to the files with token-ids for the source language.
-    target_path: path to the file with token-ids for the target language;
-      it must be aligned with the source file: n-th line contains the desired
-      output for n-th line from the source_path.
-    max_size: maximum number of lines to read, all other will be ignored;
-      if 0 or None, data files will be read completely (no limit).
 
-  Returns:
-    data_set: a list of length len(_buckets); data_set[n] contains a list of
-      (source, target) pairs read from the provided data files that fit
-      into the n-th bucket, i.e., such that len(source) < _buckets[n][0] and
-      len(target) < _buckets[n][1]; source and target are lists of token-ids.
-  """
+def read_data(source_paths, target_path, max_size=None):
   data_set = [[] for _ in _buckets]
 
-  with tf.gfile.GFile(source_path) as source_file, tf.gfile.GFile(target_path) as target_file:
-      for counter, (source, target) in enumerate(zip(source_file, target_file), 1):
-        if max_size and counter > max_size:
+  files = []
+  try:
+    files = [open(filename) for filename in source_paths + [target_path]]
+
+    for counter, lines in enumerate(zip(*files), 1):
+      if max_size and counter >= max_size:
+        break
+      if counter % 100000 == 0:
+        print("  reading data line {}".format(counter))
+
+      ids = [map(int, line.split()) for line in lines]
+      source_ids, target_ids = ids[:-1], ids[-1]
+
+      # FIXME: why only target sequence gets an EOS token?
+      target_ids.append(data_utils.EOS_ID)
+
+      if any(len(ids_) == 0 for ids_ in ids):  # skip empty lines
+        continue
+
+      for bucket_id, (source_size, target_size) in enumerate(_buckets):
+        if (len(target_ids) < target_size and
+            all(len(ids_) < source_size for ids_ in source_ids)):
+          data_set[bucket_id].append(source_ids + [target_ids])
           break
 
-        if counter % 100000 == 0:
-          print("  reading data line %d" % counter)
-          sys.stdout.flush()
-
-        source_ids = map(int, source.split())
-        target_ids = map(int, target.split()) + [data_utils.EOS_ID]
-
-        for bucket_id, (source_size, target_size) in enumerate(_buckets):
-          if len(source_ids) < source_size and len(target_ids) < target_size:
-            data_set[bucket_id].append([source_ids, target_ids])
-            break
+  finally:
+    for file_ in files:
+      file_.close()
 
   return data_set
 
 
 def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
-  model = seq2seq_model.Seq2SeqModel(
-      FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
-      FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm=False,
-      forward_only=forward_only)
+  device = '/cpu:0' if FLAGS.no_gpu else None
+
+  encoder_count = FLAGS.src_ext.count(',') + 1
+
+  with tf.device(device):
+    model = seq2seq_model.Seq2SeqModel(
+        FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
+        FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
+        FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
+        forward_only=forward_only, encoder_count=encoder_count,
+        device=device)
 
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
@@ -162,34 +156,33 @@ def create_model(session, forward_only):
 
 
 def train():
-
-  print("Preparing data in %s" % FLAGS.data_dir)
+  print("Preparing WMT data in %s" % FLAGS.data_dir)
   data_utils.prepare_data(FLAGS)
 
-  src_vocab, _ = data_utils.initialize_vocabulary(FLAGS.src_vocab)
-  _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
+  # limit the amount of memory used to 2/3 of total memory
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
 
-
-  with tf.Session() as sess:
+  with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
 
-    #if FLAGS.gpu != 0:   # FIXME
-    #  with tf.device('/gpu:{}'.format(FLAGS.gpu)):
+    #if FLAGS.no_gpu:
+    #  with tf.device('/cpu:0'):
     #    model = create_model(sess, False)
     #else:
-    #  model = create_model(sess, False)
     model = create_model(sess, False)
-
-    writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph_def)
 
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
     dev_set = read_data(FLAGS.src_dev_ids, FLAGS.trg_dev_ids)
-    train_set = read_data(FLAGS.src_train_ids, FLAGS.trg_train_ids, FLAGS.max_train_data_size)
+    train_set = read_data(FLAGS.src_train_ids, FLAGS.trg_train_ids,
+                          FLAGS.max_train_data_size)
+
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
+
+    #import pdb; pdb.set_trace()
 
     # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
     # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
@@ -235,9 +228,9 @@ def train():
         step_time, loss = 0.0, 0.0
         # Run evals on development set and print their perplexity.
         for bucket_id in xrange(len(_buckets)):
-          if train_bucket_sizes[bucket_id] == 0:
+          if len(dev_set[bucket_id]) == 0:
+            print("  eval: empty bucket %d" % (bucket_id))
             continue
-
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
@@ -245,46 +238,32 @@ def train():
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
-      if FLAGS.steps_per_eval > 0 and current_step % FLAGS.steps_per_eval == 0:
-        print("Starting BLEU evaluation")
-        output_file = os.path.join(FLAGS.train_dir, "eval.{}.out".format(current_step))
-        bleu = evaluation(sess, model, src_vocab, rev_trg_vocab, output_file)
-
-        print(bleu)
 
 
-def evaluation(sess, model, src_vocab, rev_trg_vocab, output_file=None):
+def decode_sentence(sess, model, src_sentences, src_vocabs, rev_trg_vocab=None):
+  tokenizer = data_utils.no_tokenizer if not FLAGS.tokenize else None
 
-  # FIXME: apply preprocessing
-  with open(FLAGS.src_dev) as src_file, open(FLAGS.trg_dev) as trg_file:
-    batch_size = model.batch_size
+  token_ids = [
+    data_utils.sentence_to_token_ids(sentence, vocab, tokenizer=tokenizer)
+    for sentence, vocab in zip(src_sentences, src_vocabs)
+  ]
 
-    try:
-      model.batch_size = 1   # evaluation is one sentence at a time
-      hypotheses = [decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab)
-                    for sentence in src_file]
-    finally:
-      model.batch_size = batch_size
+  max_len = _buckets[-1][0] - 1
+  if any(len(ids_) > max_len for ids_ in token_ids):
+    sys.stderr.write("Line is too long ({} tokens). "
+                     "It will be truncated.\n".format(len(token_ids)))
+    token_ids = [ids_[:max_len] for ids_ in token_ids]
 
-    references = [line.strip() for line in trg_file]
-
-    if output_file is not None:
-      with open(output_file, 'w') as f:
-        f.writelines(line + '\n' for line in hypotheses)
-
-    return data_utils.bleu_score(FLAGS.bleu_script, hypotheses, references)
-
-
-def decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab=None):
-  token_ids = data_utils.sentence_to_token_ids(sentence, src_vocab)
-  bucket_id = min(b for b in xrange(len(_buckets)) if _buckets[b][0] > len(token_ids))
+  bucket_id = min(b for b in xrange(len(_buckets)) if
+                  all(_buckets[b][0] > len(ids_) for ids_ in token_ids))
 
   # Get a 1-element batch to feed the sentence to the model.
+  data = [token_ids + [[]]]
   encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-    {bucket_id: [(token_ids, [])]}, bucket_id)
+    {bucket_id: data}, bucket_id)
 
   _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
-                                           target_weights, bucket_id, True)
+                                   target_weights, bucket_id, True)
 
   # This is a greedy decoder - outputs are just argmaxes of output_logits.
   outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # FIXME: no beam-search?
@@ -300,17 +279,81 @@ def decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab=None):
 
 
 def decode():
-  with tf.Session() as sess:
-    # forward_only means no back-propagation...
-    model = create_model(sess, forward_only=True)
-    model.batch_size = 1  # decode one sentence at a time.
+  filenames = ['{}.{}'.format(FLAGS.decode, ext)
+               for ext in FLAGS.src_ext.split(',')]
 
-    src_vocab, _ = data_utils.initialize_vocabulary(FLAGS.src_vocab)
+  with tf.Session() as sess:
+    # Create model and load parameters.
+    model = create_model(sess, True)
+    model.batch_size = 1  # We decode one sentence at a time.
+
+    # Load vocabularies.
+    src_vocabs = [data_utils.initialize_vocabulary(vocab)[0]
+                  for vocab in FLAGS.src_vocab]
+
     _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
 
-    for sentence in sys.stdin:
-      print(decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab))
-      sys.stdout.flush()
+    files = []
+    try:
+      src_files = [open(filename) for filename in filenames]
+      files += src_files
+
+      if FLAGS.output_file:
+        output_file = open(FLAGS.output_file, 'w')
+        files.append(output_file)
+      else:
+        output_file = sys.stdout
+
+      # Decode from standard input.
+      for i, src_sentences in enumerate(zip(*src_files), 1):
+        output = decode_sentence(sess, model, src_sentences, src_vocabs,
+                                 rev_trg_vocab)
+        output_file.write(output + '\n')
+
+    finally:
+      for file_ in files:
+        file_.close()
+
+
+def evaluate():
+  with tf.Session() as sess:
+    # Create model and load parameters.
+    model = create_model(sess, True)
+    model.batch_size = 1  # We decode one sentence at a time.
+
+    filename = FLAGS.output_file
+    if filename is None:
+      step = model.global_step.eval(session=sess)
+      filename = os.path.join(FLAGS.train_dir, 'eval.out-{}'.format(step))
+
+    # Load vocabularies.
+    src_vocabs = [data_utils.initialize_vocabulary(vocab)[0]
+                  for vocab in FLAGS.src_vocab]
+
+    _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
+
+    files = []
+    try:
+      trg_file = open(FLAGS.trg_dev)
+      src_files = [open(filename) for filename in FLAGS.src_dev]
+      files += [trg_file] + src_files
+
+      hypotheses = []
+      for src_sentences in zip(*src_files):
+        hypothesis = decode_sentence(sess, model, src_sentences, src_vocabs, rev_trg_vocab)
+        print(hypothesis)
+        hypotheses.append(hypothesis)
+
+      references = [line.strip() for line in trg_file]
+
+      with open(filename, 'w') as f:
+        f.writelines(line + '\n' for line in hypotheses)
+
+      print(data_utils.bleu_score(FLAGS.bleu_script, hypotheses, references))
+
+    finally:
+      for file_ in files:
+        file_.close()
 
 
 def self_test():
@@ -338,6 +381,8 @@ def main(_):
     self_test()
   elif FLAGS.decode:
     decode()
+  elif FLAGS.eval:
+    evaluate()
   else:
     train()
 

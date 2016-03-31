@@ -22,7 +22,10 @@ import gzip
 import os
 import re
 import tarfile
+import subprocess
+import tempfile
 
+from collections import namedtuple
 from six.moves import urllib
 
 from tensorflow.python.platform import gfile
@@ -73,15 +76,17 @@ def gunzip_file(gz_path, new_path):
 
 def get_wmt_enfr_train_set(directory):
   """Download the WMT en-fr training corpus to directory unless it's there."""
-  train_path = os.path.join(directory, "giga-fren.release2")
+  download_path = os.path.join(directory, "giga-fren.release2")
+  train_path = os.path.join(directory, "train")
+
   if not (gfile.Exists(train_path +".fr") and gfile.Exists(train_path +".en")):
     corpus_file = maybe_download(directory, "training-giga-fren.tar",
                                  _WMT_ENFR_TRAIN_URL)
     print("Extracting tar file %s" % corpus_file)
     with tarfile.open(corpus_file, "r") as corpus_tar:
       corpus_tar.extractall(directory)
-    gunzip_file(train_path + ".fr.gz", train_path + ".fr")
-    gunzip_file(train_path + ".en.gz", train_path + ".en")
+    gunzip_file(download_path + ".fr.gz", train_path + ".fr")
+    gunzip_file(download_path + ".en.gz", train_path + ".en")
   return train_path
 
 
@@ -100,6 +105,10 @@ def get_wmt_enfr_dev_set(directory):
       dev_tar.extract(fr_dev_file, directory)
       dev_tar.extract(en_dev_file, directory)
   return dev_path
+
+
+def no_tokenizer(sentence):
+  return sentence.split()
 
 
 def basic_tokenizer(sentence):
@@ -241,13 +250,18 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
           tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
-def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
+def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size,
+                 download=True, tokenize=True):
   """Get WMT data into data_dir, create vocabularies and tokenize data.
 
   Args:
     data_dir: directory in which the data sets will be stored.
     en_vocabulary_size: size of the English vocabulary to create and use.
     fr_vocabulary_size: size of the French vocabulary to create and use.
+    download: if True, download corpus from the web, otherwise assume that it
+    is already there.
+    tokenize: if True, tokenize data on the fly, otherwise assume that
+    data is already tokenized.
 
   Returns:
     A tuple of 6 elements:
@@ -258,28 +272,114 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
       (5) path to the English vocabulary file,
       (6) path to the French vocabulary file.
   """
+  if tokenize:
+    tokenizer = None
+  else:
+    tokenizer = no_tokenizer
+
   # Get wmt data to the specified directory.
-  train_path = get_wmt_enfr_train_set(data_dir)
-  dev_path = get_wmt_enfr_dev_set(data_dir)
+  if download:
+    train_path = get_wmt_enfr_train_set(data_dir)
+    dev_path = get_wmt_enfr_dev_set(data_dir)
+  else:
+    train_path = os.path.join(data_dir, 'train')
+    dev_path = os.path.join(data_dir, 'dev')
 
   # Create vocabularies of the appropriate sizes.
   fr_vocab_path = os.path.join(data_dir, "vocab%d.fr" % fr_vocabulary_size)
   en_vocab_path = os.path.join(data_dir, "vocab%d.en" % en_vocabulary_size)
-  create_vocabulary(fr_vocab_path, train_path + ".fr", fr_vocabulary_size)
-  create_vocabulary(en_vocab_path, train_path + ".en", en_vocabulary_size)
+  create_vocabulary(fr_vocab_path, train_path + ".fr", fr_vocabulary_size,
+                    tokenizer=tokenizer)
+  create_vocabulary(en_vocab_path, train_path + ".en", en_vocabulary_size,
+                    tokenizer=tokenizer)
 
   # Create token ids for the training data.
   fr_train_ids_path = train_path + (".ids%d.fr" % fr_vocabulary_size)
   en_train_ids_path = train_path + (".ids%d.en" % en_vocabulary_size)
-  data_to_token_ids(train_path + ".fr", fr_train_ids_path, fr_vocab_path)
-  data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path)
+  data_to_token_ids(train_path + ".fr", fr_train_ids_path, fr_vocab_path,
+                    tokenizer=tokenizer)
+  data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path,
+                    tokenizer=tokenizer)
 
   # Create token ids for the development data.
   fr_dev_ids_path = dev_path + (".ids%d.fr" % fr_vocabulary_size)
   en_dev_ids_path = dev_path + (".ids%d.en" % en_vocabulary_size)
-  data_to_token_ids(dev_path + ".fr", fr_dev_ids_path, fr_vocab_path)
-  data_to_token_ids(dev_path + ".en", en_dev_ids_path, en_vocab_path)
+  data_to_token_ids(dev_path + ".fr", fr_dev_ids_path, fr_vocab_path,
+                    tokenizer=tokenizer)
+  data_to_token_ids(dev_path + ".en", en_dev_ids_path, en_vocab_path,
+                    tokenizer=tokenizer)
 
   return (en_train_ids_path, fr_train_ids_path,
           en_dev_ids_path, fr_dev_ids_path,
           en_vocab_path, fr_vocab_path)
+
+
+def extract_filenames(FLAGS):
+  """ Add filenames to the FLAGS namespace """
+
+  FLAGS.train_path = os.path.join(FLAGS.data_dir, "train")
+  FLAGS.src_train = "{}.{}".format(FLAGS.train_path, FLAGS.src_extension)
+  FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, FLAGS.trg_extension)
+
+  FLAGS.src_train_ids = "{}.ids{}.{}".format(
+    FLAGS.train_path, FLAGS.src_vocab_size, FLAGS.src_extension)
+  FLAGS.trg_train_ids = "{}.ids{}.{}".format(
+    FLAGS.train_path, FLAGS.trg_vocab_size, FLAGS.trg_extension)
+
+  FLAGS.dev_path = os.path.join(FLAGS.data_dir, "dev")
+  FLAGS.src_dev = "{}.{}".format(FLAGS.dev_path, FLAGS.src_extension)
+  FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, FLAGS.trg_extension)
+
+  FLAGS.src_dev_ids = "{}.ids{}.{}".format(
+    FLAGS.dev_path, FLAGS.src_vocab_size, FLAGS.src_extension)
+  FLAGS.trg_dev_ids = "{}.ids{}.{}".format(
+    FLAGS.dev_path, FLAGS.trg_vocab_size, FLAGS.trg_extension)
+
+  FLAGS.src_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
+    FLAGS.src_vocab_size, FLAGS.src_extension))
+
+  FLAGS.trg_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
+    FLAGS.trg_vocab_size, FLAGS.trg_extension))
+
+
+def prepare_data_bis(FLAGS):
+  """ Create vocabularies and tokenize data. """
+
+  tokenizer = no_tokenizer if not FLAGS.tokenize else None
+
+  #if FLAGS.download:  # FIXME
+  #  get_wmt_enfr_train_set(FLAGS.data_dir)
+  #  get_wmt_enfr_dev_set(FLAGS.data_dir)
+
+  create_vocabulary(FLAGS.src_vocab, FLAGS.src_train, FLAGS.src_vocab_size,
+                    tokenizer=tokenizer)
+  create_vocabulary(FLAGS.trg_vocab, FLAGS.trg_train, FLAGS.trg_vocab_size,
+                    tokenizer=tokenizer)
+
+  # Create token ids for the training data.
+  data_to_token_ids(FLAGS.src_train, FLAGS.src_train_ids, FLAGS.src_vocab,
+                    tokenizer=tokenizer)
+  data_to_token_ids(FLAGS.trg_train, FLAGS.trg_train_ids, FLAGS.trg_vocab,
+                    tokenizer=tokenizer)
+
+  # Create token ids for the development data.
+  data_to_token_ids(FLAGS.src_dev, FLAGS.src_dev_ids, FLAGS.src_vocab,
+                    tokenizer=tokenizer)
+  data_to_token_ids(FLAGS.trg_dev, FLAGS.trg_dev_ids, FLAGS.trg_vocab,
+                    tokenizer=tokenizer)
+
+
+def bleu_score(bleu_script, hypotheses, references):
+  with tempfile.NamedTemporaryFile(delete=False) as f:
+    for ref in references:
+      f.write(ref + '\n')
+
+  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                       stderr=open('/dev/null', 'w'))
+
+  output, _ = p.communicate('\n'.join(hypotheses))
+
+  m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
+  values = [float(m.group(i)) for i in range(1, 4)]
+
+  return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)

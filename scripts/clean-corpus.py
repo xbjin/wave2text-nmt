@@ -28,6 +28,8 @@ if __name__ == '__main__':
     corpus = args.corpus
     output = args.output
 
+    print args
+
     assert corpus != output, 'input and output corpora must be different'
 
     input_files = [open(corpus + '.' + ext) for ext in extensions]

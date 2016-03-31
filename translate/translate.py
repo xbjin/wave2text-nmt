@@ -41,8 +41,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-import data_utils
-import seq2seq_model_save as seq2seq_model
+from translate import data_utils
+from translate import seq2seq_model
 
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -50,33 +50,51 @@ tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
                           "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("batch_size", 3,
+tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("size", 64, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("target_vocab_size", 40000, "French vocabulary size.")
-tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
+tf.app.flags.DEFINE_integer("src_vocab_size", 40000, "Source vocabulary size.")
+tf.app.flags.DEFINE_integer("trg_vocab_size", 40000, "Target vocabulary size.")
+tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit).")
-tf.app.flags.DEFINE_integer("steps_per_checkpoint", 50,
+tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200,
                             "How many training steps to do per checkpoint.")
+tf.app.flags.DEFINE_integer("steps_per_eval", 4000, "How many training steps to"
+                                                    " do per BLEU evaluation.")
 tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
+tf.app.flags.DEFINE_boolean("eval", False,
+                            "Set to True for BLEU evaluation.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
-tf.app.flags.DEFINE_string("lang", "en,fr",
-                            "Languages to process")
+tf.app.flags.DEFINE_boolean("download", False, "Download WMT data.")
+tf.app.flags.DEFINE_boolean("tokenize", False, "Tokenize data on the fly.")
+tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU.")
 
+tf.app.flags.DEFINE_string("src_extension", "en", "Source files' extension.")
+tf.app.flags.DEFINE_string("trg_extension", "fr", "Target files' extension.")
+
+tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl",
+                           "Path to BLEU script.")
+tf.app.flags.DEFINE_string("output_file", None, "Output file of the decoder "
+                                                "(default to stdout).")
 
 FLAGS = tf.app.flags.FLAGS
 
+data_utils.extract_filenames(FLAGS)  # add filenames to namespace
+
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
-_buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
+# TODO: pick bucket sizes automatically
+_buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
 
-  
+if FLAGS.src_extension == 'fr':  # temporary hack for fr->en
+  _buckets = [tuple(reversed(bucket)) for bucket in _buckets]
+
+
 def read_data(source_path, target_path, max_size=None):
   """Read data from source and target files and put into buckets.
 
@@ -117,26 +135,19 @@ def read_data(source_path, target_path, max_size=None):
 
 def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
-  model = seq2seq_model.Seq2SeqModel(
-      FLAGS.src_vocab_size, FLAGS.target_vocab_size, _buckets,
-      FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, use_lstm = True,
-      forward_only=forward_only)
-      
-  file_name = os.path.dirname(sys.argv[0])        
-  path = os.path.abspath(file_name)
-  
-  full_train_path = path+"/"+FLAGS.train_dir
-  ckpt = tf.train.get_checkpoint_state(full_train_path)
-#==============================================================================
-#   print("exists", path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path)
-#   print("exists", tf.gfile.Exists(path+"/"+FLAGS.train_dir+"/"+ckpt.model_checkpoint_path))
-#==============================================================================
-  
-  
-  if ckpt and tf.gfile.Exists(full_train_path+"/"+ckpt.model_checkpoint_path):
-    print("Reading model parameters from %s" % full_train_path+"/"+ckpt.model_checkpoint_path)
-    model.saver.restore(session, full_train_path+"/"+ckpt.model_checkpoint_path)
+  device = '/cpu:0' if FLAGS.no_gpu else None
+
+  with tf.device(device):
+    model = seq2seq_model.Seq2SeqModel(
+        FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
+        FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
+        FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
+        forward_only=forward_only)
+
+  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+    model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
     print("Created model with fresh parameters.")
     session.run(tf.initialize_all_variables())
@@ -144,29 +155,29 @@ def create_model(session, forward_only):
 
 
 def train():
-  """Train a en->fr translation model."""
-  # Prepare WMT data.
-  #print("Preparing WMT data in %s" % FLAGS.data_dir)
- # en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
- #     FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size)
+  print("Preparing WMT data in %s" % FLAGS.data_dir)
+  data_utils.prepare_data_bis(FLAGS)
 
-  print("Preparing data in %s" % FLAGS.data_dir)
-  ret = data_utils.prepare_data(
-      FLAGS.data_dir, FLAGS.src_vocab_size, FLAGS.target_vocab_size, FLAGS.lang)  
-  
-  en_vocab, en_train, en_dev, fr_vocab, fr_train, fr_dev = ret
+  # limit the amount of memory used to 2/3 of total memory
+  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
 
-      
-  with tf.Session() as sess:
+  with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+
+    #if FLAGS.no_gpu:
+    #  with tf.device('/cpu:0'):
+    #    model = create_model(sess, False)
+    #else:
     model = create_model(sess, False)
 
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
-    dev_set = read_data(en_dev, fr_dev)
-    train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
+    dev_set = read_data(FLAGS.src_dev_ids, FLAGS.trg_dev_ids)
+    train_set = read_data(FLAGS.src_train_ids, FLAGS.trg_train_ids,
+                          FLAGS.max_train_data_size)
+
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
 
@@ -191,10 +202,6 @@ def train():
       start_time = time.time()
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           train_set, bucket_id)
-
-      #encoder input = phrase source reversed (0 0 0 0(PAD), 22, 7,...)
-      #decoder_inputs = phrase taget : GO 7 8 ...
-
       _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                    target_weights, bucket_id, False)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
@@ -218,6 +225,9 @@ def train():
         step_time, loss = 0.0, 0.0
         # Run evals on development set and print their perplexity.
         for bucket_id in xrange(len(_buckets)):
+          if len(dev_set[bucket_id]) == 0:
+            print("  eval: empty bucket %d" % (bucket_id))
+            continue
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
@@ -227,6 +237,38 @@ def train():
         sys.stdout.flush()
 
 
+def decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab=None):
+  tokenizer = data_utils.no_tokenizer if not FLAGS.tokenize else None
+  token_ids = data_utils.sentence_to_token_ids(sentence, src_vocab,
+                                               tokenizer=tokenizer)
+  max_len = _buckets[-1][0] - 1
+  if len(token_ids) > max_len:
+    sys.stderr.write("Line is too long ({} tokens). "
+                     "It will be truncated.\n".format(len(token_ids)))
+    token_ids = token_ids[:max_len]
+
+  bucket_id = min(b for b in xrange(len(_buckets)) if _buckets[b][0] > len(token_ids))
+
+  # Get a 1-element batch to feed the sentence to the model.
+  encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+    {bucket_id: [(token_ids, [])]}, bucket_id)
+
+  _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
+                                           target_weights, bucket_id, True)
+
+  # This is a greedy decoder - outputs are just argmaxes of output_logits.
+  outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # FIXME: no beam-search?
+
+  # If there is an EOS symbol in outputs, cut them at that point.
+  if data_utils.EOS_ID in outputs:
+    outputs = outputs[:outputs.index(data_utils.EOS_ID)]
+
+  if rev_trg_vocab is not None:
+    outputs = ' '.join(rev_trg_vocab[i] for i in outputs)
+
+  return outputs
+
+
 def decode():
   with tf.Session() as sess:
     # Create model and load parameters.
@@ -234,48 +276,41 @@ def decode():
     model.batch_size = 1  # We decode one sentence at a time.
 
     # Load vocabularies.
-    en_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.src" % FLAGS.src_vocab_size)
-    fr_vocab_path = os.path.join(FLAGS.data_dir,
-                                 "vocab%d.target" % FLAGS.target_vocab_size)
-    en_vocab, _ = data_utils.initialize_vocabulary(en_vocab_path)
-    _, rev_fr_vocab = data_utils.initialize_vocabulary(fr_vocab_path)
+    src_vocab, _ = data_utils.initialize_vocabulary(FLAGS.src_vocab)
+    _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
 
     # Decode from standard input.
-    sys.stdout.write("> ")
-    sys.stdout.flush()
-    sentence = sys.stdin.readline()
-    while sentence:
-      # Get token-ids for the input sentence.
-      token_ids = data_utils.sentence_to_token_ids(sentence, en_vocab)
-      # Which bucket does it belong to?
-      bucket_id = min([b for b in xrange(len(_buckets))
-                       if _buckets[b][0] > len(token_ids)])
-      # Get a 1-element batch to feed the sentence to the model.
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-          {bucket_id: [(token_ids, [])]}, bucket_id)
-      # Get output logits for the sentence.
-      _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
-                                       target_weights, bucket_id, True)
-      # This is a greedy decoder - outputs are just argmaxes of output_logits.
-#==============================================================================
-#       print("outputs logits",output_logits)
-#       print("outputs logits",len(output_logits))
-      #[print(logit[0][3857]) for logit in output_logits]
-#==============================================================================
-      outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
-      #outputs = [print(logit[0][int(np.argmax(logit, axis=1))]) for logit in output_logits]
-   
-      
-      print(outputs)
-      # If there is an EOS symbol in outputs, cut them at that point.
-      if data_utils.EOS_ID in outputs:
-        outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-      # Print out French sentence corresponding to outputs.
-      print(" ".join([rev_fr_vocab[output] for output in outputs]))
-      print("> ", end="")
-      sys.stdout.flush()
-      sentence = sys.stdin.readline()
+    for i, sentence in enumerate(sys.stdin, 1):
+      output = decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab)
+      print(output)
+
+
+def evaluate():
+  with tf.Session() as sess:
+    # Create model and load parameters.
+    model = create_model(sess, True)
+    model.batch_size = 1  # We decode one sentence at a time.
+
+    filename = FLAGS.output_file
+    if filename is None:
+      step = model.global_step.eval(session=sess)
+      filename = os.path.join(FLAGS.train_dir, 'eval.out-{}'.format(step))
+
+    # Load vocabularies.
+    src_vocab, _ = data_utils.initialize_vocabulary(FLAGS.src_vocab)
+    _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
+
+    with open(FLAGS.src_dev) as src_file, open(FLAGS.trg_dev) as trg_file:
+      hypotheses = [
+        decode_sentence(sess, model, sentence, src_vocab, rev_trg_vocab)
+        for sentence in src_file]
+
+      references = [line.strip() for line in trg_file]
+
+      with open(filename, 'w') as f:
+        f.writelines(line + '\n' for line in hypotheses)
+
+      print(data_utils.bleu_score(FLAGS.bleu_script, hypotheses, references))
 
 
 def self_test():
@@ -294,7 +329,6 @@ def self_test():
       bucket_id = random.choice([0, 1])
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           data_set, bucket_id)
-      print(target_weights)
       model.step(sess, encoder_inputs, decoder_inputs, target_weights,
                  bucket_id, False)
 
@@ -304,6 +338,8 @@ def main(_):
     self_test()
   elif FLAGS.decode:
     decode()
+  elif FLAGS.eval:
+    evaluate()
   else:
     train()
 
