@@ -299,7 +299,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
           
 def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size, lang):
   #nom des fichiers train et developpement
-  filenames = ["train", "dev"]
+  filenames = ["data.train", "data.dev"]
   train_path = os.path.join(data_dir, filenames[0])
   dev_path = os.path.join(data_dir, filenames[1])
   
