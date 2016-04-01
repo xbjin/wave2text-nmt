@@ -346,7 +346,7 @@ def extract_filenames(FLAGS):
   src_ext = FLAGS.src_ext.split(',')
   trg_ext = FLAGS.trg_ext
 
-  FLAGS.train_path = os.path.join(FLAGS.data_dir, "train")
+  FLAGS.train_path = os.path.join(FLAGS.data_dir, FLAGS.train_corpus)
 
   FLAGS.src_train = ["{}.{}".format(FLAGS.train_path, ext) for ext in src_ext]
   FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, trg_ext)
@@ -357,7 +357,7 @@ def extract_filenames(FLAGS):
   FLAGS.trg_train_ids = "{}.ids{}.{}".format(
     FLAGS.train_path, FLAGS.trg_vocab_size, trg_ext)
 
-  FLAGS.dev_path = os.path.join(FLAGS.data_dir, "dev")
+  FLAGS.dev_path = os.path.join(FLAGS.data_dir, FLAGS.dev_corpus)
   FLAGS.src_dev = ["{}.{}".format(FLAGS.dev_path, ext) for ext in src_ext]
   FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, trg_ext)
 

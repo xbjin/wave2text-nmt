@@ -26,10 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import multi_encoder.many2one as sq
 from tensorflow.python.ops import rnn_cell
-
-
-
-from tensorflow.models.rnn.translate import data_utils
+from multi_encoder import data_utils
 
 
 class Seq2SeqModel(object):

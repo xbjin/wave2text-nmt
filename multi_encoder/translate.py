@@ -73,6 +73,11 @@ tf.app.flags.DEFINE_boolean("download", False, "Download WMT data.")
 tf.app.flags.DEFINE_boolean("tokenize", False, "Tokenize data on the fly.")
 tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU.")
 
+tf.app.flags.DEFINE_string("train_corpus", "train", "Name of the training"
+                                                    " corpus.")
+tf.app.flags.DEFINE_string("dev_corpus", "dev", "Name of the development"
+                                                " corpus.")
+
 tf.app.flags.DEFINE_string("src_ext", "en", "Source files' extension(s),"
                                             "separated by commas")
 tf.app.flags.DEFINE_string("trg_ext", "fr", "Target files' extension.")
