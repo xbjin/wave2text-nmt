@@ -83,7 +83,8 @@ class Seq2SeqModel(object):
     
     #ici on suppose que les langues sources ont le meme nombre de symboles
     #si on veut different, envoyer les valeurs du dico dans les parametres
-    source_vocab_size_dict = dict((i,int(source_vocab_size)) for i in range(self.encoder_count))
+    source_vocab_sizes = [source_vocab_size for _ in range(self.encoder_count)]
+    # source_vocab_size_dict = dict((i,int(source_vocab_size)) for i in range(self.encoder_count))
 
     # If we use sampled softmax, we need an output projection.
     output_projection = None
@@ -112,14 +113,14 @@ class Seq2SeqModel(object):
       cell = rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
     # The seq2seq function: we use embedding for the input and attention.
-    def seq2seq_f(encoder_inputs_dict, decoder_inputs, do_decode):
+    def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
       return sq.many2one_rnn_seq2seq(
-          encoder_inputs_dict, decoder_inputs, cell, source_vocab_size_dict,
+          encoder_inputs, decoder_inputs, cell, source_vocab_sizes,
           target_vocab_size, output_projection=output_projection,
           feed_previous=do_decode)
 
     # Feeds for inputs.
-    self.encoder_inputs_dict = {}
+    self.encoder_inputs = []
     self.decoder_inputs = []
     self.target_weights = []
 
@@ -128,18 +129,26 @@ class Seq2SeqModel(object):
     #encoder_inputs_dict[1] contient 51 tenseurs de 51 a 101...
     #decodeur inputs contient 51 tenseurs nommes de 0 a 50  
     #targets contient 50 tenseurs nommes de 1 a 50
-    
+
+    # Last bucket is the biggest one.
+    src_bucket_size, trg_bucket_size = buckets[-1]
+
     for k in range(self.encoder_count):
-        self.encoder_inputs_dict[k] = []
-        for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.      
-          self.encoder_inputs_dict[k].append(tf.placeholder(tf.int32, shape=[None],
-                                                name="encoder{0}".format(i+(k*buckets[-1][0]))))
+      encoder_inputs_ = []
+      start_index = k * src_bucket_size
+
+      for i in xrange(src_bucket_size):
+        encoder_inputs_.append(tf.placeholder(tf.int32, shape=[None],
+                               name="encoder{0}".format(i + start_index)))
+
+      self.encoder_inputs.append(encoder_inputs_)
                                            
-    for i in xrange(buckets[-1][1] + 1):
+    for i in xrange(trg_bucket_size + 1):
       self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                 name="decoder{0}".format(i)))
       self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
                                                 name="weight{0}".format(i)))
+
     # Our targets are decoder inputs shifted by one.
     targets = [self.decoder_inputs[i + 1]
                for i in xrange(len(self.decoder_inputs) - 1)]
@@ -148,7 +157,7 @@ class Seq2SeqModel(object):
     #decode
     if forward_only:
       self.outputs, self.losses = sq.model_with_buckets(
-          self.encoder_inputs_dict, self.decoder_inputs, targets,
+          self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
           softmax_loss_function=softmax_loss_function)
       # If we use output projection, we need to project outputs for decoding.
@@ -161,7 +170,7 @@ class Seq2SeqModel(object):
     #train      
     else:
       self.outputs, self.losses = sq.model_with_buckets(
-          self.encoder_inputs_dict, self.decoder_inputs, targets,
+          self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets,
           lambda x, y: seq2seq_f(x, y, False),
           softmax_loss_function=softmax_loss_function)
@@ -182,7 +191,7 @@ class Seq2SeqModel(object):
 
     self.saver = tf.train.Saver(tf.all_variables())
 
-  def step(self, session, encoder_inputs_dict, decoder_inputs, target_weights,
+  def step(self, session, encoder_inputs, decoder_inputs, target_weights,
            bucket_id, forward_only):
     """Run a step of the model feeding the given inputs.
 
@@ -209,9 +218,9 @@ class Seq2SeqModel(object):
     # [1, 4, 7] : t = 1 pour phrase 1 2 3
     # Check if the sizes match.
     encoder_size, decoder_size = self.buckets[bucket_id]
-    if len(encoder_inputs_dict[0]) != encoder_size:
+    if len(encoder_inputs[0]) != encoder_size:
       raise ValueError("Encoder length must be equal to the one in bucket,"
-                       " %d != %d." % (len(encoder_inputs_dict[0]), encoder_size))
+                       " %d != %d." % (len(encoder_inputs[0]), encoder_size))
     if len(decoder_inputs) != decoder_size:
       raise ValueError("Decoder length must be equal to the one in bucket,"
                        " %d != %d." % (len(decoder_inputs), decoder_size))
@@ -224,16 +233,15 @@ class Seq2SeqModel(object):
     #fou dans chaque encodeur input les mots a chaque instant t du batch (des phrases)
     #cf description plus haut
     input_feed = {}
-    for i in range(self.encoder_count):
-        for l in xrange(encoder_size):
-          input_feed[self.encoder_inputs_dict[i][l].name] = encoder_inputs_dict[i][l]
 
+    for i in xrange(self.encoder_count):
+      for l in xrange(encoder_size):
+        input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
 
     for l in xrange(decoder_size):
       input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
       input_feed[self.target_weights[l].name] = target_weights[l]
-      
 
     # Since our targets are decoder inputs shifted by one, we need one more.
     last_target = self.decoder_inputs[decoder_size].name
@@ -250,7 +258,8 @@ class Seq2SeqModel(object):
         output_feed.append(self.outputs[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
-#    print("#######################""ouputs",outputs)
+    # print("#######################""ouputs",outputs)
+
     if not forward_only:
       return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
     else:
@@ -274,41 +283,28 @@ class Seq2SeqModel(object):
     """
     encoder_size, decoder_size = self.buckets[bucket_id]
     decoder_inputs = []
-    
-    #rajout many to one
-    encoder_inputs_dict  = {}
-    batch_encoder_inputs_dict = {}
 
-    
-    #initialisation des dicos, une liste par langue
-    for i in range(self.encoder_count):
-        encoder_inputs_dict[i]        =  []
-        batch_encoder_inputs_dict[i]  =  []
+    encoder_inputs = [[] for _ in range(self.encoder_count)]
+    batch_encoder_inputs = [[] for _ in range(self.encoder_count)]
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
     for _ in xrange(self.batch_size):
+      # get a random tuple of sentences in this bucket
       sentences = random.choice(data[bucket_id])
-      _encoder_inputs = sentences[0:-1]
-      decoder_input = sentences[-1]
-      # _encoder_inputs contient une phrase source par langue
-      #decoder_input comprend la phrase source
-
+      src_sentences = sentences[0:-1]
+      trg_sentence = sentences[-1]
      
       # Encoder inputs are padded and then reversed.
-      #pour chaque phrase source, on la fou dans son dictionnaire respectif
-      counter=0
-      for encoder_input in _encoder_inputs:
-          encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(encoder_input))
-          encoder_inputs_dict[counter].append(list(reversed(encoder_input + encoder_pad)))
-          counter+=1
-          
-  
-      # Decoder inputs get an extra "GO" symbol, and are padded then.
-      decoder_pad_size = decoder_size - len(decoder_input) - 1
-      decoder_inputs.append([data_utils.GO_ID] + decoder_input +
-                            [data_utils.PAD_ID] * decoder_pad_size)
+      for i, src_sentence in enumerate(src_sentences):
+          encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(src_sentence))
+          reversed_sentence = list(reversed(src_sentence + encoder_pad))
+          encoder_inputs[i].append(reversed_sentence)
 
+      # Decoder inputs get an extra "GO" symbol, and are padded then.
+      decoder_pad_size = decoder_size - len(trg_sentence) - 1
+      decoder_inputs.append([data_utils.GO_ID] + trg_sentence +
+                            [data_utils.PAD_ID] * decoder_pad_size)
 
     # Now we create batch-major vectors from the data selected above.
     batch_decoder_inputs, batch_weights = [], []
@@ -321,13 +317,13 @@ class Seq2SeqModel(object):
     # Check if the sizes match
     #on fait ca pour chaque langue source et on la fou dans son dico respectif (dans batch_encoder_inputs)
     #import pdb; pdb.set_trace()
-    for i in range(self.encoder_count):
-        for length_idx in xrange(encoder_size):
-          batch_encoder_inputs_dict[i].append(
-              np.array([encoder_inputs_dict[i][batch_idx][length_idx]
-                        for batch_idx in xrange(self.batch_size)], dtype=np.int32))
 
-   
+    for i in range(self.encoder_count):
+      for length_idx in xrange(encoder_size):
+        batch_encoder_inputs[i].append(
+          np.array([encoder_inputs[i][batch_idx][length_idx]
+                    for batch_idx in xrange(self.batch_size)], dtype=np.int32))
+
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
     for length_idx in xrange(decoder_size):
       batch_decoder_inputs.append(
@@ -344,4 +340,4 @@ class Seq2SeqModel(object):
         if length_idx == decoder_size - 1 or target == data_utils.PAD_ID:
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
-    return batch_encoder_inputs_dict, batch_decoder_inputs, batch_weights
+    return batch_encoder_inputs, batch_decoder_inputs, batch_weights

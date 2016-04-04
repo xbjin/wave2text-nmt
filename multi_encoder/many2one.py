@@ -99,7 +99,7 @@ def sequence_loss(logits, targets, weights,
       return cost
       
 
-def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell,
+def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
                       output_size=None, num_heads=1, loop_function=None,
                       dtype=dtypes.float32, scope=None,
                       initial_state_attention=False):
@@ -158,7 +158,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell
   # attention_states1 = attention_states_dict[0]
   # attention_states2 = attention_states_dict[1]
   # TODO: use a list instead of a dict
-  attention_states = [v for _, v in sorted(attention_states_dict.items())]
 
   if not decoder_inputs:
     raise ValueError("Must provide at least 1 input to attention decoder.")
@@ -315,7 +314,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell
 
   return outputs, state
 
-def embedding_attention_decoder(decoder_inputs, initial_state, attention_states_dict,
+def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
                                 cell, num_symbols, num_heads=1,
                                 output_size=None, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
@@ -387,49 +386,42 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states_
     emb_inp = [
         embedding_ops.embedding_lookup(embedding, i) for i in decoder_inputs]
     return attention_decoder(
-        emb_inp, initial_state, attention_states_dict, cell, output_size=output_size,
+        emb_inp, initial_state, attention_states, cell, output_size=output_size,
         num_heads=num_heads, loop_function=loop_function,
         initial_state_attention=initial_state_attention)
 
 
-
-
-def many2one_rnn_seq2seq(encoder_inputs_dict, decoder_inputs, cell,
-                         num_encoder_symbols_dict, num_decoder_symbols,num_heads=1,
+def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
+                         num_encoder_symbols, num_decoder_symbols,num_heads=1,
                          output_projection=None, feed_previous=False, dtype=dtypes.float32,
                          scope=None,initial_state_attention=False):
                                    
-  """ many2one avec attention decoder"""
-  if len(encoder_inputs_dict) > 2:
-    raise ValueError("Ce module n a pas encore ete implemente pour plus de deux langue source."
-                         "Nb de langues donnees : %d." % (len(encoder_inputs_dict)))
+  """ many2one with attention decoder. """
 
+  encoder_states = []
+  encoder_outputs = []
+  with variable_scope.variable_scope(scope or "many2one_rnn_seq2seq"):
+    for i, values in enumerate(zip(encoder_inputs, num_encoder_symbols)):
+      encoder_inputs_, num_encoder_symbols_ = values
 
-  encoder_state_dict = {} 
-  encoder_outputs_dict = {}                                           
-  with variable_scope.variable_scope(scope or "many2one_rnn_seq2seq"):   
-      
+      with variable_scope.variable_scope("many2one_encoder_{}".format(i)):
+        encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols_)
+        encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell,
+                                                    encoder_inputs_,
+                                                    dtype=dtype)
+        encoder_states.append(encoder_states_)
+        encoder_outputs.append(encoder_outputs_)
     
-    # Encoder.  
-    for name, encoder_inputs in encoder_inputs_dict.items():
-      num_encoder_symbols = num_encoder_symbols_dict[name]
-      with variable_scope.variable_scope("many2one_encoder_" + str(name)):
-        encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols)
-        encoder_outputs, encoder_state = rnn.rnn(encoder_cell, encoder_inputs, dtype=dtype)                             
-        encoder_state_dict[name] = encoder_state
-        encoder_outputs_dict[name] = encoder_outputs
-    
-    
-    encoder_state_sum  = sum(encoder_state_dict.itervalues())
+    encoder_state_sum  = math_ops.add_n(encoder_states)
+
     # First calculate a concatenation of encoder outputs to put attention on.
     #top_states = [array_ops.reshape(e, [-1, 1, cell.output_size]) for e in encoder_outputs]
-    top_states_dict = dict((k, [array_ops.reshape(e, [-1, 1, cell.output_size])
-                  for e in v]) for (k,v) in  encoder_outputs_dict.iteritems())  
-                  
-    #attention_states = array_ops.concat(1, top_states)    
-    attention_states_dict = dict((k,array_ops.concat(1, v)) for (k,v) in top_states_dict.iteritems())
 
-    
+    top_states = [[array_ops.reshape(e, [-1, 1, cell.output_size]) for e in v]
+                  for v in encoder_outputs]
+                  
+    #attention_states = array_ops.concat(1, top_states)
+    attention_states = [array_ops.concat(1, v) for v in top_states]
 
     # Decoder.
     output_size = None
@@ -439,7 +431,7 @@ def many2one_rnn_seq2seq(encoder_inputs_dict, decoder_inputs, cell,
 
     if isinstance(feed_previous, bool):
       return embedding_attention_decoder(
-          decoder_inputs, encoder_state_sum, attention_states_dict, cell,
+          decoder_inputs, encoder_state_sum, attention_states, cell,
           num_decoder_symbols, num_heads=num_heads, output_size=output_size,
           output_projection=output_projection, feed_previous=feed_previous,
           initial_state_attention=initial_state_attention)
@@ -450,7 +442,7 @@ def many2one_rnn_seq2seq(encoder_inputs_dict, decoder_inputs, cell,
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          reuse=reuse):
         outputs, state = embedding_attention_decoder(
-            decoder_inputs, encoder_state_sum, attention_states_dict, cell,
+            decoder_inputs, encoder_state_sum, attention_states, cell,
             num_decoder_symbols, num_heads=num_heads, output_size=output_size,
             output_projection=output_projection,
             feed_previous=feed_previous_bool,
@@ -463,7 +455,7 @@ def many2one_rnn_seq2seq(encoder_inputs_dict, decoder_inputs, cell,
     return outputs_and_state[:-1], outputs_and_state[-1]                          
 
 
-def model_with_buckets(encoder_inputs_dict, decoder_inputs, targets, weights,
+def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
                        buckets, seq2seq, softmax_loss_function=None,
                        per_example_loss=False, name=None):
   """Create a sequence-to-sequence model with support for bucketing.
@@ -498,9 +490,9 @@ def model_with_buckets(encoder_inputs_dict, decoder_inputs, targets, weights,
     ValueError: If length of encoder_inputsut, targets, or weights is smaller
       than the largest (last) bucket.
   """
-  if len(encoder_inputs_dict[0]) < buckets[-1][0]:
+  if len(encoder_inputs[0]) < buckets[-1][0]:
     raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
-                     "st bucket (%d)." % (len(encoder_inputs_dict[0]), buckets[-1][0]))
+                     "st bucket (%d)." % (len(encoder_inputs[0]), buckets[-1][0]))
   if len(targets) < buckets[-1][1]:
     raise ValueError("Length of targets (%d) must be at least that of last"
                      "bucket (%d)." % (len(targets), buckets[-1][1]))
@@ -510,8 +502,8 @@ def model_with_buckets(encoder_inputs_dict, decoder_inputs, targets, weights,
 
 
   #concat tt les encodeurs inputs en une liste
-  encoder_inputs_concat = list(v for (k,v) in encoder_inputs_dict.iteritems())
-  all_inputs = list(chain.from_iterable(encoder_inputs_concat)) + decoder_inputs + targets + weights
+  encoder_inputs_concat = [v for inputs in encoder_inputs for v in inputs]
+  all_inputs = encoder_inputs_concat + decoder_inputs + targets + weights
 
   losses = []
   outputs = []
@@ -528,8 +520,10 @@ def model_with_buckets(encoder_inputs_dict, decoder_inputs, targets, weights,
         #encoder_inputs_dict[1] contient 51 tenseurs de 51 a 101...
         #decodeur inputs contient 51 tenseurs nommes de 0 a 50  
         #trunc_encoder_inputs_dict pour un le premier bucket retourne 5 premiers tenseurs pr chaque langue       
-        trunc_encoder_inputs_dict = dict((k,v[:bucket[0]]) for (k, v) in encoder_inputs_dict.iteritems())
-        bucket_outputs, _ = seq2seq(trunc_encoder_inputs_dict,
+        #trunc_encoder_inputs_dict = dict((k,v[:bucket[0]]) for (k, v) in encoder_inputs_dict.iteritems())
+
+        trunc_encoder_inputs = [v[:bucket[0]] for v in encoder_inputs]
+        bucket_outputs, _ = seq2seq(trunc_encoder_inputs,
                                     decoder_inputs[:bucket[1]])
         outputs.append(bucket_outputs)
         if per_example_loss:
