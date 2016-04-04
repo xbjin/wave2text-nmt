@@ -157,7 +157,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell
   
   # attention_states1 = attention_states_dict[0]
   # attention_states2 = attention_states_dict[1]
-  attention_states = attention_states_dict[0], attention_states_dict[1]
+  # TODO: use a list instead of a dict
+  attention_states = [v for _, v in sorted(attention_states_dict.items())]
 
   if not decoder_inputs:
     raise ValueError("Must provide at least 1 input to attention decoder.")
