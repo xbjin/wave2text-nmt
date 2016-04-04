@@ -155,58 +155,80 @@ def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell
       of attention_states are not set.
   """
   
-  attention_states1 = attention_states_dict[0]
-  attention_states2 = attention_states_dict[1]
+  # attention_states1 = attention_states_dict[0]
+  # attention_states2 = attention_states_dict[1]
+  attention_states = attention_states_dict[0], attention_states_dict[1]
+
   if not decoder_inputs:
     raise ValueError("Must provide at least 1 input to attention decoder.")
   if num_heads < 1:
     raise ValueError("With less than 1 heads, use a non-attention decoder.")
-  if not attention_states1.get_shape()[1:2].is_fully_defined():
-    raise ValueError("Shape[1] and [2] of attention_states must be known: %s"
-                     % attention_states1.get_shape())
+  # if not attention_states1.get_shape()[1:2].is_fully_defined():
+  #  raise ValueError("Shape[1] and [2] of attention_states must be known: %s"
+  #                   % attention_states1.get_shape())
+  if not attention_states[0].get_shape()[1:2].is_fully_defined():
+      raise ValueError("Shape[1] and [2] of attention_states must be known: %s"
+                       % attention_states[0].get_shape())
+
   if output_size is None:
     output_size = cell.output_size
 
   with variable_scope.variable_scope(scope or "attention_decoder"):
     batch_size = array_ops.shape(decoder_inputs[0])[0]  # Needed for reshaping.
-    attn_length = attention_states1.get_shape()[1].value
+    attn_length = attention_states[0].get_shape()[1].value
     
-    attn_size = attention_states1.get_shape()[2].value
-#    print("attn_length",attn_length)
-#    print("attn_size",attn_size)
+    attn_size = attention_states[0].get_shape()[2].value
+    # print("attn_length",attn_length)
+    # print("attn_size",attn_size)
     # To calculate W1 * h_t we use a 1-by-1 convolution, need to reshape before.
-    hidden1 = array_ops.reshape(
-        attention_states1, [-1, attn_length, 1, attn_size])
+    # hidden1 = array_ops.reshape(
+    #   attention_states1, [-1, attn_length, 1, attn_size])
 
-    hidden2 = array_ops.reshape(
-        attention_states2, [-1, attn_length, 1, attn_size])
+    # hidden2 = array_ops.reshape(
+    #   attention_states2, [-1, attn_length, 1, attn_size])
+
+    hidden = [
+      array_ops.reshape(states, [-1, attn_length, 1, attn_size])
+      for states in attention_states
+    ]
         
-#    print ("###")
-#    print("attention_states",attention_states)
-#    print("hidden",hidden)
-    hidden_features1 = []
-    v1 = []
-    hidden_features2 = []
-    v2 = []
+    # print ("###")
+    # print("attention_states",attention_states)
+    # print("hidden",hidden)
+    hidden_features = [[] for _ in attention_states]
+    v = [[] for _ in attention_states]
+
+    # hidden_features1 = []
+    # v1 = []
+    # hidden_features2 = []
+    # v2 = []
     attention_vec_size = attn_size  # Size of query vectors for attention.
     for a in xrange(num_heads):
-      k1 = variable_scope.get_variable("AttnW1_%d" % a,
-                                      [1, 1, attn_size, attention_vec_size])
-      hidden_features1.append(nn_ops.conv2d(hidden1, k1, [1, 1, 1, 1], "SAME"))
-      
-      v1.append(variable_scope.get_variable("AttnV1_%d" % a,
-                                           [attention_vec_size]))
-                                           
-      k2 = variable_scope.get_variable("AttnW2_%d" % a,
-                                      [1, 1, attn_size, attention_vec_size])
-      hidden_features2.append(nn_ops.conv2d(hidden2, k2, [1, 1, 1, 1], "SAME"))
-      
-      v2.append(variable_scope.get_variable("AttnV2_%d" % a,
-                                           [attention_vec_size]))
+      for i, values in enumerate(zip(hidden_features, hidden, v), 1):
+        features_, hidden_, v_ = values
+        k = variable_scope.get_variable("AttnW%d_%d" % (i, a),
+                                        [1, 1, attn_size, attention_vec_size])
+        features_.append(nn_ops.conv2d(hidden_, k, [1, 1, 1, 1], "SAME"))
+        v_.append(variable_scope.get_variable("AttnV%d_%d" % (i, a),
+                                              [attention_vec_size]))
 
-#    print("k",k)
-#    print("hidden_features",hidden_features)
-#    print("v",v)
+      # k1 = variable_scope.get_variable("AttnW1_%d" % a,
+      #                                 [1, 1, attn_size, attention_vec_size])
+      # hidden_features1.append(nn_ops.conv2d(hidden1, k1, [1, 1, 1, 1], "SAME"))
+      #
+      # v1.append(variable_scope.get_variable("AttnV1_%d" % a,
+      #                                      [attention_vec_size]))
+      #
+      # k2 = variable_scope.get_variable("AttnW2_%d" % a,
+      #                                 [1, 1, attn_size, attention_vec_size])
+      # hidden_features2.append(nn_ops.conv2d(hidden2, k2, [1, 1, 1, 1], "SAME"))
+      #
+      # v2.append(variable_scope.get_variable("AttnV2_%d" % a,
+      #                                      [attention_vec_size]))
+
+    # print("k",k)
+    # print("hidden_features",hidden_features)
+    # print("v",v)
     state = initial_state
 
     def attention(query):
@@ -217,25 +239,40 @@ def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell
         with variable_scope.variable_scope("Attention_%d" % a):
           y = rnn_cell.linear(query, attention_vec_size, True)
           y = array_ops.reshape(y, [-1, 1, 1, attention_vec_size])
-          # Attention mask is a softmax of v^T * tanh(...).
-          s1 = math_ops.reduce_sum(
-              v1[a] * math_ops.tanh(hidden_features1[a] + y), [2, 3])
-          a1 = nn_ops.softmax(s1)
-          # Now calculate the attention-weighted vector d.
-          d1 = math_ops.reduce_sum(
-              array_ops.reshape(a1, [-1, attn_length, 1, 1]) * hidden1,
+
+          # # Attention mask is a softmax of v^T * tanh(...).
+          # s1 = math_ops.reduce_sum(
+          #     v[0][a] * math_ops.tanh(hidden_features[0][a] + y), [2, 3])
+          # a1 = nn_ops.softmax(s1)
+          # # Now calculate the attention-weighted vector d.
+          # d1 = math_ops.reduce_sum(
+          #     array_ops.reshape(a1, [-1, attn_length, 1, 1]) * hidden[0],
+          #     [1, 2])
+          #
+          # s2 = math_ops.reduce_sum(
+          #     v[1][a] * math_ops.tanh(hidden_features[1][a] + y), [2, 3])
+          # a2 = nn_ops.softmax(s2)
+          # # Now calculate the attention-weighted vector d.
+          # d2 = math_ops.reduce_sum(
+          #     array_ops.reshape(a2, [-1, attn_length, 1, 1]) * hidden[1],
+          #     [1, 2])
+          #
+          # d = d1+d2
+
+          ds_ = []
+          for i, values in enumerate(zip(hidden_features, hidden, v), 1):
+            features_, hidden_, v_ = values
+            # Attention mask is a softmax of v^T * tanh(...).
+            s = math_ops.reduce_sum(v_[a] * math_ops.tanh(features_[a] + y),
+                                    [2, 3])
+            a_ = nn_ops.softmax(s)
+            # Now calculate the attention-weighted vector d.
+            d_ = math_ops.reduce_sum(
+              array_ops.reshape(a_, [-1, attn_length, 1, 1]) * hidden_,
               [1, 2])
-              
-          s2 = math_ops.reduce_sum(
-              v1[a] * math_ops.tanh(hidden_features2[a] + y), [2, 3])
-          a2 = nn_ops.softmax(s2)
-          # Now calculate the attention-weighted vector d.
-          d2 = math_ops.reduce_sum(
-              array_ops.reshape(a2, [-1, attn_length, 1, 1]) * hidden2,
-              [1, 2])              
-              
-          d = d1+d2
-          
+            ds_.append(d_)
+
+          d = math_ops.add_n(ds_)
           ds.append(array_ops.reshape(d, [-1, attn_size]))
       return ds
 
@@ -256,6 +293,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states_dict, cell
         with variable_scope.variable_scope("loop_function", reuse=True):
           inp = array_ops.stop_gradient(loop_function(prev, i))
       # Merge input and previous attentions into one vector of the right size.
+
       x = rnn_cell.linear([inp] + attns, cell.input_size, True)
       # Run the RNN.
       cell_output, state = cell(x, state)
@@ -361,7 +399,7 @@ def many2one_rnn_seq2seq(encoder_inputs_dict, decoder_inputs, cell,
                          scope=None,initial_state_attention=False):
                                    
   """ many2one avec attention decoder"""
-  if len(encoder_inputs_dict)  > 2:
+  if len(encoder_inputs_dict) > 2:
     raise ValueError("Ce module n a pas encore ete implemente pour plus de deux langue source."
                          "Nb de langues donnees : %d." % (len(encoder_inputs_dict)))
 
