@@ -102,7 +102,7 @@ def sequence_loss(logits, targets, weights,
 def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
                       output_size=None, num_heads=1, loop_function=None,
                       dtype=dtypes.float32, scope=None, initial_state_attention=False,
-                      encoder_num=None, reuse=False):
+                      encoder_num=None):
   """RNN decoder with attention for the sequence-to-sequence model.
 
   In this context "attention" means that, during decoding, the RNN can look up
@@ -238,7 +238,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
       
       ds = []  # Results of attention reads will be stored here.
       for a in xrange(num_heads):
-        with variable_scope.variable_scope("Attention_%d" % a, reuse=reuse):
+        with variable_scope.variable_scope("Attention_%d" % a):
           y = rnn_cell.linear(query, attention_vec_size, True)
           y = array_ops.reshape(y, [-1, 1, 1, attention_vec_size])
 
@@ -320,7 +320,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
                                 cell, num_symbols, num_heads=1,
                                 output_size=None, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
-                                scope=None, initial_state_attention=False, encoder_num=None, reuse=False):
+                                scope=None, initial_state_attention=False, encoder_num=None):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -370,7 +370,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
     proj_biases = ops.convert_to_tensor(output_projection[1], dtype=dtype)
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
 
-  with variable_scope.variable_scope(scope or "embedding_attention_decoder", reuse=reuse):
+  with variable_scope.variable_scope(scope or "embedding_attention_decoder"):
     with ops.device("/cpu:0"):
       embedding = variable_scope.get_variable("embedding",
                                               [num_symbols, cell.input_size])
@@ -390,13 +390,13 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
     return attention_decoder(
         emb_inp, initial_state, attention_states, cell, output_size=output_size,
         num_heads=num_heads, loop_function=loop_function,
-        initial_state_attention=initial_state_attention, encoder_num=encoder_num, reuse=reuse)
+        initial_state_attention=initial_state_attention, encoder_num=encoder_num)
 
 
 def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
                          num_encoder_symbols, num_decoder_symbols,num_heads=1,
                          output_projection=None, feed_previous=False, dtype=dtypes.float32,
-                         scope=None,initial_state_attention=False, encoder_num=None,reuse=False):
+                         scope=None,initial_state_attention=False, encoder_num=None):
                                    
   """ many2one with attention decoder. """
     
@@ -440,19 +440,19 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
           decoder_inputs, encoder_state_sum, attention_states, cell,
           num_decoder_symbols, num_heads=num_heads, output_size=output_size,
           output_projection=output_projection, feed_previous=feed_previous,
-          initial_state_attention=initial_state_attention,encoder_num=encoder_num,reuse=reuse)
+          initial_state_attention=initial_state_attention,encoder_num=encoder_num)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
-      reuse_ = None if feed_previous_bool else True
+      reuse = None if feed_previous_bool else True
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
-                                         reuse=reuse_):
+                                         reuse=reuse):
         outputs, state = embedding_attention_decoder(
             decoder_inputs, encoder_state_sum, attention_states, cell,
             num_decoder_symbols, num_heads=num_heads, output_size=output_size,
             output_projection=output_projection,
             feed_previous=feed_previous_bool,
-            initial_state_attention=initial_state_attention,encoder_num=encoder_num,reuse=reuse)
+            initial_state_attention=initial_state_attention,encoder_num=encoder_num)
         return outputs + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,

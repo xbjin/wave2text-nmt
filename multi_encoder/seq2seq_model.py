@@ -49,7 +49,7 @@ class Seq2SeqModel(object):
                num_layers, max_gradient_norm, batch_size, learning_rate,
                learning_rate_decay_factor, use_lstm=True,
                num_samples=512, forward_only=False, encoder_count=1,
-               device=None,reuse=False, encoder_num=None):
+               device=None,reuse=False, encoder_num=None, model_name=None):
     """Create the model.
 
     Args:
@@ -78,8 +78,9 @@ class Seq2SeqModel(object):
     self.target_vocab_size = target_vocab_size
     self.buckets = buckets
     self.batch_size = batch_size
-    self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
-    self.global_step = tf.Variable(0, trainable=False)
+    with variable_scope.variable_scope(model_name if model_name is not None else variable_scope.get_variable_scope()):
+      self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
+      self.global_step = tf.Variable(0, trainable=False)
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
     

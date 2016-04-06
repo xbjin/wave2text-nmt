@@ -91,6 +91,9 @@ tf.app.flags.DEFINE_string("encoder_num", None, "Numbers of the encoders to chos
                                             "separated by commas")
 tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without training")
 
+tf.app.flags.DEFINE_string("model_name", None, "Name of the encoders")
+
+
 FLAGS = tf.app.flags.FLAGS
 
 data_utils.extract_filenames(FLAGS)  # add filenames to namespace
@@ -140,7 +143,7 @@ def read_data(source_paths, target_path, max_size=None):
   return data_set
 
 
-def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num=None):
+def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num=None, model_name=None):
   """Create translation model and initialize or load parameters in session."""
   device = '/cpu:0' if FLAGS.no_gpu else None
 
@@ -150,7 +153,7 @@ def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num
         FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
         FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
         forward_only=forward_only, encoder_count=encoder_count,
-        device=device,reuse=reuse,encoder_num=encoder_num)
+        device=device,reuse=reuse,encoder_num=encoder_num, model_name=model_name)
        
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
@@ -417,14 +420,10 @@ def pretrain():
     
     encoder_count = FLAGS.src_ext.count(',') + 1
     dummy = create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
-            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","))
+            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy")
 
 
-    params = tf.all_variables()
-    
-    for e in params:
-    
-        print(e.name)
+
 #        if "many2one_encoder_0" in e.name:
 #            print(e.eval())
     
@@ -434,18 +433,15 @@ def pretrain():
     #we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
     #if num_encoder specified, we send for each model the num encoder of the flag
     models = [create_model(sess, forward_only=False, encoder_count=1, reuse=True,
-                           encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i]) 
+                           encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
+                             model_name=FLAGS.model_name.split(",")[i]) 
                                                             for i in range(encoder_count)]
     
 
-    params = tf.trainable_variables()
+    params = tf.all_variables()
     
-    for e in params:
-    
+    for e in params:    
         print(e.name)
-#        if "many2one_encoder_0" in e.name:
-#            print(e.eval())
-    
     sys.exit(1)
 
 
