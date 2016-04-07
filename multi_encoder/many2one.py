@@ -402,8 +402,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
     
   if(encoder_num is not None and len(encoder_inputs) != len(encoder_num)):
     raise ValueError("You must specify as many encoder_num as src_ext")   
-
- 
+    
   encoder_states = []
   encoder_outputs = []
   with variable_scope.variable_scope(scope or "many2one_rnn_seq2seq"):

@@ -72,9 +72,8 @@ class Seq2SeqModel(object):
       num_samples: number of samples for sampled softmax.
       forward_only: if set, we do not construct the backward pass in the model.
       MODIF JB : encoder_count: how many encoder are to create
-      MODIF JB : encoder_num : num of the encoders to create (list)  
+      MODIF JB : encoder_num : num of the encoders to create   
     """
-    
     self.target_vocab_size = target_vocab_size
     self.buckets = buckets
     self.batch_size = batch_size
@@ -139,7 +138,6 @@ class Seq2SeqModel(object):
 
     # Last bucket is the biggest one.
     src_bucket_size, trg_bucket_size = buckets[-1]
-
     for k in range(self.encoder_count):
       encoder_inputs_ = []
       start_index = k * src_bucket_size
@@ -296,6 +294,8 @@ class Seq2SeqModel(object):
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
+    print("data",data)
+    print("bucket_id",bucket_id)
     for _ in xrange(self.batch_size):
       # get a random tuple of sentences in this bucket
       sentences = random.choice(data[bucket_id])
@@ -348,80 +348,3 @@ class Seq2SeqModel(object):
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights
-
-
-
-
-  def pretrain_step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only, encoder_num):
-    """Run a step of the model feeding the given inputs.
-
-    Args:
-      session: tensorflow session to use.
-      encoder_inputs: list of numpy int vectors to feed as encoder inputs.
-      decoder_inputs: list of numpy int vectors to feed as decoder inputs.
-      target_weights: list of numpy float vectors to feed as target weights.
-      bucket_id: which bucket of the model to use.
-      forward_only: whether to do the backward step or only forward.
-
-    Returns:
-      A triple consisting of gradient norm (or None if we did not do backward),
-      average perplexity, and the outputs.
-
-    Raises:
-      ValueError: if length of encoder_inputs, decoder_inputs, or
-        target_weights disagrees with bucket size for the specified bucket_id.
-    """
-    
-    # rappel encoder_inputs_dict = 
-    # [array([1, 4, 7], dtype=int32), array([2, 5, 8], dtype=int32),array([3, 6, 9], dtype=int32)]
-    # cad une liste pour chaque langue d'array contenant les "t" = 1,...,n des encoder inputs
-    # [1, 4, 7] : t = 1 pour phrase 1 2 3
-    # Check if the sizes match.
-    encoder_size, decoder_size = self.buckets[bucket_id]
-    if len(encoder_inputs[0]) != encoder_size:
-      raise ValueError("Encoder length must be equal to the one in bucket,"
-                       " %d != %d." % (len(encoder_inputs[0]), encoder_size))
-    if len(decoder_inputs) != decoder_size:
-      raise ValueError("Decoder length must be equal to the one in bucket,"
-                       " %d != %d." % (len(decoder_inputs), decoder_size))
-    if len(target_weights) != decoder_size:
-      raise ValueError("Weights length must be equal to the one in bucket,"
-                       " %d != %d." % (len(target_weights), decoder_size))
-
-    # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
-
-    #fou dans chaque encodeur input les mots a chaque instant t du batch (des phrases)
-    #cf description plus haut
-    input_feed = {}
-
-    for i in xrange(self.encoder_count):
-      for l in xrange(encoder_size):
-        input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
-
-
-    for l in xrange(decoder_size):
-      input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
-      input_feed[self.target_weights[l].name] = target_weights[l]
-
-    # Since our targets are decoder inputs shifted by one, we need one more.
-    last_target = self.decoder_inputs[decoder_size].name
-    input_feed[last_target] = np.zeros([self.batch_size], dtype=np.int32)
-
-    # Output feed: depends on whether we do a backward step or not.
-    if not forward_only:
-      output_feed = [self.updates[bucket_id],  # Update Op that does SGD.
-                     self.gradient_norms[bucket_id],  # Gradient norm.
-                     self.losses[bucket_id]]  # Loss for this batch.
-    else:
-      output_feed = [self.losses[bucket_id]]  # Loss for this batch.
-      for l in xrange(decoder_size):  # Output logits.
-        output_feed.append(self.outputs[bucket_id][l])
-
-    outputs = session.run(output_feed, input_feed)
-    # print("#######################""ouputs",outputs)
-
-    if not forward_only:
-      return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
-    else:
-      return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
