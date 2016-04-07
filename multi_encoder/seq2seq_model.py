@@ -74,9 +74,12 @@ class Seq2SeqModel(object):
       MODIF JB : encoder_count: how many encoder are to create
       MODIF JB : encoder_num : num of the encoders to create   
     """
+    
+    # TODO : changer le model_name en encoder_num? (c est aussi unique)
     self.target_vocab_size = target_vocab_size
     self.buckets = buckets
     self.batch_size = batch_size
+    self.model_name = model_name
     with variable_scope.variable_scope(model_name if model_name is not None else variable_scope.get_variable_scope()):
       self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
       self.global_step = tf.Variable(0, trainable=False)
@@ -294,8 +297,6 @@ class Seq2SeqModel(object):
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
-    print("data",data)
-    print("bucket_id",bucket_id)
     for _ in xrange(self.batch_size):
       # get a random tuple of sentences in this bucket
       sentences = random.choice(data[bucket_id])
