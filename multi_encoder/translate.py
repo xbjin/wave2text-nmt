@@ -43,6 +43,7 @@ import tensorflow as tf
 
 from multi_encoder import data_utils
 from multi_encoder import seq2seq_model
+from tensorflow.python.ops import variable_scope
 
 
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
@@ -86,12 +87,13 @@ tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl",
                            "Path to BLEU script.")
 tf.app.flags.DEFINE_string("output_file", None, "Output file of the decoder "
                                                 "(defaults to stdout).")
-tf.app.flags.DEFINE_boolean("pretrain", None, "Wether or not we pretrain")
-tf.app.flags.DEFINE_string("encoder_num", None, "Numbers of the encoders to chose,"
-                                            "separated by commas")
-tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without training")
-
-tf.app.flags.DEFINE_string("model_name", None, "Name of the encoders")
+tf.app.flags.DEFINE_boolean("pretrain", None, "Wether or not to pretrain")
+tf.app.flags.DEFINE_string("encoder_num", None, "List of encoder ids to "
+                                                "include in the model, "
+                                                "separated by commas ")
+tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without "
+                                                 "training")
+tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -143,17 +145,19 @@ def read_data(source_paths, target_path, max_size=None):
   return data_set
 
 
-def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num=None, model_name=None):
+def create_model(session, forward_only, encoder_count, reuse=None,
+                 encoder_num=None, model_name=None):
   """Create translation model and initialize or load parameters in session."""
   device = '/cpu:0' if FLAGS.no_gpu else None
 
   with tf.device(device):
     model = seq2seq_model.Seq2SeqModel(
-        FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
-        FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-        FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
-        forward_only=forward_only, encoder_count=encoder_count,
-        device=device,reuse=reuse,encoder_num=encoder_num, model_name=model_name)
+      FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
+      FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
+      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
+      forward_only=forward_only, encoder_count=encoder_count,
+      device=device, reuse=reuse, encoder_num=encoder_num,
+      model_name=model_name)
        
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
@@ -172,7 +176,6 @@ def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num
   return model
 
 
-#multisource aligned
 def train():
   print("Preparing WMT data in %s" % FLAGS.data_dir)
   data_utils.prepare_data(FLAGS)
@@ -185,33 +188,26 @@ def train():
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
 
-    #if FLAGS.no_gpu:
-    #  with tf.device('/cpu:0'):
-    #    model = create_model(sess, False)
-    #else:
-
     encoder_count = FLAGS.src_ext.count(',') + 1
-    model = create_model(sess, False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
-                                                            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","))
+    encoder_num = FLAGS.encoder_num.split(',') if FLAGS.encoder_num else None
 
+    model = create_model(sess, False, encoder_count=encoder_count,
+                         encoder_num=encoder_num)
 
-    params = tf.trainable_variables()
-    
-    for e in params:    
-        print(e.name)
-    sys.exit(1)    
-        
+    print('Printing variables')
+
+    for e in tf.all_variables():
+      print('name={}, shape={}'.format(e.name, e.get_shape()))
+
     # Read data into buckets and compute their sizes.
-    print ("Reading development and training data (limit: %d)."
-           % FLAGS.max_train_data_size)
+    print("Reading development and training data (limit: %d)."
+          % FLAGS.max_train_data_size)
     dev_set = read_data(FLAGS.src_dev_ids, FLAGS.trg_dev_ids)
     train_set = read_data(FLAGS.src_train_ids, FLAGS.trg_train_ids,
                           FLAGS.max_train_data_size)
 
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
-
-    #import pdb; pdb.set_trace()
 
     # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
     # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
@@ -405,46 +401,34 @@ def self_test():
                  bucket_id, False)
 
 
-
 def pretrain():
+  raise NotImplementedError
   print("Preparing WMT data in %s" % FLAGS.data_dir)
-  
+
   # limit the amount of memory used to 2/3 of total memory
   gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
-
-
   
   with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
-    
-    
+
     encoder_count = FLAGS.src_ext.count(',') + 1
     dummy = create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
             if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy")
 
+    # if "many2one_encoder_0" in e.name:
+    #   print(e.eval())
 
-
-#        if "many2one_encoder_0" in e.name:
-#            print(e.eval())
-    
-
-
-
-    #we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
-    #if num_encoder specified, we send for each model the num encoder of the flag
+    # we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
+    # if num_encoder specified, we send for each model the num encoder of the flag
     models = [create_model(sess, forward_only=False, encoder_count=1, reuse=True,
                            encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
-                             model_name=FLAGS.model_name.split(",")[i]) 
+                           model_name=FLAGS.model_name.split(",")[i])
                                                             for i in range(encoder_count)]
-    
 
     params = tf.all_variables()
     
     for e in params:    
         print(e.name)
-    sys.exit(1)
-
-
 
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
@@ -458,61 +442,60 @@ def pretrain():
     train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                            for i in xrange(len(train_bucket_sizes))]
    
-    #choix d un bucket dans la langue desiree                            
+    # choix d un bucket dans la langue desiree
     random_number_01 = np.random.random_sample()
     bucket_id = min([i for i in xrange(len(train_buckets_scale))
                        if train_buckets_scale[i] > random_number_01])                               
     
-    #exemple 
+    # exemple
     i = 0       
-    #train_set = train_set[i]  
+    # train_set = train_set[i]
                  
-    pretrain_step(sess,model,bucket_id,train_set,i)
+    pretrain_step(sess, model, bucket_id, train_set, i)
     
 
 def pretrain_step(sess, model, bucket_id, train_set, encoder_num):
-    
-      # Get a batch and make a step.
-      start_time = time.time()
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-          train_set, bucket_id)
-          
-      _, step_loss, _ = model.pretrain_step(sess, encoder_inputs, decoder_inputs,
-                                   target_weights, bucket_id, False, encoder_num)
-      step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-      loss += step_loss / FLAGS.steps_per_checkpoint
-      current_step += 1
+  raise NotImplementedError
 
-      # Once in a while, we save checkpoint, print statistics, and run evals.
-      if current_step % FLAGS.steps_per_checkpoint == 0:
-        # Print statistics for the previous epoch.
-        perplexity = math.exp(loss) if loss < 300 else float('inf')
-        print ("global step %d learning rate %.4f step-time %.2f perplexity "
-               "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-                         step_time, perplexity))
-        # Decrease learning rate if no improvement was seen over last 3 times.
-        if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-          sess.run(model.learning_rate_decay_op)
-        previous_losses.append(loss)
-        # Save checkpoint and zero timer and loss.
-        checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
-        model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-        step_time, loss = 0.0, 0.0
-        # Run evals on development set and print their perplexity.
-        for bucket_id in xrange(len(_buckets)):
-          if len(dev_set[bucket_id]) == 0:
-            print("  eval: empty bucket %d" % (bucket_id))
-            continue
-          encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-              dev_set, bucket_id)
-          _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                       target_weights, bucket_id, True)
-          eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-          print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
-        sys.stdout.flush()
-        
-        
-        
+  # Get a batch and make a step.
+  start_time = time.time()
+  encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+      train_set, bucket_id)
+
+  _, step_loss, _ = model.pretrain_step(sess, encoder_inputs, decoder_inputs,
+                               target_weights, bucket_id, False, encoder_num)
+  step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
+  loss += step_loss / FLAGS.steps_per_checkpoint
+  current_step += 1
+
+  # Once in a while, we save checkpoint, print statistics, and run evals.
+  if current_step % FLAGS.steps_per_checkpoint == 0:
+    # Print statistics for the previous epoch.
+    perplexity = math.exp(loss) if loss < 300 else float('inf')
+    print ("global step %d learning rate %.4f step-time %.2f perplexity "
+           "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
+                     step_time, perplexity))
+    # Decrease learning rate if no improvement was seen over last 3 times.
+    if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+      sess.run(model.learning_rate_decay_op)
+    previous_losses.append(loss)
+    # Save checkpoint and zero timer and loss.
+    checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+    model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+    step_time, loss = 0.0, 0.0
+    # Run evals on development set and print their perplexity.
+    for bucket_id in xrange(len(_buckets)):
+      if len(dev_set[bucket_id]) == 0:
+        print("  eval: empty bucket %d" % (bucket_id))
+        continue
+      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+          dev_set, bucket_id)
+      _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                   target_weights, bucket_id, True)
+      eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+      print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+    sys.stdout.flush()
+
         
 def main(_):
   if FLAGS.self_test:
