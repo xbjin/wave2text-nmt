@@ -165,11 +165,10 @@ def create_model(session, forward_only, encoder_count, reuse=None,
     print("Created model with fresh parameters.")
     session.run(tf.initialize_all_variables())
     
-#    if(FLAGS.create_only):
-#        checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
-#        model.saver.save(session, checkpoint_path, global_step=0)
-#        print("Model saved...")
-#       
+  # if(FLAGS.create_only):
+  #   checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+  #   model.saver.save(session, checkpoint_path, global_step=0)
+  #   print("Model saved...")
        
   return model
 
@@ -401,7 +400,6 @@ def self_test():
 
 
 def pretrain():
-  raise NotImplementedError
   print("Preparing WMT data in %s" % FLAGS.data_dir)
       
       # limit the amount of memory used to 2/3 of total memory
@@ -412,8 +410,7 @@ def pretrain():
     encoder_count = FLAGS.src_ext.count(',') + 1
         
     print("Creating %d encoder(s) with %d layers of %d units." % (encoder_count, FLAGS.num_layers, FLAGS.size))   
-    
-    
+
     #dummy
     create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
             if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy")
@@ -425,8 +422,6 @@ def pretrain():
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
              model_name=FLAGS.model_name.split(",")[i]) 
              for i in range(encoder_count)]
-    
-    
     
     print ("Reading development and training data (limit: %d)."    
            % FLAGS.max_train_data_size)

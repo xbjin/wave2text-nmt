@@ -20,13 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-import sys
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import multi_encoder.many2one as sq
 from tensorflow.python.ops import rnn_cell
 from multi_encoder import data_utils
+from tensorflow.python.ops import variable_scope
 
 
 class Seq2SeqModel(object):
@@ -79,8 +79,8 @@ class Seq2SeqModel(object):
     self.batch_size = batch_size
     self.model_name = model_name
 
-    with tf.variable_scope.variable_scope(model_name or
-         tf.variable_scope.get_variable_scope(), reuse=reuse):
+    with variable_scope.variable_scope(model_name or
+         variable_scope.get_variable_scope(), reuse=reuse):
       # if `model_name` is specified, those parameters are specific to the
       # model.
       self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
@@ -101,8 +101,8 @@ class Seq2SeqModel(object):
     # Sampled softmax only makes sense if we sample less than vocabulary size.
     if 0 < num_samples < self.target_vocab_size:
       with tf.device("/cpu:0"):
-        with tf.variable_scope.variable_scope(
-            tf.variable_scope.get_variable_scope(), reuse=reuse):
+        with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                           reuse=reuse):
           w = tf.get_variable("proj_w", [size, self.target_vocab_size])
           w_t = tf.transpose(w)
           b = tf.get_variable("proj_b", [self.target_vocab_size])
