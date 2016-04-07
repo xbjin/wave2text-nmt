@@ -143,7 +143,8 @@ def read_data(source_paths, target_path, max_size=None):
   return data_set
 
 
-def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num=None, model_name=None):
+def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num=None, 
+                                                       model_name=None, load_checkpoint=True):
   """Create translation model and initialize or load parameters in session."""
   device = '/cpu:0' if FLAGS.no_gpu else None
 
@@ -156,12 +157,13 @@ def create_model(session, forward_only, encoder_count, reuse=False,  encoder_num
         device=device,reuse=reuse,encoder_num=encoder_num, model_name=model_name)
        
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-    model.saver.restore(session, ckpt.model_checkpoint_path)
-  else:
-    print("Created model with fresh parameters.")
-    session.run(tf.initialize_all_variables())
+  if(load_checkpoint):
+      if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+        print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+        model.saver.restore(session, ckpt.model_checkpoint_path)
+      else:
+        print("Created model with fresh parameters.")
+        session.run(tf.initialize_all_variables())
     
 #    if(FLAGS.create_only):
 #        checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
@@ -418,15 +420,17 @@ def pretrain():
     
     
     #dummy
-    create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
-            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy")
+    dummy = create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
+            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy", load_checkpoint=False)
     
     #we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
     #if num_encoder specified, we send for each model the num encoder of the flag
     models = [create_model(
              sess, forward_only=False, encoder_count=1, reuse=True,
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
-             model_name=FLAGS.model_name.split(",")[i]) 
+             model_name=FLAGS.model_name.split(",")[i],
+             load_checkpoint=True if (i == encoder_count-1) else False
+             ) 
              for i in range(encoder_count)]
     
     
@@ -457,8 +461,8 @@ def pretrain():
     step_times = [0.0 for i in range(encoder_count)]
     losses = [0.0 for i in range(encoder_count)]
     previous_losses_s = [[] for i in range(encoder_count)]
-    
-    current_step = 0
+    saver_flag = False
+    current_step = 1
 
     while 1:   
         random_number_01 = np.random.random_sample()
@@ -470,9 +474,6 @@ def pretrain():
             model = models[i]
             train_set= train_sets[i]
             dev_set = dev_sets[i]
-            step_time = step_times[i] 
-            loss = losses[i]
-            previous_losses = previous_losses_s[i]
             
             
             # Get a batch and make a step.        
@@ -484,9 +485,9 @@ def pretrain():
                              target_weights, bucket_id, False)                              
                                
                                
-            step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-            loss += step_loss / FLAGS.steps_per_checkpoint
-           
+            step_times[i] += (time.time() - start_time) / FLAGS.steps_per_checkpoint
+            losses[i] += step_loss / FLAGS.steps_per_checkpoint
+        
             
     #        params = tf.all_variables()    
     #        for e in params:    
@@ -497,18 +498,17 @@ def pretrain():
               # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
                 # Print statistics for the previous epoch.
-                perplexity = math.exp(loss) if loss < 300 else float('inf')
+                perplexity = math.exp(losses[i]) if losses[i] < 300 else float('inf')
                 print ("MODEL %s : global step %d learning rate %.4f step-time %.2f perplexity "
                        "%.2f" % (model.model_name, model.global_step.eval(), model.learning_rate.eval(),
-                                 step_time, perplexity))
+                                 step_times[i], perplexity))
                 # Decrease learning rate if no improvement was seen over last 3 times.
-                if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+                if len(previous_losses_s[i]) > 2 and losses[i] > max(previous_losses_s[i][-3:]):
                   sess.run(model.learning_rate_decay_op)
-                previous_losses.append(loss)
-                # Save checkpoint and zero timer and loss.
-                checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
-                model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-                step_time, loss = 0.0, 0.0
+                previous_losses_s[i].append(losses[i])
+                
+                saver_flag = True
+                
                 # Run evals on development set and print their perplexity.
                 for bucket_id in xrange(len(_buckets)):
                   if len(dev_set[bucket_id]) == 0:
@@ -521,7 +521,14 @@ def pretrain():
                   eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
                   print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
                 sys.stdout.flush()
-                
+        
+        if(saver_flag):
+            # Save checkpoint and zero timer and loss.
+            checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+            model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+            step_times = [0.0 for i in range(encoder_count)]
+            losses = [0.0 for i in range(encoder_count)]     
+            saver_flag = False
         current_step += 1
         
 def main(_):
