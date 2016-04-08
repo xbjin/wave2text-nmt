@@ -12,10 +12,9 @@ Usage example:
     build-trilingual-corpus.py news.de-en news.fr-en news.de-fr-en de fr en\
 """
 
-
-
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=help_msg, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=help_msg,
+                formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('corpus1', help='name of the first corpus (e.g. news.de-en)')
     parser.add_argument('corpus2', help='name of the second corpus (e.g. news.fr-en)')

@@ -71,7 +71,10 @@ tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 tf.app.flags.DEFINE_boolean("download", False, "Download WMT data.")
 tf.app.flags.DEFINE_boolean("tokenize", False, "Tokenize data on the fly.")
+tf.app.flags.DEFINE_integer("gpu_id", None, "")
 tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU.")
+tf.app.flags.DEFINE_boolean("reset", False, "Reset model "
+                                            "(don't load any checkpoint)")
 
 tf.app.flags.DEFINE_string("train_corpus", "train", "Name of the training"
                                                     " corpus.")
@@ -146,7 +149,15 @@ def read_data(source_paths, target_path, max_size=None):
 def create_model(session, forward_only, encoder_count, reuse=None,
                  encoder_num=None, model_name=None):
   """Create translation model and initialize or load parameters in session."""
-  device = '/cpu:0' if FLAGS.no_gpu else None
+
+  if FLAGS.no_gpu:
+    device = '/cpu:0'
+  elif FLAGS.gpu_id is not None:
+    device = '/gpu:{}'.format(FLAGS.gpu_id)
+  else:
+    device = None
+
+  print('Using device: {}'.format(device))
 
   with tf.device(device):
     model = seq2seq_model.Seq2SeqModel(
@@ -156,9 +167,9 @@ def create_model(session, forward_only, encoder_count, reuse=None,
       forward_only=forward_only, encoder_count=encoder_count,
       device=device, reuse=reuse, encoder_num=encoder_num,
       model_name=model_name)
-       
+
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+  if not FLAGS.reset and ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
     model.saver.restore(session, ckpt.model_checkpoint_path)
   else:
@@ -180,8 +191,9 @@ def train():
   # limit the amount of memory used to 2/3 of total memory
   #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
   gpu_options = tf.GPUOptions()
+  config = tf.ConfigProto(log_device_placement=True, gpu_options=gpu_options)
 
-  with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+  with tf.Session(config=config) as sess:
     # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
 

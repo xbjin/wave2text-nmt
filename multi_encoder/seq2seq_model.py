@@ -83,12 +83,14 @@ class Seq2SeqModel(object):
          variable_scope.get_variable_scope(), reuse=reuse):
       # if `model_name` is specified, those parameters are specific to the
       # model.
-      self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
-      self.global_step = tf.Variable(0, trainable=False)
+      self.learning_rate = tf.Variable(float(learning_rate), trainable=False,
+                                       name='learning_rate')
+      with tf.device("/cpu:0"):
+        self.global_step = tf.Variable(0, trainable=False,
+                                       name='global_step')
 
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
-
     self.encoder_count = encoder_count
 
     # TODO: For now, we assume that all source languages
