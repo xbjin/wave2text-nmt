@@ -192,7 +192,8 @@ def train():
   # limit the amount of memory used to 2/3 of total memory
   #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
   gpu_options = tf.GPUOptions()
-  config = tf.ConfigProto(log_device_placement=True, gpu_options=gpu_options)
+  config = tf.ConfigProto(log_device_placement=True, allow_soft_placement=True,
+                          gpu_options=gpu_options)
 
   with tf.Session(config=config) as sess:
     # Create model.

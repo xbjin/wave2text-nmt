@@ -82,9 +82,10 @@ def open_temp_files(num=1, mode='w', delete=False):
 
 def create_vocabulary(id_, args):
     ext = args.extensions[id_]
-    filename = os.path.join(args.output_dir, 'train.{}'.format(ext))
-    output_filename = os.path.join(args.output_dir, 'vocab.{}'.format(ext))
     vocab_size = args.vocab_size[id_]
+    filename = os.path.join(args.output_dir, 'train.{}'.format(ext))
+    output_filename = os.path.join(args.output_dir, 'vocab{}.{}'.format(
+        vocab_size, ext))
 
     logging.info('creating vocabulary {} from {}'.format(output_filename,
                                                          filename))
@@ -110,7 +111,8 @@ def create_vocabulary(id_, args):
 
 def create_ids(corpus, id_, vocab, args):
     filename = '{}.{}'.format(corpus, args.extensions[id_])
-    output_filename = '{}.ids.{}'.format(corpus, args.extensions[id_])
+    output_filename = '{}.ids{}.{}'.format(corpus, args.vocab_size[id_],
+                                           args.extensions[id_])
 
     with open(filename) as input_file,\
             open(output_filename, 'w') as output_file:
