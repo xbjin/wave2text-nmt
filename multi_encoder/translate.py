@@ -97,9 +97,14 @@ tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without "
                                                  "training")
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 
+tf.app.flags.DEFINE_string("embedding", None, "Name of the embed files")
+
+
 FLAGS = tf.app.flags.FLAGS
 
 data_utils.extract_filenames(FLAGS)  # add filenames to namespace
+data_utils.extract_embedding(FLAGS) # add embedding to namespace 
+
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
@@ -147,7 +152,7 @@ def read_data(source_paths, target_path, max_size=None):
 
 
 def create_model(session, forward_only, encoder_count, reuse=None,
-                 encoder_num=None, model_name=None, initialize=True):
+                 encoder_num=None, model_name=None, initialize=True, embedding=None):
   """Create translation model and initialize or load parameters in session."""
 
   if FLAGS.no_gpu:
@@ -156,6 +161,8 @@ def create_model(session, forward_only, encoder_count, reuse=None,
     device = '/gpu:{}'.format(FLAGS.gpu_id)
   else:
     device = None
+    
+
 
   print('Using device: {}'.format(device))
   with tf.device(device):
@@ -165,7 +172,7 @@ def create_model(session, forward_only, encoder_count, reuse=None,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
       forward_only=forward_only, encoder_count=encoder_count,
       device=device, reuse=reuse, encoder_num=encoder_num,
-      model_name=model_name)
+      model_name=model_name, embedding=embedding)
 
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if initialize:
@@ -202,7 +209,7 @@ def train():
     encoder_num = FLAGS.encoder_num.split(',') if FLAGS.encoder_num else None
 
     model = create_model(sess, False, encoder_count=encoder_count,
-                         encoder_num=encoder_num)
+                         encoder_num=encoder_num, embedding=FLAGS.embeddings)
 
     print('Printing variables')
 
@@ -426,7 +433,8 @@ def pretrain():
 
     #dummy
     dummy = create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
-            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy", initialize=False)
+            if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy", initialize=False,
+            embedding=FLAGS.embeddings)
     
     #we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
     #if encoder_num specified, we send for each model the num encoder of the flag
@@ -434,7 +442,8 @@ def pretrain():
              sess, forward_only=False, encoder_count=1, reuse=True,
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
              model_name=FLAGS.model_name.split(",")[i],
-             initialize=(i == encoder_count - 1)
+             initialize=(i == encoder_count - 1),
+             embedding = [FLAGS.embeddings[i]]
              ) 
              for i in range(encoder_count)]
     
@@ -492,12 +501,12 @@ def pretrain():
             losses[i] += step_loss / FLAGS.steps_per_checkpoint
         
             
-            params = tf.all_variables()    
-            for e in params:    
-                if("EmbeddingWrapper" in e.name):
-                    print(e.name, " " , e.eval(sess))
-    
-            sys.exit(1)
+#            params = tf.all_variables()    
+#            for e in params:    
+##                if("EmbeddingWrapper" in e.name):
+##                    print(e.name, " " , e.eval(sess))
+#                print(e.name)
+#            sys.exit(1)
               # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
                 # Print statistics for the previous epoch.
