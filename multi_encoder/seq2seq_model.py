@@ -23,9 +23,11 @@ import random
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import multi_encoder.many2one as sq
-from tensorflow.python.ops import rnn_cell
+
+from multi_encoder import rnn_cell
+from multi_encoder import many2one
 from multi_encoder import data_utils
+
 from tensorflow.python.ops import variable_scope
 
 
@@ -48,7 +50,7 @@ class Seq2SeqModel(object):
                num_layers, max_gradient_norm, batch_size, learning_rate,
                learning_rate_decay_factor, use_lstm=True,
                num_samples=512, forward_only=False, encoder_count=1,
-               device=None, reuse=None, encoder_num=None, model_name=None):
+               device=None, reuse=None, encoder_num=None, model_name=None, embedding=None):
     """Create the model.
 
     Args:
@@ -92,7 +94,7 @@ class Seq2SeqModel(object):
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
     self.encoder_count = encoder_count
-
+    
     # TODO: For now, we assume that all source languages
     # have the same vocabulary size.
     source_vocab_sizes = [source_vocab_size for _ in range(self.encoder_count)]
@@ -127,10 +129,10 @@ class Seq2SeqModel(object):
 
     # The seq2seq function: we use embedding for the input and attention.
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-      return sq.many2one_rnn_seq2seq(
+      return many2one.many2one_rnn_seq2seq(
           encoder_inputs, decoder_inputs, cell, source_vocab_sizes,
           target_vocab_size, output_projection=output_projection,
-          feed_previous=do_decode, encoder_num=encoder_num)
+          feed_previous=do_decode, encoder_num=encoder_num, embedding=embedding)
 
     # Feeds for inputs.
     self.encoder_inputs = []
@@ -161,7 +163,7 @@ class Seq2SeqModel(object):
 
     # Training outputs and losses.
     if forward_only:   # decoding
-      self.outputs, self.losses = sq.model_with_buckets(
+      self.outputs, self.losses = many2one.model_with_buckets(
           self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
           softmax_loss_function=softmax_loss_function, reuse=reuse)
@@ -174,11 +176,11 @@ class Seq2SeqModel(object):
               for output in self.outputs[b]
           ]
     else:   # training
-      self.outputs, self.losses = sq.model_with_buckets(
+      self.outputs, self.losses = many2one.model_with_buckets(
           self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets,
           lambda x, y: seq2seq_f(x, y, False),
-          softmax_loss_function=softmax_loss_function)
+          softmax_loss_function=softmax_loss_function, reuse=reuse)
 
     # Gradients and SGD update operation for training the model.
     params = tf.trainable_variables()
