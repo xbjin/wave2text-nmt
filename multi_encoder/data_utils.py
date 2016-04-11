@@ -25,6 +25,8 @@ import tarfile
 import subprocess
 import shlex
 import tempfile
+import numpy as np
+import tensorflow as tf
 
 from collections import namedtuple
 from six.moves import urllib
@@ -412,3 +414,39 @@ def bleu_score(bleu_script, hypotheses, references):
   values = [float(m.group(i)) for i in range(1, 4)]
 
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
+
+
+def extract_embedding(FLAGS):
+    src_ext = FLAGS.src_ext.split(',')
+    FLAGS.embeddings = [None for i in range(len(src_ext))]
+
+    if(FLAGS.embedding):
+        for i,ext in enumerate(src_ext):
+            f = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding, ext))
+            #if embedding is given for this language
+            if os.path.isfile(f):
+                fline=open(f).readline().split()
+                
+                m = np.zeros((FLAGS.src_vocab_size,int(fline[1])))    
+                
+                d = dict((line.split()[0], np.array(map(float, line.split()[1:]))) for line in open(f))
+                
+                
+                vocab_file = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(FLAGS.src_vocab_size, ext))               
+                
+                for r,line in enumerate(open(vocab_file)):
+                    try:                    
+                        m[r]=d[line.strip()]
+                    except KeyError, key:
+#                        print("key introuvable",key)
+                        m[r]=np.zeros(int(fline[1]))
+                
+                
+                               
+                FLAGS.embeddings[i] = tf.convert_to_tensor(m, dtype=tf.float32)
+                                         
+
+        
+        
+        
+        
