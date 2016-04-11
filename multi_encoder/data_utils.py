@@ -431,7 +431,7 @@ def extract_embedding(FLAGS):
             if os.path.isfile(f):
                 fline=open(f).readline().split()
                 
-                m = np.zeros((FLAGS.src_vocab_size,int(fline[1])))    
+                m = np.zeros((FLAGS.src_vocab_size,int(fline[1])),dtype="float32")    
                 
                 d = dict((line.split()[0], np.array(map(float, line.split()[1:]))) for line in open(f))
                 
@@ -447,7 +447,7 @@ def extract_embedding(FLAGS):
                 
                 
                                
-                FLAGS.embeddings[i] = tf.convert_to_tensor(m, dtype=tf.float32)
+                FLAGS.embeddings[i] = tf.Variable(m, name="custom_embedding_"+ext)
                                          
 
         
