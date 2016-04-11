@@ -342,7 +342,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
                          dtype=dtypes.float32, scope=None,
                          initial_state_attention=False, encoder_num=None):
                                    
-  if(encoder_num is not None and len(encoder_inputs) != len(encoder_num)):
+  if encoder_num is not None and len(encoder_inputs) != len(encoder_num):
     raise ValueError("You must specify as many encoder_num as src_ext")   
 
   encoder_states = []

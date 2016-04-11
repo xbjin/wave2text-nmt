@@ -85,7 +85,7 @@ class Seq2SeqModel(object):
       # model.
       self.learning_rate = tf.Variable(float(learning_rate), trainable=False,
                                        name='learning_rate')
-      with tf.device("/cpu:0"):
+      with tf.device("/cpu:0"):  # cannot put ints on GPU
         self.global_step = tf.Variable(0, trainable=False,
                                        name='global_step')
 

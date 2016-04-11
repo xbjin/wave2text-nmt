@@ -39,8 +39,6 @@ if __name__ == '__main__':
         if line_shared.strip() and line1.strip():
             d[line_shared].append((i, line1))
 
-    indices = []
-
     for line_shared, line2 in izip(*input_files2):
         lines = d[line_shared]
 
@@ -48,14 +46,10 @@ if __name__ == '__main__':
             continue
 
         i, line1 = lines.pop(0)  # rather sloppy alignment
-        indices.append(i)
 
         output1.write(line1)
         output2.write(line2)
         output_shared.write(line_shared)
-
-    monotonicity = sum(1 for x, y in zip(indices, indices[1:]) if y > x) / len(indices)
-    print 'Monotonicity rate: {}'.format(monotonicity)
 
     for f in output_files:
         f.close()
