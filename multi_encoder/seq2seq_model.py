@@ -178,7 +178,7 @@ class Seq2SeqModel(object):
           self.encoder_inputs, self.decoder_inputs, targets,
           self.target_weights, buckets,
           lambda x, y: seq2seq_f(x, y, False),
-          softmax_loss_function=softmax_loss_function)
+          softmax_loss_function=softmax_loss_function, reuse=reuse)
 
     # Gradients and SGD update operation for training the model.
     params = tf.trainable_variables()

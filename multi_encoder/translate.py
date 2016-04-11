@@ -158,7 +158,6 @@ def create_model(session, forward_only, encoder_count, reuse=None,
     device = None
 
   print('Using device: {}'.format(device))
-
   with tf.device(device):
     model = seq2seq_model.Seq2SeqModel(
       FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
@@ -430,7 +429,7 @@ def pretrain():
             if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy", initialize=False)
     
     #we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
-    #if num_encoder specified, we send for each model the num encoder of the flag
+    #if encoder_num specified, we send for each model the num encoder of the flag
     models = [create_model(
              sess, forward_only=False, encoder_count=1, reuse=True,
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
@@ -493,12 +492,12 @@ def pretrain():
             losses[i] += step_loss / FLAGS.steps_per_checkpoint
         
             
-    #        params = tf.all_variables()    
-    #        for e in params:    
-    #            if("Bias" in e.name and "encoder" in e.name):
-    #                print(e.name, " " , e.eval(sess))
+            params = tf.all_variables()    
+            for e in params:    
+                if("EmbeddingWrapper" in e.name):
+                    print(e.name, " " , e.eval(sess))
     
-            
+            sys.exit(1)
               # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
                 # Print statistics for the previous epoch.

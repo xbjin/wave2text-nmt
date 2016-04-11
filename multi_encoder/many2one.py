@@ -452,9 +452,11 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
 
   losses = []
   outputs = []
+
   with ops.op_scope(all_inputs, name, "model_with_buckets"):
     for j, bucket in enumerate(buckets):
       reuse_ = reuse or (True if j > 0 else None)
+
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          reuse=reuse_):
         encoder_size, decoder_size = bucket
