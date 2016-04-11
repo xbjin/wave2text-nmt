@@ -27,6 +27,7 @@ import shlex
 import tempfile
 import numpy as np
 import tensorflow as tf
+import math
 
 from collections import namedtuple
 from six.moves import urllib
@@ -421,6 +422,9 @@ def extract_embedding(FLAGS):
     FLAGS.embeddings = [None for i in range(len(src_ext))]
 
     if(FLAGS.embedding):
+        
+        sqrt3 = math.sqrt(3) 
+        
         for i,ext in enumerate(src_ext):
             f = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding, ext))
             #if embedding is given for this language
@@ -438,8 +442,8 @@ def extract_embedding(FLAGS):
                     try:                    
                         m[r]=d[line.strip()]
                     except KeyError, key:
-#                        print("key introuvable",key)
-                        m[r]=np.zeros(int(fline[1]))
+#                        print("key introuvable",key)                        
+                        m[r]=np.random.uniform(-sqrt3,sqrt3,int(fline[1]))
                 
                 
                                
