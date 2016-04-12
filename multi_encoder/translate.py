@@ -98,6 +98,8 @@ tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without "
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 
 tf.app.flags.DEFINE_string("embedding", None, "Name of the embed files")
+tf.app.flags.DEFINE_string("embedding_train", None, "List of True/false according"
+                                         "to the embedding and src_ext parameter")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -507,6 +509,7 @@ def pretrain():
 ##                    print(e.name, " " , e.eval(sess))
 #                print(e.name)
 #            sys.exit(1)
+            
               # Once in a while, we save checkpoint, print statistics, and run evals.
             if current_step % FLAGS.steps_per_checkpoint == 0:
                 # Print statistics for the previous epoch.

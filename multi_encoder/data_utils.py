@@ -418,8 +418,13 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def extract_embedding(FLAGS):
+        
+    
     src_ext = FLAGS.src_ext.split(',')
     FLAGS.embeddings = [None for i in range(len(src_ext))]
+    if(not FLAGS.embedding_train):
+        FLAGS.embedding_train = [True for i in range(len(src_ext))]
+    
 
     if(FLAGS.embedding):
         
@@ -447,7 +452,7 @@ def extract_embedding(FLAGS):
                 
                 
                                
-                FLAGS.embeddings[i] = tf.Variable(m, name="custom_embedding_"+ext)
+                FLAGS.embeddings[i] = tf.Variable(m, name="custom_embedding_"+ext, trainable=FLAGS.embedding_train[i])
                                          
 
         
