@@ -421,6 +421,9 @@ def extract_embedding(FLAGS):
   src_ext = FLAGS.src_ext.split(',')
   FLAGS.embeddings = [None for _ in src_ext]
 
+  if not FLAGS.embedding_train:
+    FLAGS.embedding_train = [True for _ in src_ext]
+
   if not FLAGS.embedding:
     return
         

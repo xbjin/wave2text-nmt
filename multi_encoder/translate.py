@@ -82,7 +82,6 @@ tf.app.flags.DEFINE_string("dev_corpus", "dev", "Name of the development"
                                                 " corpus.")
 tf.app.flags.DEFINE_string("embedding", "vectors", "Name of the "
                                                    "embedding files")
-
 tf.app.flags.DEFINE_string("src_ext", "en", "Source files' extension(s),"
                                             "separated by commas")
 tf.app.flags.DEFINE_string("trg_ext", "fr", "Target files' extension.")
@@ -98,6 +97,8 @@ tf.app.flags.DEFINE_string("encoder_num", None, "List of encoder ids to "
 tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without "
                                                  "training")
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
+tf.app.flags.DEFINE_string("embedding_train", None, "List of True/False "
+                           "according to the embedding and src_ext parameter")
 
 FLAGS = tf.app.flags.FLAGS
 
