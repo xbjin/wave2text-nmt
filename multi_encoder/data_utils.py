@@ -418,39 +418,38 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def extract_embedding(FLAGS):
-    src_ext = FLAGS.src_ext.split(',')
-    FLAGS.embeddings = [None for i in range(len(src_ext))]
+  src_ext = FLAGS.src_ext.split(',')
+  FLAGS.embeddings = [None for _ in src_ext]
 
-    if(FLAGS.embedding):
+  if not FLAGS.embedding:
+    return
         
-        sqrt3 = math.sqrt(3) 
+  sqrt3 = math.sqrt(3)
         
-        for i,ext in enumerate(src_ext):
-            f = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding, ext))
-            #if embedding is given for this language
-            if os.path.isfile(f):
-                fline=open(f).readline().split()
-                
-                m = np.zeros((FLAGS.src_vocab_size,int(fline[1])),dtype="float32")    
-                
-                d = dict((line.split()[0], np.array(map(float, line.split()[1:]))) for line in open(f))
-                
-                
-                vocab_file = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(FLAGS.src_vocab_size, ext))               
-                
-                for r,line in enumerate(open(vocab_file)):
-                    try:                    
-                        m[r]=d[line.strip()]
-                    except KeyError, key:
-#                        print("key introuvable",key)                        
-                        m[r]=np.random.uniform(-sqrt3,sqrt3,int(fline[1]))
-                
-                
-                               
-                FLAGS.embeddings[i] = tf.Variable(m, name="custom_embedding_"+ext)
-                                         
+  for i, (ext, vocab_path) in enumerate(zip(src_ext,
+                FLAGS.src_vocab)):
+    filename = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding,
+                                                           ext))
+    # if embedding is given for this language
+    if not os.path.isfile(filename):
+      continue
 
-        
-        
-        
-        
+    with open(filename) as file_:
+      lines = (line.split() for line in file_)
+      _, size = next(lines)
+      size = int(size)
+
+      embeddings = np.zeros((FLAGS.src_vocab_size, size), dtype="float32")
+      d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
+
+    vocab, _ = initialize_vocabulary(vocab_path)
+
+    for word, index in vocab.iteritems():
+      if word in d:
+        embeddings[index] = d[word]
+      else:
+        embeddings[index] = np.random.uniform(-sqrt3, sqrt3, size)
+
+    # sets embedding matrix as initial value
+    FLAGS.embeddings[i] = tf.Variable(embeddings,
+                                      name="custom_embedding_" + ext)

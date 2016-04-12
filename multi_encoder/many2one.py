@@ -341,7 +341,8 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
                          num_encoder_symbols, num_decoder_symbols,num_heads=1,
                          output_projection=None, feed_previous=False,
                          dtype=dtypes.float32, scope=None,
-                         initial_state_attention=False, encoder_num=None, embedding=None):
+                         initial_state_attention=False, encoder_num=None,
+                         embedding=None):
                                    
   if encoder_num is not None and len(encoder_inputs) != len(encoder_num):
     raise ValueError("You must specify as many encoder_num as src_ext")   
@@ -349,7 +350,8 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
   encoder_states = []
   encoder_outputs = []
   with variable_scope.variable_scope(scope or "many2one_rnn_seq2seq"):
-    for i, values in enumerate(zip(encoder_inputs, num_encoder_symbols, embedding)):
+    for i, values in enumerate(zip(encoder_inputs, num_encoder_symbols,
+                                   embedding)):
       encoder_inputs_, num_encoder_symbols_, embedding_ = values
 
       id_ = i if encoder_num is None else encoder_num[i]

@@ -80,6 +80,8 @@ tf.app.flags.DEFINE_string("train_corpus", "train", "Name of the training"
                                                     " corpus.")
 tf.app.flags.DEFINE_string("dev_corpus", "dev", "Name of the development"
                                                 " corpus.")
+tf.app.flags.DEFINE_string("embedding", "vectors", "Name of the "
+                                                   "embedding files")
 
 tf.app.flags.DEFINE_string("src_ext", "en", "Source files' extension(s),"
                                             "separated by commas")
@@ -97,14 +99,10 @@ tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without "
                                                  "training")
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 
-tf.app.flags.DEFINE_string("embedding", None, "Name of the embed files")
-
-
 FLAGS = tf.app.flags.FLAGS
 
 data_utils.extract_filenames(FLAGS)  # add filenames to namespace
-data_utils.extract_embedding(FLAGS) # add embedding to namespace 
-
+data_utils.extract_embedding(FLAGS)  # add embeddings to namespace
 
 # We use a number of buckets and pad to the closest one for efficiency.
 # See seq2seq_model.Seq2SeqModel for details of how they work.
@@ -161,8 +159,6 @@ def create_model(session, forward_only, encoder_count, reuse=None,
     device = '/gpu:{}'.format(FLAGS.gpu_id)
   else:
     device = None
-    
-
 
   print('Using device: {}'.format(device))
   with tf.device(device):
@@ -192,17 +188,16 @@ def create_model(session, forward_only, encoder_count, reuse=None,
 
 
 def train():
-  print("Preparing WMT data in %s" % FLAGS.data_dir)
+  print("Preparing data in %s" % FLAGS.data_dir)
   data_utils.prepare_data(FLAGS)
 
   # limit the amount of memory used to 2/3 of total memory
-  #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
+  # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
   gpu_options = tf.GPUOptions()
   config = tf.ConfigProto(log_device_placement=True, allow_soft_placement=True,
                           gpu_options=gpu_options)
 
   with tf.Session(config=config) as sess:
-    # Create model.
     print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
 
     encoder_count = FLAGS.src_ext.count(',') + 1
@@ -383,7 +378,8 @@ def evaluate():
 
       hypotheses = []
       for src_sentences in zip(*src_files):
-        hypothesis = decode_sentence(sess, model, src_sentences, src_vocabs, rev_trg_vocab)
+        hypothesis = decode_sentence(sess, model, src_sentences, src_vocabs,
+                                     rev_trg_vocab)
         print(hypothesis)
         hypotheses.append(hypothesis)
 
@@ -429,15 +425,15 @@ def pretrain():
       
     encoder_count = FLAGS.src_ext.count(',') + 1
         
-    print("Creating %d encoder(s) with %d layers of %d units." % (encoder_count, FLAGS.num_layers, FLAGS.size))   
+    print("Creating %d encoder(s) with %d layers of %d units." %
+          (encoder_count, FLAGS.num_layers, FLAGS.size))
 
-    #dummy
     dummy = create_model(sess, False, reuse=False, encoder_count=encoder_count, encoder_num=FLAGS.encoder_num 
             if FLAGS.encoder_num is None else FLAGS.encoder_num.split(","), model_name="dummy", initialize=False,
             embedding=FLAGS.embeddings)
     
-    #we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
-    #if encoder_num specified, we send for each model the num encoder of the flag
+    # we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
+    # if encoder_num specified, we send for each model the num encoder of the flag
     models = [create_model(
              sess, forward_only=False, encoder_count=1, reuse=True,
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
@@ -453,95 +449,91 @@ def pretrain():
     #instead of one list of x src vocab (when aligned)
     #we have x list of one src vocab (unaligned pretrain)
     dev_sets = [read_data([FLAGS.src_dev_ids[i]], FLAGS.trg_dev_ids) 
-                                                        for i in range(encoder_count)]
+                                      for i in range(encoder_count)]
                                                                   
-    train_sets = [read_data([FLAGS.src_train_ids[i]], FLAGS.trg_train_ids, FLAGS.max_train_data_size) 
-                                                        for i in range(encoder_count)]                 
-
+    train_sets = [read_data([FLAGS.src_train_ids[i]], FLAGS.trg_train_ids,
+                    FLAGS.max_train_data_size) for i in range(encoder_count)]
 
     train_bucket_sizes = [[len(train_sets[i][b]) for b in xrange(len(_buckets))] 
-                                                        for i in range(encoder_count)]
+                                        for i in range(encoder_count)]
                                                             
     
-    train_total_size = [float(sum(train_bucket_sizes[i])) for i in range(len(train_bucket_sizes))]
+    train_total_size = [float(sum(sizes)) for sizes in train_bucket_sizes]
     
     
     train_buckets_scale = [[sum(train_bucket_sizes[i][:b + 1]) / train_total_size[i]
-                           for b in xrange(len(train_bucket_sizes[i]))] for i in range(len(train_bucket_sizes))]
-                               
-    
-    step_times = [0.0 for i in range(encoder_count)]
-    losses = [0.0 for i in range(encoder_count)]
-    previous_losses_s = [[] for i in range(encoder_count)]
+                           for b in xrange(len(train_bucket_sizes[i]))]
+                           for i in range(len(train_bucket_sizes))]
+
+    step_times = [0.0 for _ in range(encoder_count)]
+    losses = [0.0 for _ in range(encoder_count)]
+    previous_losses_s = [[] for _ in range(encoder_count)]
     saver_flag = False
     current_step = 1
 
     while 1:   
-        random_number_01 = np.random.random_sample()
-        for i in range(encoder_count):           
-            bucket_id = min([b for b in xrange(len(train_buckets_scale[i]))
-                           if train_buckets_scale[i][b] > random_number_01]) 
-            
-            #update of the model parameters              
-            model = models[i]
-            train_set= train_sets[i]
-            dev_set = dev_sets[i]
-            
-            
-            # Get a batch and make a step.        
-            start_time = time.time()
+      random_number_01 = np.random.random_sample()
+      for i in range(encoder_count):
+        bucket_id = min(b for b in xrange(len(train_buckets_scale[i]))
+                        if train_buckets_scale[i][b] > random_number_01)
+
+        #update of the model parameters
+        model = models[i]
+        train_set= train_sets[i]
+        dev_set = dev_sets[i]
+
+        # Get a batch and make a step.
+        start_time = time.time()
+        encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+          train_set, bucket_id)
+
+        _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                         target_weights, bucket_id, False)
+
+        step_times[i] += (time.time() - start_time) / FLAGS.steps_per_checkpoint
+        losses[i] += step_loss / FLAGS.steps_per_checkpoint
+
+        # params = tf.all_variables()
+        # for e in params:
+        #   if("EmbeddingWrapper" in e.name):
+        #   print(e.name, " " , e.eval(sess))
+        # print(e.name)
+        # sys.exit(1)
+        # Once in a while, we save checkpoint, print statistics, and run evals.
+        if current_step % FLAGS.steps_per_checkpoint == 0:
+          # Print statistics for the previous epoch.
+          perplexity = math.exp(losses[i]) if losses[i] < 300 else float('inf')
+          print ("MODEL %s : global step %d learning rate %.4f step-time %.2f perplexity "
+                 "%.2f" % (model.model_name, model.global_step.eval(), model.learning_rate.eval(),
+                           step_times[i], perplexity))
+          # Decrease learning rate if no improvement was seen over last 3 times.
+          if len(previous_losses_s[i]) > 2 and losses[i] > max(previous_losses_s[i][-3:]):
+            sess.run(model.learning_rate_decay_op)
+          previous_losses_s[i].append(losses[i])
+
+          saver_flag = True
+
+          # Run evals on development set and print their perplexity.
+          for bucket_id in xrange(len(_buckets)):
+            if len(dev_set[bucket_id]) == 0:
+              print("  eval: empty bucket %d" % (bucket_id))
+              continue
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-            train_set, bucket_id)
-            
-            _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                             target_weights, bucket_id, False)                              
-                               
-                               
-            step_times[i] += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-            losses[i] += step_loss / FLAGS.steps_per_checkpoint
-        
-            
-#            params = tf.all_variables()    
-#            for e in params:    
-##                if("EmbeddingWrapper" in e.name):
-##                    print(e.name, " " , e.eval(sess))
-#                print(e.name)
-#            sys.exit(1)
-              # Once in a while, we save checkpoint, print statistics, and run evals.
-            if current_step % FLAGS.steps_per_checkpoint == 0:
-                # Print statistics for the previous epoch.
-                perplexity = math.exp(losses[i]) if losses[i] < 300 else float('inf')
-                print ("MODEL %s : global step %d learning rate %.4f step-time %.2f perplexity "
-                       "%.2f" % (model.model_name, model.global_step.eval(), model.learning_rate.eval(),
-                                 step_times[i], perplexity))
-                # Decrease learning rate if no improvement was seen over last 3 times.
-                if len(previous_losses_s[i]) > 2 and losses[i] > max(previous_losses_s[i][-3:]):
-                  sess.run(model.learning_rate_decay_op)
-                previous_losses_s[i].append(losses[i])
-                
-                saver_flag = True
-                
-                # Run evals on development set and print their perplexity.
-                for bucket_id in xrange(len(_buckets)):
-                  if len(dev_set[bucket_id]) == 0:
-                    print("  eval: empty bucket %d" % (bucket_id))
-                    continue
-                  encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-                      dev_set, bucket_id)
-                  _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                               target_weights, bucket_id, True)
-                  eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-                  print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
-                sys.stdout.flush()
-        
-        if(saver_flag):
-            # Save checkpoint and zero timer and loss.
-            checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
-            model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-            step_times = [0.0 for i in range(encoder_count)]
-            losses = [0.0 for i in range(encoder_count)]     
-            saver_flag = False
-        current_step += 1
+                dev_set, bucket_id)
+            _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                         target_weights, bucket_id, True)
+            eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+            print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+          sys.stdout.flush()
+
+      if saver_flag:
+        # Save checkpoint and zero timer and loss.
+        checkpoint_path = os.path.join(FLAGS.train_dir, "translate.ckpt")
+        model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+        step_times = [0.0 for _ in range(encoder_count)]
+        losses = [0.0 for _ in range(encoder_count)]
+        saver_flag = False
+      current_step += 1
 
         
 def main(_):
