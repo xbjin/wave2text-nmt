@@ -26,15 +26,15 @@ model_name
 
 embedding
 
-        Name of the embedding file for the languages. 
-        Lets say you have three src_ext : de,fr,en and --embedding embed_file, there should exist 
-        embed_file.fr, embed_file.de and embed_file.en. If one of this file doesnt exist, the model initiliaze the 
+        Name of the embedding file for the languages (encoder and decoder)
+        Lets say you have three src_ext de,fr,en and one trg_ext it with --embedding embed_file, there should exist 
+        embed_file.fr, embed_file.de, embed_file.en and embed_file.it. If one of this file doesnt exist, the model initiliaze the 
         embedding matrix for the language as usual.
     
 embedding_train
 
         A list of True or False declaring wether an embedded given in parameters should be trained or not along with the model
-        Lets say src_ext are fr,de and there exists an embed.de that we want to pass to the model and train.
-        We do --embedding embed and --embedding_train (None/True/False), True. First parameter of embedding_train doesnt matter
-        because embed.fr doesnt exist.
+        Lets say src_ext fr,de and trg_ext en and there exists an embed.en we want to train and an embed.de we dont want to train.
+        We do --embedding embed and --embedding_train (None/True/False), False, True. First parameter of embedding_train doesnt matter
+        because embed.fr doesnt exist, 3rd is for decoder.
         If embedding parameter is given but not embedding_train, then embeddings are trained by default

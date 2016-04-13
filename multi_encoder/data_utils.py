@@ -29,6 +29,9 @@ import numpy as np
 import tensorflow as tf
 import math
 
+import sys
+
+
 from collections import namedtuple
 from six.moves import urllib
 
@@ -418,22 +421,30 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def extract_embedding(FLAGS):
-  src_ext = FLAGS.src_ext.split(',')
-  FLAGS.embeddings = [None for _ in src_ext]
-
-  if not FLAGS.embedding_train:
-    FLAGS.embedding_train = [True for _ in src_ext]
-
+    
   if not FLAGS.embedding:
     return
-        
+    
+  src_ext = FLAGS.src_ext.split(',')
+  trg_ext = FLAGS.trg_ext  
+  exts = src_ext + [trg_ext]
+    
+  if FLAGS.embedding_train:
+      embedding_train = FLAGS.embedding_train.split(',')
+  else:   
+      embedding_train = [True for _ in exts] 
+    
+  vocabs = FLAGS.src_vocab + [FLAGS.trg_vocab]
+  
+  FLAGS.embeddings = [None for _ in exts]
+
   sqrt3 = math.sqrt(3)
-        
-  for i, (ext, vocab_path) in enumerate(zip(src_ext,
-                FLAGS.src_vocab)):
+
+  for i, (ext, vocab_path) in enumerate(zip(exts,
+                vocabs)):
     filename = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding,
                                                            ext))
-    # if embedding is given for this language
+    # if embedding is not given for this language, skip
     if not os.path.isfile(filename):
       continue
 
@@ -455,4 +466,8 @@ def extract_embedding(FLAGS):
 
     # sets embedding matrix as initial value
     FLAGS.embeddings[i] = tf.Variable(embeddings,
-                                      name="custom_embedding_" + ext)
+                                      name="custom_embedding_" + ext, trainable=(embedding_train[i]=='True'))
+    
+      
+  #FLAGS.embeddings[-1]) is decoder embedding
+  #print(FLAGS.embeddings)

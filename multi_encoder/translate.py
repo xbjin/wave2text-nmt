@@ -440,7 +440,7 @@ def pretrain():
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
              model_name=FLAGS.model_name.split(",")[i],
              initialize=(i == encoder_count - 1),
-             embedding = [FLAGS.embeddings[i]]
+             embedding = [FLAGS.embeddings[i]]+[FLAGS.embeddings[-1]] #send embed of enc + embed of dec
              ) 
              for i in range(encoder_count)]
     
@@ -500,6 +500,15 @@ def pretrain():
         #   print(e.name, " " , e.eval(sess))
         # print(e.name)
         # sys.exit(1)
+
+#        params = tf.trainable_variables()
+#        
+#        for e in params:
+#        
+#            print(e.name)
+#        
+#        sys.exit(1)
+#        
         # Once in a while, we save checkpoint, print statistics, and run evals.
         if current_step % FLAGS.steps_per_checkpoint == 0:
           # Print statistics for the previous epoch.
