@@ -99,6 +99,8 @@ tf.app.flags.DEFINE_boolean("create_only", None, "Create the model without "
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 tf.app.flags.DEFINE_string("embedding_train", None, "List of True/False "
                            "according to the embedding and src_ext parameter")
+tf.app.flags.DEFINE_boolean("dropout_rate", 0.2, "Dropout rate applied to the "
+                                                 "LSTM units.")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -151,7 +153,8 @@ def read_data(source_paths, target_path, max_size=None):
 
 
 def create_model(session, forward_only, encoder_count, reuse=None,
-                 encoder_num=None, model_name=None, initialize=True, embedding=None):
+                 encoder_num=None, model_name=None, initialize=True,
+                 embedding=None):
   """Create translation model and initialize or load parameters in session."""
 
   if FLAGS.no_gpu:
@@ -168,8 +171,8 @@ def create_model(session, forward_only, encoder_count, reuse=None,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
       forward_only=forward_only, encoder_count=encoder_count,
-      device=device, reuse=reuse, encoder_num=encoder_num,
-      model_name=model_name, embedding=embedding)
+      reuse=reuse, encoder_num=encoder_num, model_name=model_name,
+      embedding=embedding, dropout_rate=FLAGS.dropout_rate)
 
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if initialize:

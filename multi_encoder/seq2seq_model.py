@@ -50,7 +50,8 @@ class Seq2SeqModel(object):
                num_layers, max_gradient_norm, batch_size, learning_rate,
                learning_rate_decay_factor, use_lstm=True,
                num_samples=512, forward_only=False, encoder_count=1,
-               device=None, reuse=None, encoder_num=None, model_name=None, embedding=None):
+               reuse=None, encoder_num=None, model_name=None,
+               embedding=None, dropout_rate=0):
     """Create the model.
 
     Args:
@@ -124,6 +125,14 @@ class Seq2SeqModel(object):
     if use_lstm:
       single_cell = rnn_cell.BasicLSTMCell(size)
     cell = single_cell
+
+    if dropout_rate > 0:   # TODO: check that this works
+      # It seems like this does RNN dropout (Zaremba et al., 2015), i.e., no
+      # dropout on the recurrent connections (see models/rnn/ptb/ptb_word_lm.py)
+      keep_prob = 1 - dropout_rate
+      cell = rnn_cell.DropoutWrapper(rnn_cell, output_keep_prob=keep_prob)
+    # TODO: how about dropout elsewhere (inputs and attention mechanism)?
+
     if num_layers > 1:
       cell = rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
@@ -238,7 +247,6 @@ class Seq2SeqModel(object):
     for i in xrange(self.encoder_count):
       for l in xrange(encoder_size):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
-
 
     for l in xrange(decoder_size):
       input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
