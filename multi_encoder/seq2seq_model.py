@@ -130,7 +130,7 @@ class Seq2SeqModel(object):
       # It seems like this does RNN dropout (Zaremba et al., 2015), i.e., no
       # dropout on the recurrent connections (see models/rnn/ptb/ptb_word_lm.py)
       keep_prob = 1 - dropout_rate
-      cell = rnn_cell.DropoutWrapper(rnn_cell, output_keep_prob=keep_prob)
+      cell = rnn_cell.DropoutWrapper(cell, output_keep_prob=keep_prob)
     # TODO: how about dropout elsewhere (inputs and attention mechanism)?
 
     if num_layers > 1:
@@ -170,40 +170,37 @@ class Seq2SeqModel(object):
     targets = [self.decoder_inputs[i + 1]
                for i in xrange(len(self.decoder_inputs) - 1)]
 
-    # Training outputs and losses.
-    if forward_only:   # decoding
-      self.outputs, self.losses = many2one.model_with_buckets(
-          self.encoder_inputs, self.decoder_inputs, targets,
-          self.target_weights, buckets, lambda x, y: seq2seq_f(x, y, True),
-          softmax_loss_function=softmax_loss_function, reuse=reuse)
+    self.forward_only = tf.Variable(forward_only, trainable=False,
+                                    name='forward_only')
 
-      # If we use output projection, we need to project outputs for decoding.
-      if output_projection is not None:
-        for b in xrange(len(buckets)):
-          self.outputs[b] = [
-              tf.matmul(output, output_projection[0]) + output_projection[1]
-              for output in self.outputs[b]
-          ]
-    else:   # training
-      self.outputs, self.losses = many2one.model_with_buckets(
-          self.encoder_inputs, self.decoder_inputs, targets,
-          self.target_weights, buckets,
-          lambda x, y: seq2seq_f(x, y, False),
-          softmax_loss_function=softmax_loss_function, reuse=reuse)
+    # Training outputs and losses.
+    self.outputs, self.losses = many2one.model_with_buckets(
+      self.encoder_inputs, self.decoder_inputs, targets,
+      self.target_weights, buckets,
+      lambda x, y: seq2seq_f(x, y, self.forward_only),
+      softmax_loss_function=softmax_loss_function, reuse=reuse)
+
+    if output_projection is not None:
+      self.decode_outputs = [
+        [tf.matmul(output, output_projection[0]) + output_projection[1]
+         for output in self.outputs[b]]
+        for b in range(len(buckets))]
+    else:
+      self.decode_outputs = self.outputs
 
     # Gradients and SGD update operation for training the model.
     params = tf.trainable_variables()
-    if not forward_only:
-      self.gradient_norms = []
-      self.updates = []
-      opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-      for b in xrange(len(buckets)):
-        gradients = tf.gradients(self.losses[b], params)
-        clipped_gradients, norm = tf.clip_by_global_norm(gradients,
-                                                         max_gradient_norm)
-        self.gradient_norms.append(norm)
-        self.updates.append(opt.apply_gradients(
-            zip(clipped_gradients, params), global_step=self.global_step))
+
+    self.gradient_norms = []
+    self.updates = []
+    opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+    for b in xrange(len(buckets)):
+      gradients = tf.gradients(self.losses[b], params)
+      clipped_gradients, norm = tf.clip_by_global_norm(gradients,
+                                                       max_gradient_norm)
+      self.gradient_norms.append(norm)
+      self.updates.append(opt.apply_gradients(
+        zip(clipped_gradients, params), global_step=self.global_step))
 
     self.saver = tf.train.Saver(tf.all_variables())
 
@@ -262,9 +259,11 @@ class Seq2SeqModel(object):
                      self.gradient_norms[bucket_id],  # Gradient norm.
                      self.losses[bucket_id]]  # Loss for this batch.
     else:
+      # variable
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
-        output_feed.append(self.outputs[bucket_id][l])
+        # output_feed.append(self.outputs[bucket_id][l])
+        output_feed.append(self.decode_outputs[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
 

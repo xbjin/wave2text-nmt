@@ -277,6 +277,7 @@ def train():
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
+          # TODO: should we change model.forward_only for the evaluation ?
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
@@ -358,6 +359,7 @@ def decode():
 
 
 def evaluate():
+  # TODO: evaluate existing model, by assigning False to model.forward_only
   with tf.Session() as sess:
     # Create model and load parameters.
     model = create_model(sess, True)
