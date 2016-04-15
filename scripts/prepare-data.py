@@ -46,6 +46,7 @@ PAD_ID = 0
 GO_ID = 1
 EOS_ID = 2
 UNK_ID = 3
+UNKS = range(3, 17)
 
 
 temporary_files = []
@@ -71,10 +72,7 @@ def open_temp_files(num=1, mode='w', delete=False):
             files.append(tempfile.NamedTemporaryFile(mode=mode, delete=delete))
             if not delete:
                 temporary_files.append(files[-1].name)
-        if num == 1:
-            yield files[0]
-        else:
-            yield files
+        yield files
     finally:
         for file_ in files:
             file_.close()
@@ -128,6 +126,7 @@ def process_file(corpus, id_, args):
     lang = args.lang[id_]
 
     with open_temp_files(num=1) as output_, open(filename) as input_:
+        output_ = output_[0]
 
         def path_to(script_name):
             if args.scripts is None:
