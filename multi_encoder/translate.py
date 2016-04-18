@@ -72,9 +72,9 @@ tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU")
 tf.app.flags.DEFINE_boolean("reset", False, "Reset model (don't load any checkpoint)")
 tf.app.flags.DEFINE_boolean("verbose", False, "Verbose mode")
 
-tf.app.flags.DEFINE_string("train_corpus", "train", "Name of the training corpus")
-tf.app.flags.DEFINE_string("dev_corpus", "dev", "Name of the development corpus")
-tf.app.flags.DEFINE_string("embedding", None, "Name of the embedding files")
+tf.app.flags.DEFINE_string("train_prefix", "train", "Name of the training corpus")
+tf.app.flags.DEFINE_string("dev_prefix", "dev", "Name of the development corpus")
+tf.app.flags.DEFINE_string("embedding_prefix", None, "Prefix of the embedding files")
 tf.app.flags.DEFINE_string("src_ext", "en", "Source file extension(s) (comma-separated)")
 tf.app.flags.DEFINE_string("trg_ext", "fr", "Target file extension")
 
@@ -82,7 +82,8 @@ tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl", "Path to BL
 tf.app.flags.DEFINE_boolean("pretrain", False, "Toggle pre-training")
 tf.app.flags.DEFINE_string("encoder_num", None, "List of encoder ids to include in the model (comma-separated)")
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
-tf.app.flags.DEFINE_string("embedding_train", None, "List of True/False according to the embedding and src_ext parameter")
+tf.app.flags.DEFINE_string("fix_embeddings", None, "List of comma-separated 0/1 values specifying "
+                                                   "which embeddings to freeze during training")
 tf.app.flags.DEFINE_boolean("dropout_rate", 0, "Dropout rate applied to the LSTM units")
 
 FLAGS = tf.app.flags.FLAGS
@@ -348,12 +349,11 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
   _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
 
   # if filenames isn't specified, use default files
-  if not filenames and evaluate:  # evaluation mode
-    filenames = ['{}.{}'.format(FLAGS.eval, ext) for ext in
-                 FLAGS.src_ext.split(',')]
-  elif not filenames:   # decode mode
-    filenames = ['{}.{}'.format(FLAGS.decode, ext) for ext in
-                 FLAGS.src_ext.split(',')]
+  if not filenames:
+    prefix = FLAGS.eval if evaluate else FLAGS.decode
+    src_ext = FLAGS.src_ext.split(',')
+    extensions = [FLAGS.trg_ext] + src_ext if evaluate else src_ext
+    filenames = ['{}.{}'.format(prefix, ext) for ext in extensions]
 
   with utils.open_files(filenames) as files:
     references = None
@@ -511,7 +511,7 @@ def pretrain():
 
         
 def main(_):
-  if not FLAGS.eval and not FLAGS.decode:  # no logging in decode mode
+  if not FLAGS.decode:  # no logging in decoding mode
     logging_level = logging.DEBUG if FLAGS.verbose else logging.INFO
     logging.basicConfig(format='%(message)s', level=logging_level)
 

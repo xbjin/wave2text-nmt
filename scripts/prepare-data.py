@@ -32,9 +32,7 @@ This example will create 6 files in `output/`: train.fr, train.en, test.fr,\
  lines from input corpus `data/news`, and `train` will contain the remaining\
  lines. `dev` files will contain the (processed) lines read from\
  `data/news-dev`. These three output corpora will be shuffled.
-
 """
-
 
 _PAD = "_PAD"
 _GO = "_GO"

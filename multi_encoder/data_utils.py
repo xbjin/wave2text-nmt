@@ -306,7 +306,7 @@ def extract_filenames(FLAGS):
   src_ext = FLAGS.src_ext.split(',')
   trg_ext = FLAGS.trg_ext
 
-  FLAGS.train_path = os.path.join(FLAGS.data_dir, FLAGS.train_corpus)
+  FLAGS.train_path = os.path.join(FLAGS.data_dir, FLAGS.train_prefix)
 
   FLAGS.src_train = ["{}.{}".format(FLAGS.train_path, ext) for ext in src_ext]
   FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, trg_ext)
@@ -317,7 +317,7 @@ def extract_filenames(FLAGS):
   FLAGS.trg_train_ids = "{}.ids{}.{}".format(
     FLAGS.train_path, FLAGS.trg_vocab_size, trg_ext)
 
-  FLAGS.dev_path = os.path.join(FLAGS.data_dir, FLAGS.dev_corpus)
+  FLAGS.dev_path = os.path.join(FLAGS.data_dir, FLAGS.dev_prefix)
   FLAGS.src_dev = ["{}.{}".format(FLAGS.dev_path, ext) for ext in src_ext]
   FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, trg_ext)
 
@@ -375,28 +375,26 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def extract_embedding(FLAGS):
-    
-  src_ext = FLAGS.src_ext.split(',')
-  trg_ext = FLAGS.trg_ext  
-  exts = src_ext + [trg_ext]
-    
-  if FLAGS.embedding_train:
-      embedding_train = FLAGS.embedding_train.split(',')
-  else:   
-      embedding_train = [True for _ in exts] 
+  exts = FLAGS.src_ext.split(',') + [FLAGS.trg_ext]
+
+  if FLAGS.fix_embeddings:
+    fixed_embeddings = map(int, FLAGS.fix_embeddings.split(','))
+  else:
+    fixed_embeddings = [False for _ in exts]
     
   vocabs = FLAGS.src_vocab + [FLAGS.trg_vocab]
   
   FLAGS.embeddings = [None for _ in exts]
 
-  if not FLAGS.embedding:
+  if not FLAGS.embedding_prefix:
     return
 
-  for i, (ext, vocab_path) in enumerate(zip(exts,
-                vocabs)):
-    filename = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding,
-                                                           ext))
-    # if embedding is not given for this language, skip
+  for i, (ext, vocab_path, fixed) in enumerate(zip(exts, vocabs,
+                                                   fixed_embeddings)):
+    filename = os.path.join(FLAGS.data_dir, "{}.{}".format(
+      FLAGS.embedding_prefix, ext))
+
+    # if embedding file is not given for this language, skip
     if not os.path.isfile(filename):
       continue
 
@@ -416,10 +414,8 @@ def extract_embedding(FLAGS):
       else:
         embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
 
+    # TODO: same name as non-custom embeddings (checkpoint won't load these
+    # embeddings)
     # sets embedding matrix as initial value
     FLAGS.embeddings[i] = tf.Variable(embeddings,
-                                      name="custom_embedding_" + ext, trainable=(embedding_train[i]=='True'))
-    
-      
-  #FLAGS.embeddings[-1]) is decoder embedding
-  #print(FLAGS.embeddings)
+      name="custom_embedding_" + ext, trainable=not fixed)
