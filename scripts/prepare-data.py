@@ -182,6 +182,7 @@ def process_corpus(corpus, args, output_corpus=None):
             all_lines = list(all_lines)  # not lazy anymore
             shuffle(all_lines)
 
+
         for lines in all_lines:  # keeps it lazy if no shuffle
             for line, output_file in zip(lines, output_files):
                 output_file.write(line)

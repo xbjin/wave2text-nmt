@@ -95,6 +95,11 @@ class Seq2SeqModel(object):
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
     self.encoder_count = encoder_count
+
+    self.forward_only = tf.Variable(forward_only, trainable=False,
+                                    name='forward_only')
+    self.train_op = self.forward_only.assign(False)
+    self.decode_op = self.forward_only.assign(True)
     
     # TODO: For now, we assume that all source languages
     # have the same vocabulary size.
@@ -170,9 +175,6 @@ class Seq2SeqModel(object):
     targets = [self.decoder_inputs[i + 1]
                for i in xrange(len(self.decoder_inputs) - 1)]
 
-    self.forward_only = tf.Variable(forward_only, trainable=False,
-                                    name='forward_only')
-
     # Training outputs and losses.
     self.outputs, self.losses = many2one.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
@@ -238,6 +240,11 @@ class Seq2SeqModel(object):
                        " %d != %d." % (len(target_weights), decoder_size))
 
     # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
+
+    if forward_only:    # change value of forward_only tensor
+      session.run(self.decode_op)
+    else:
+      session.run(self.train_op)
 
     input_feed = {}
 

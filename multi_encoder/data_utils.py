@@ -28,6 +28,7 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 import math
+import logging
 
 import sys
 
@@ -61,14 +62,14 @@ _WMT_ENFR_DEV_URL = "http://www.statmt.org/wmt15/dev-v2.tgz"
 def maybe_download(directory, filename, url):
   """Download filename from url unless it's already in directory."""
   if not os.path.exists(directory):
-    print("Creating directory %s" % directory)
+    logging.info("Creating directory %s" % directory)
     os.mkdir(directory)
   filepath = os.path.join(directory, filename)
   if not os.path.exists(filepath):
-    print("Downloading %s to %s" % (url, filepath))
+    logging.info("Downloading %s to %s" % (url, filepath))
     filepath, _ = urllib.request.urlretrieve(url, filepath)
     statinfo = os.stat(filepath)
-    print("Succesfully downloaded", filename, statinfo.st_size, "bytes")
+    logging.info("Succesfully downloaded", filename, statinfo.st_size, "bytes")
   return filepath
 
 
@@ -124,8 +125,6 @@ def basic_tokenizer(sentence):
   return [w for w in words if w]
 
 
-""" split les phrases en mot et pour chaque mot trouve incremente son index de 1"""
-""" retourne la liste des max_vocabulary_size mots les plus utilises"""
 def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
                       tokenizer=None, normalize_digits=True):
   """Create vocabulary file (if it does not exist yet) from data file.
@@ -145,14 +144,15 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
     normalize_digits: Boolean; if true, all digits are replaced by 0s.
   """
   if not gfile.Exists(vocabulary_path):
-    print("Creating vocabulary %s from data %s" % (vocabulary_path, data_path))
+    logging.info("Creating vocabulary %s from data %s" %
+                 (vocabulary_path, data_path))
     vocab = {}
     with gfile.GFile(data_path, mode="r") as f:
       counter = 0
       for line in f:
         counter += 1
         if counter % 100000 == 0:
-          print("  processing line %d" % counter)
+          logging.info("  processing line %d" % counter)
         tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
         for w in tokens:
           word = re.sub(_DIGIT_RE, "0", w) if normalize_digits else w
@@ -243,7 +243,7 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
     normalize_digits: Boolean; if true, all digits are replaced by 0s.
   """
   if not gfile.Exists(target_path):
-    print("Tokenizing data in %s" % data_path)
+    logging.info("Tokenizing data in %s" % data_path)
     vocab, _ = initialize_vocabulary(vocabulary_path)
     with gfile.GFile(data_path, mode="r") as data_file:
       with gfile.GFile(target_path, mode="w") as tokens_file:
@@ -251,7 +251,7 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
         for line in data_file:
           counter += 1
           if counter % 100000 == 0:
-            print("  tokenizing line %d" % counter)
+            logging.info("  tokenizing line %d" % counter)
           token_ids = sentence_to_token_ids(line, vocab, tokenizer,
                                             normalize_digits)
           tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
@@ -299,52 +299,6 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
   return (en_train_ids_path, fr_train_ids_path,
           en_dev_ids_path, fr_dev_ids_path,
           en_vocab_path, fr_vocab_path)
-          
-          
-def prepare_data_JB(data_dir, en_vocabulary_size, fr_vocabulary_size, lang):
-  #nom des fichiers train et developpement
-  filenames = ["train", "dev"]
-  train_path = os.path.join(data_dir, filenames[0])
-  dev_path = os.path.join(data_dir, filenames[1])
-  
-  print ("Tokenizing...")
-  for f in filenames:    
-    print ("Processing", f , "files...")
-    for l in lang.split(","):
-      myinput = open(data_dir+"/"+f+"."+l)
-      myoutput = open(data_dir+"/"+f+"_tokenized."+l, 'w')
-      args = shlex.split("./tokenizer/tokenizer.perl -l " + l)
-      p = subprocess.Popen(args, stdin=myinput, stdout=myoutput, stderr=subprocess.PIPE)
-      p.wait()
-      myoutput.flush()
-      result = p.stderr.read()
-
-      print (result)
-      
-    #os.killpg(os.getpgid(p.pid), signal.SIGTERM)  # Send the signal to all the process groups
-      
-  
-  print ("Creating vocabularies...")
-  ret = []
-  for l in lang.split(","):
-      print ("...for "+l)
-      # Create vocabularies of the appropriate sizes. (vocab40000)
-      vocab_path = os.path.join(data_dir, ("vocab%d."+l) % fr_vocabulary_size)   
-      create_vocabulary(vocab_path, train_path + "_tokenized."+l, fr_vocabulary_size, tokenizer=True)
-      
-      
-      # Create token ids for the training data. (giga-fren.release2.ids40000)
-      train_ids_path = train_path + ((".ids%d."+l) % fr_vocabulary_size)
-      data_to_token_ids(train_path + "_tokenized."+l, train_ids_path, vocab_path, tokenizer=True)
-    
-      # Create token ids for the development data. (newstest2013.ids40000)
-      dev_ids_path = dev_path + ((".ids%d."+l) % fr_vocabulary_size)
-      data_to_token_ids(dev_path + "_tokenized."+l, dev_ids_path, vocab_path, tokenizer=True)
-      
-      ret = ret + [vocab_path] + [train_ids_path] + [dev_ids_path]
-      
-  return ret
-
 
 
 def extract_filenames(FLAGS):
@@ -422,9 +376,6 @@ def bleu_score(bleu_script, hypotheses, references):
 
 def extract_embedding(FLAGS):
     
-  if not FLAGS.embedding:
-    return
-    
   src_ext = FLAGS.src_ext.split(',')
   trg_ext = FLAGS.trg_ext  
   exts = src_ext + [trg_ext]
@@ -438,7 +389,8 @@ def extract_embedding(FLAGS):
   
   FLAGS.embeddings = [None for _ in exts]
 
-  sqrt3 = math.sqrt(3)
+  if not FLAGS.embedding:
+    return
 
   for i, (ext, vocab_path) in enumerate(zip(exts,
                 vocabs)):
@@ -462,7 +414,7 @@ def extract_embedding(FLAGS):
       if word in d:
         embeddings[index] = d[word]
       else:
-        embeddings[index] = np.random.uniform(-sqrt3, sqrt3, size)
+        embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
 
     # sets embedding matrix as initial value
     FLAGS.embeddings[i] = tf.Variable(embeddings,
