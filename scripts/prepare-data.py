@@ -33,9 +33,7 @@ This example will create 6 files in `output/`: train.fr, train.en, test.fr,\
  lines from input corpus `data/news`, and `train` will contain the remaining\
  lines. `dev` files will contain the (processed) lines read from\
  `data/news-dev`. These three output corpora will be shuffled.
-
 """
-
 
 _PAD = "_PAD"
 _GO = "_GO"
@@ -196,6 +194,7 @@ def process_corpus(corpus, args, output_corpus=None):
         if args.shuffle:
             all_lines = list(all_lines)  # not lazy anymore
             shuffle(all_lines)
+
 
         for lines in all_lines:  # keeps it lazy if no shuffle
             for line, output_file in zip(lines, output_files):
