@@ -58,8 +58,7 @@ UNKS = range(3, 19) #14 + 0 + null
 ###alignements var
 FAST_ALIGN_ITER = 5 #iteration by fast align script
 SELECTION_VALUE = 100    #dictionnary selection
-FAST_ALIGN_LOC = "fastalign/build/fast_align" #fast align location in scripts/
-UNIQUE_SEPARATOR = "||" #separator in dict keys
+FAST_ALIGN_LOC = "fast_align" #fast align location in scripts/
 
 
 temporary_files = []
@@ -224,22 +223,20 @@ def split_corpus(filenames, dest_corpora, extensions):
 
 
 
-def create_align(filenames, output_dir):
-    if(len(filenames)>2):
-        print("Cant align with more than two languages")
-        sys.exit(1)
-    
+def create_align(lang_pair, output_dir):
+
+    src, trg = lang_pair
     tmp_file = os.path.join(output_dir, 'temp_align')   
         
     with open(tmp_file,"w+") as ouput_file:
-        with open(filenames[0]) as textfile1, open(filenames[1]) as textfile2: 
+        with open(src) as textfile1, open(trg) as textfile2: 
             for x, y in izip(textfile1, textfile2):
                 x = x.strip()
                 y = y.strip()                
                 ouput_file.write("{0} ||| {1}\n".format(x, y))                       
      
     
-    ouput_align_path = os.path.join(output_dir, 'forward.align') 
+    ouput_align_path = os.path.join(output_dir, 'train.align') 
     ouput_align_file = open(ouput_align_path, 'w+')
     
     
@@ -257,9 +254,9 @@ def create_align(filenames, output_dir):
 
 
 def create_ids_with_align(corpus, id_, vocab, args):
-    
-    if(id_ == len(args.extensions)-1 and id_ > 0): #target language, align
-        
+
+    if(id_ == len(args.extensions)-1 and id_ > 0 and "train" in corpus): #target language, align for train
+        print(corpus)
         align_file = '{}.{}'.format(corpus, "align")
         align_lines = [line.split() for line in open(align_file)]
 
@@ -275,10 +272,11 @@ def create_ids_with_align(corpus, id_, vocab, args):
                 align_pair = {int(v): int(k) for k, v in align_pair.items()}   #reverse for target:source 
                 for j,w in enumerate(line.split()):
                     token = vocab.get(w, UNK_ID)
-                    if(token==UNK_ID):                    
+                    if(token==UNK_ID):       
                         pos_source = align_pair.get(j,j+8)#if align not found, make it so we chose UNKnull                        
                         offset = int(pos_source)-int(j)
-                        if abs(offset)<7:                            
+                        print(w,offset)
+                        if abs(offset)<7:           
                             token = UNKS[7+offset]
                         else:
                             token = UNKS[15] #UNKnull
@@ -302,7 +300,7 @@ def create_lookup_dictionnary(filenames, output_dir):
                        xtokens = x.strip().split()
                        ytokens = y.strip().split()
                        for k, v in align_pair.items():
-                           w=xtokens[int(k)]+UNIQUE_SEPARATOR+ytokens[int(v)]
+                           w=(xtokens[int(k)],ytokens[int(v)])#tuple
                            dictionnary[w] = dictionnary.get(w, 0) + 1
       
 
@@ -312,9 +310,9 @@ def create_lookup_dictionnary(filenames, output_dir):
     #taking most occurence  for a same source word
     highest_prob_dict = {}       
     for w in sorted(dict_top, key=dict_top.get, reverse=True):
-        x,y = w.split(UNIQUE_SEPARATOR)
-        if(w not in highest_prob_dict):
-            highest_prob_dict[x] = y     
+        #print(w, dict_top[w])
+        highest_prob_dict.setdefault(w[0], w[1])
+
             
             
     ouput_dict = os.path.join(output_dir, 'lookup_dict') 
@@ -434,17 +432,7 @@ if __name__ == '__main__':
         if args.dev_corpus and args.test_corpus:
             process_corpus(args.corpus, args, output_train)
         else:
-            filenames = process_corpus(args.corpus, args)
-            extensions = args.extensions
-            if(args.align):
-                logging.info('creating alignement')            
-                align_file = create_align(filenames,args.output_dir)
-                filenames = filenames + [align_file]
-                extensions = args.extensions + ["align"]
-                logging.info('creating lookup dictionnary')
-                create_lookup_dictionnary(filenames,args.output_dir)          
-
-                
+            filenames = process_corpus(args.corpus, args)                
             dest_corpora = [(output_train, args.train_size)]
             if not args.test_corpus:
                 dest_corpora.append((output_test, args.test_size))
@@ -452,7 +440,22 @@ if __name__ == '__main__':
                 dest_corpora.append((output_dev, args.dev_size))
 
             logging.info('splitting files')
-            split_corpus(filenames, dest_corpora, extensions)
+            split_corpus(filenames, dest_corpora, args.extensions)
+                
+            if(args.align):
+                logging.info('creating alignement')  
+                #alignements is only for a pair of language
+                # 1st given is soure, last given is target
+                lang_pair = ['{}.{}'.format(output_train, args.extensions[0]),
+                                 '{}.{}'.format(output_train, args.extensions[-1])]
+                #align is needed for train only
+                align_file = create_align(lang_pair, args.output_dir) 
+                
+                #now make dictionnary according to alignement
+                logging.info('creating lookup dictionnary')
+                filenames = lang_pair + [align_file]
+                create_lookup_dictionnary(filenames, args.output_dir)       
+                
             
         if args.vocab_size:           
             logging.info('creating vocab files')
