@@ -55,6 +55,13 @@ UNK_ID = 3
 UNKS = range(3, 19) #14 + 0 + null
 
 
+###alignements var
+FAST_ALIGN_ITER = 5 #iteration by fast align script
+SELECTION_VALUE = 100    #dictionnary selection
+FAST_ALIGN_LOC = "fastalign/build/fast_align" #fast align location in scripts/
+UNIQUE_SEPARATOR = "||" #separator in dict keys
+
+
 temporary_files = []
 
 
@@ -85,7 +92,7 @@ def open_temp_files(num=1, mode='w', delete=False):
 
 
 def create_vocabulary(id_, args):
-    if(id_ == len(args.extensions)-1 and id_ > 0 and args.align):        
+    if(id_ == len(args.extensions)-1 and id_ > 0 and args.align): #target language, align 
         start_vocab = _START_VOCAB_UNK
     else:
         start_vocab = _START_VOCAB_BASIC
@@ -105,9 +112,9 @@ def create_vocabulary(id_, args):
             if i % 100000 == 0:
                 logging.info(' processing line {}'.format(i))
             tokens = line.split()
-
             for w in tokens:
                 vocab[w] = vocab.get(w, 0) + 1
+
 
         vocab_list = start_vocab + sorted(vocab, key=vocab.get, reverse=True)
         if 0 < vocab_size < len(vocab_list):
@@ -233,10 +240,11 @@ def create_align(filenames, output_dir):
      
     
     ouput_align_path = os.path.join(output_dir, 'forward.align') 
-    fast_align_location = args.scripts+"/fastalign/build"   
     ouput_align_file = open(ouput_align_path, 'w+')
     
-    _args = shlex.split(fast_align_location+"/fast_align -i "+tmp_file+" -d -o -v -I 6")
+    
+    fast_align_location = os.path.join(args.scripts,FAST_ALIGN_LOC)
+    _args = shlex.split(fast_align_location+" -i "+tmp_file+" -d -o -v -I "+ str(FAST_ALIGN_ITER))
     p = subprocess.Popen(_args, stdout=ouput_align_file, stderr=subprocess.PIPE)
     p.wait()
     ouput_align_file.flush()
@@ -250,18 +258,77 @@ def create_align(filenames, output_dir):
 
 def create_ids_with_align(corpus, id_, vocab, args):
     
-    #todo
-    filename = '{}.{}'.format(corpus, args.extensions[id_])
-    output_filename = '{}.ids{}.{}'.format(corpus, args.vocab_size[id_],
-                                           args.extensions[id_])
+    if(id_ == len(args.extensions)-1 and id_ > 0): #target language, align
+        
+        align_file = '{}.{}'.format(corpus, "align")
+        align_lines = [line.split() for line in open(align_file)]
 
-    with open(filename) as input_file,\
-            open(output_filename, 'w') as output_file:
-        for line in input_file:
-            ids = [str(vocab.get(w, UNK_ID)) for w in line.split()]
-            output_file.write(' '.join(ids) + '\n')
+        filename = '{}.{}'.format(corpus, args.extensions[id_])        
+        output_filename = '{}.ids{}.{}'.format(corpus, args.vocab_size[id_],
+                                               args.extensions[id_])
+    
+        with open(filename) as input_file,\
+                open(output_filename, 'w') as output_file:
+            for i,line in enumerate(input_file):
+                ids = []
+                align_pair = dict(item.split("-") for item in align_lines[i])
+                align_pair = {int(v): int(k) for k, v in align_pair.items()}   #reverse for target:source 
+                for j,w in enumerate(line.split()):
+                    token = vocab.get(w, UNK_ID)
+                    if(token==UNK_ID):                    
+                        pos_source = align_pair.get(j,j+8)#if align not found, make it so we chose UNKnull                        
+                        offset = int(pos_source)-int(j)
+                        if abs(offset)<7:                            
+                            token = UNKS[7+offset]
+                        else:
+                            token = UNKS[15] #UNKnull
+                    ids.append(str(token))
+                output_file.write(' '.join(ids) + '\n')
+    else:
+        create_ids(corpus, id_, vocab, args)
+                
+
+def create_lookup_dictionnary(filenames, output_dir):
+ 
+    src_file, trg_file, align = filenames
+    
+    #creatings all alignments pair found - pair stored as key, occurence is value   
+    dictionnary = {}
+    with open(src_file) as f1,\
+            open(trg_file) as f2,\
+                open(align) as f3:
+                   for x, y, z in izip(f1, f2, f3):
+                       align_pair = dict(item.split("-") for item in z.strip().split())
+                       xtokens = x.strip().split()
+                       ytokens = y.strip().split()
+                       for k, v in align_pair.items():
+                           w=xtokens[int(k)]+UNIQUE_SEPARATOR+ytokens[int(v)]
+                           dictionnary[w] = dictionnary.get(w, 0) + 1
+      
+
+    #taking all pair that have more than SELECTION_VALUE occurence                        
+    dict_top = dict( (key, value) for (key, value) in dictionnary.items() if value >= SELECTION_VALUE ) 
+    
+    #taking most occurence  for a same source word
+    highest_prob_dict = {}       
+    for w in sorted(dict_top, key=dict_top.get, reverse=True):
+        x,y = w.split(UNIQUE_SEPARATOR)
+        if(w not in highest_prob_dict):
+            highest_prob_dict[x] = y     
             
             
+    ouput_dict = os.path.join(output_dir, 'lookup_dict') 
+    
+    #writing the final dict
+    with open(ouput_dict, "w+") as output_file:
+        for key, value in highest_prob_dict.iteritems():
+            output_file.write(key + ' ' + value + '\n')  
+    
+        
+                  
+
+
+           
             
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
@@ -372,8 +439,11 @@ if __name__ == '__main__':
             if(args.align):
                 logging.info('creating alignement')            
                 align_file = create_align(filenames,args.output_dir)
-                filenames = filenames+[align_file]
+                filenames = filenames + [align_file]
                 extensions = args.extensions + ["align"]
+                logging.info('creating lookup dictionnary')
+                create_lookup_dictionnary(filenames,args.output_dir)          
+
                 
             dest_corpora = [(output_train, args.train_size)]
             if not args.test_corpus:
@@ -383,7 +453,7 @@ if __name__ == '__main__':
 
             logging.info('splitting files')
             split_corpus(filenames, dest_corpora, extensions)
-
+            
         if args.vocab_size:           
             logging.info('creating vocab files')
             vocabs = [create_vocabulary(id_, args)
@@ -392,7 +462,10 @@ if __name__ == '__main__':
                 logging.info('creating ids')
                 for corpus in [output_train, output_dev, output_test]:
                     for id_ in range(len(args.extensions)):
-                        create_ids(corpus, id_, vocabs[id_], args)
+                        if(args.align):
+                            create_ids_with_align(corpus, id_, vocabs[id_], args)
+                        else:                            
+                            create_ids(corpus, id_, vocabs[id_], args)
 
     finally:
         logging.info('removing temporary files')
@@ -400,4 +473,4 @@ if __name__ == '__main__':
             try:
                 os.remove(name)
             except OSError:
-                pass 
+                pass
