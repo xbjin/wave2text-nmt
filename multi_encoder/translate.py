@@ -280,7 +280,7 @@ def train():
                evaluate=True)
 
 
-def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab):
+def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup_dict):
   """
   Translate given sentence with the given seq2seq model and
     return the translation.
@@ -320,8 +320,6 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab):
     outputs = outputs[:outputs.index(data_utils.EOS_ID)]
 
   if FLAGS.lookup_dict:  
-      dict_loc= os.path.join(FLAGS.data_dir, FLAGS.lookup_dict)
-      lookup_dict = dict((line.split()[0], line.split()[1]) for line in open(dict_loc))
       vocab_align = src_vocab[0] #align language is the first one
       sentence_align = token_ids[0] #align language is the first one 
       src_vocab_reverse = {v:k for k, v in vocab_align.items()} #id to word
@@ -375,13 +373,20 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
     extensions = [FLAGS.trg_ext] + src_ext if evaluate else src_ext
     filenames = ['{}.{}'.format(prefix, ext) for ext in extensions]
 
+
+  #lookup dict align
+  lookup_dict = None
+  if(FLAGS.lookup_dict):
+    dict_loc= os.path.join(FLAGS.data_dir, FLAGS.lookup_dict)
+    lookup_dict = dict((line.split()[0], line.split()[1]) for line in open(dict_loc))
+    
   with utils.open_files(filenames) as files:
     references = None
     if evaluate:  # evaluation mode: first file is the reference
       references = [line.strip() for line in files.pop(0)]
 
     hypotheses = (
-      decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab)
+      decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup_dict)
       for src_sentences in zip(*files)
     )
 
