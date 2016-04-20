@@ -1,4 +1,5 @@
 
+## SEQ2SEQ (translate.py)
 
 pretrain
 
@@ -38,3 +39,24 @@ embedding_train
         We do --embedding embed and --embedding_train (None/True/False), False, True. First parameter of embedding_train doesnt matter
         because embed.fr doesnt exist, 3rd is for decoder.
         If embedding parameter is given but not embedding_train, then embeddings are trained by default
+
+
+## PREPROCESSING FOR UNK WORDS (prepare_data.py)
+
+align
+
+	If mentionned, creates unsupervised word aligned "fast align". See https://github.com/clab/fast_align
+    
+dict_val_select
+	
+	Number of occurence for a pair of words in the align file to be selected in the lookup dictionnary. Default : 100
+
+fast_align_loc
+	
+	Location of the fast_align binary in scripts. Default : "fast_align" (scripts/fast_align)
+        
+fast_align_iter
+
+	Number of iterations in fast align learning. Default : 5            
+      
+	
