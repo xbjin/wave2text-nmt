@@ -49,9 +49,8 @@ class Seq2SeqModel(object):
   def __init__(self, source_vocab_size, target_vocab_size, buckets, size,
                num_layers, max_gradient_norm, batch_size, learning_rate,
                learning_rate_decay_factor, use_lstm=True,
-               num_samples=512, forward_only=False, encoder_count=1,
-               reuse=None, encoder_num=None, model_name=None,
-               embedding=None, dropout_rate=0):
+               num_samples=512, encoder_count=1, reuse=None, encoder_num=None,
+               model_name=None, embedding=None, dropout_rate=0):
     """Create the model.
 
     Args:
@@ -72,7 +71,6 @@ class Seq2SeqModel(object):
       learning_rate_decay_factor: decay learning rate by this much when needed.
       use_lstm: if true, we use LSTM cells instead of GRU cells.
       num_samples: number of samples for sampled softmax.
-      forward_only: if set, we do not construct the backward pass in the model.
       encoder_count: number of encoders to create
       encoder_num: list of encoders ids to put in the model
     """
@@ -96,10 +94,10 @@ class Seq2SeqModel(object):
         self.learning_rate * learning_rate_decay_factor)
     self.encoder_count = encoder_count
 
-    self.forward_only = tf.Variable(forward_only, trainable=False,
-                                    name='forward_only')
-    self.train_op = self.forward_only.assign(False)
-    self.decode_op = self.forward_only.assign(True)
+    self.feed_previous = tf.Variable(False, trainable=False,
+                                     name='feed_previous')
+    self.train_op = self.feed_previous.assign(False)
+    self.decode_op = self.feed_previous.assign(True)
     
     # TODO: For now, we assume that all source languages
     # have the same vocabulary size.
@@ -142,11 +140,12 @@ class Seq2SeqModel(object):
       cell = rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
     # The seq2seq function: we use embedding for the input and attention.
-    def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
+    def seq2seq_f(encoder_inputs, decoder_inputs, feed_previous):
       return many2one.many2one_rnn_seq2seq(
           encoder_inputs, decoder_inputs, cell, source_vocab_sizes,
           target_vocab_size, output_projection=output_projection,
-          feed_previous=do_decode, encoder_num=encoder_num, embedding=embedding)
+          feed_previous=feed_previous, encoder_num=encoder_num,
+          embedding=embedding)
 
     # Feeds for inputs.
     self.encoder_inputs = []
@@ -179,7 +178,7 @@ class Seq2SeqModel(object):
     self.outputs, self.losses = many2one.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
       self.target_weights, buckets,
-      lambda x, y: seq2seq_f(x, y, self.forward_only),
+      lambda x, y: seq2seq_f(x, y, self.feed_previous),
       softmax_loss_function=softmax_loss_function, reuse=reuse)
 
     if output_projection is not None:
@@ -207,7 +206,7 @@ class Seq2SeqModel(object):
     self.saver = tf.train.Saver(tf.all_variables())
 
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only):
+           bucket_id, forward_only=False, decode=False):
     """Run a step of the model feeding the given inputs.
 
     Args:
@@ -217,7 +216,10 @@ class Seq2SeqModel(object):
       decoder_inputs: list of numpy int vectors to feed as decoder inputs.
       target_weights: list of numpy float vectors to feed as target weights.
       bucket_id: which bucket of the model to use.
-      forward_only: whether to do the backward step or only forward.
+      forward_only: disable backward step (no parameter update).
+      decode: decoding mode. Feed its own output to the decoder
+        (feed_previous set to True) and perform output projection if
+        sampled softmax is on.
 
     Returns:
       A triple consisting of gradient norm (or None if we did not do backward),
@@ -241,10 +243,13 @@ class Seq2SeqModel(object):
 
     # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
 
-    if forward_only:    # change value of forward_only tensor
-      session.run(self.decode_op)
+    if decode:
+      forward_only = True  # decode => forward_only
+      session.run(self.decode_op)  # toggles feed_previous
+      outputs_ = self.decode_outputs   # output projection
     else:
       session.run(self.train_op)
+      outputs_ = self.outputs
 
     input_feed = {}
 
@@ -270,7 +275,7 @@ class Seq2SeqModel(object):
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
         # output_feed.append(self.outputs[bucket_id][l])
-        output_feed.append(self.decode_outputs[bucket_id][l])
+        output_feed.append(outputs_[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
 

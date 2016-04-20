@@ -131,9 +131,8 @@ def read_data(source_paths, target_path, max_size=None):
   return data_set
 
 
-def create_model(session, forward_only, reuse=None, model_name=None,
-                 initialize=True, embeddings=None, encoder_count=None,
-                 encoder_num=None):
+def create_model(session, reuse=None, model_name=None, initialize=True,
+                 embeddings=None, encoder_count=None, encoder_num=None):
   """Create translation model and initialize or load parameters in session."""
 
   device = None
@@ -153,9 +152,9 @@ def create_model(session, forward_only, reuse=None, model_name=None,
       FLAGS.src_vocab_size, FLAGS.trg_vocab_size, _buckets,
       FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
-      forward_only=forward_only, encoder_count=encoder_count,
-      reuse=reuse, encoder_num=encoder_num, model_name=model_name,
-      embedding=embeddings, dropout_rate=FLAGS.dropout_rate)
+      encoder_count=encoder_count, reuse=reuse, encoder_num=encoder_num,
+      model_name=model_name, embedding=embeddings,
+      dropout_rate=FLAGS.dropout_rate)
 
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if initialize:
@@ -262,7 +261,8 @@ def train():
           encoder_inputs, decoder_inputs, target_weights = model.get_batch(
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                       target_weights, bucket_id, True)
+                                       target_weights, bucket_id,
+                                       forward_only=True, decode=False)
 
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           logging.info("  eval: bucket {} perplexity {:.2f}".format(
@@ -274,7 +274,7 @@ def train():
         logging.info('starting BLEU evaluation')
         input_filenames = [FLAGS.trg_dev] + FLAGS.src_dev
         output_filename = os.path.join(FLAGS.train_dir,
-                                            "eval.{}.out".format(current_step))
+                                       "eval.out-{}".format(current_step))
         decode(sess, model, filenames=input_filenames, output=output_filename,
                evaluate=True)
 
@@ -307,7 +307,8 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab):
     {bucket_id: data}, bucket_id)
 
   _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
-                                   target_weights, bucket_id, True)
+                                   target_weights, bucket_id,
+                                   forward_only=True, decode=True)
 
   # Greedy decoder FIXME: no beam-search?
   outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
@@ -338,7 +339,7 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
   """
 
   sess = sess or tf.Session()
-  model = model or create_model(sess, forward_only=True)
+  model = model or create_model(sess)
 
   train_batch_size = model.batch_size
   model.batch_size = 1  # decode one sentence at a time
@@ -395,12 +396,12 @@ def pretrain():
     print("Creating %d encoder(s) with %d layers of %d units." %
           (encoder_count, FLAGS.num_layers, FLAGS.size))
 
-    dummy = create_model(sess, False, reuse=False, model_name="dummy", initialize=False)
+    dummy = create_model(sess, reuse=False, model_name="dummy", initialize=False)
     
     # we pretrain, therefore encoder_count is not FLAGS.src_ext.count(',') anymore, its 1
     # if encoder_num specified, we send for each model the num encoder of the flag
     models = [create_model(
-             sess, forward_only=False, encoder_count=1, reuse=True,
+             sess, encoder_count=1, reuse=True,
              encoder_num=FLAGS.encoder_num if FLAGS.encoder_num is None else FLAGS.encoder_num.split(",")[i],
              model_name=FLAGS.model_name.split(",")[i],
              initialize=(i == encoder_count - 1),
@@ -495,7 +496,8 @@ def pretrain():
             encoder_inputs, decoder_inputs, target_weights = model.get_batch(
                 dev_set, bucket_id)
             _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                         target_weights, bucket_id, True)
+                                         target_weights, bucket_id,
+                                         forward_only=True)
             eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
             print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
           sys.stdout.flush()

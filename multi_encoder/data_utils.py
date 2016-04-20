@@ -23,7 +23,6 @@ import os
 import re
 import tarfile
 import subprocess
-import shlex
 import tempfile
 import numpy as np
 import tensorflow as tf
@@ -363,8 +362,8 @@ def bleu_score(bleu_script, hypotheses, references):
     for ref in references:
       f.write(ref + '\n')
 
-  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                       stderr=open('/dev/null', 'w'))
+  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE,
+                       stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
 
   output, _ = p.communicate('\n'.join(hypotheses))
 
@@ -412,7 +411,8 @@ def extract_embedding(FLAGS):
       if word in d:
         embeddings[index] = d[word]
       else:
-        embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
+        embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
+                                              size)
 
     # TODO: same name as non-custom embeddings (checkpoint won't load these
     # embeddings)

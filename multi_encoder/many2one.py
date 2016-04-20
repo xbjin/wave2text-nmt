@@ -19,8 +19,8 @@ from tensorflow.python.ops import variable_scope
 from multi_encoder import rnn_cell
 from multi_encoder import rnn
 
-
 import sys
+
 
 def sequence_loss_by_example(logits, targets, weights,
                              average_across_timesteps=True,
@@ -265,7 +265,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
                                 output_size=None, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
                                 scope=None, initial_state_attention=False,
-                                encoder_num=None,embedding=None):
+                                encoder_num=None, embedding=None):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -341,7 +341,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
 
 
 def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
-                         num_encoder_symbols, num_decoder_symbols,num_heads=1,
+                         num_encoder_symbols, num_decoder_symbols, num_heads=1,
                          output_projection=None, feed_previous=False,
                          dtype=dtypes.float32, scope=None,
                          initial_state_attention=False, encoder_num=None,
@@ -358,7 +358,8 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
       encoder_inputs_, num_encoder_symbols_, embedding_ = values
       id_ = i if encoder_num is None else encoder_num[i]
       with variable_scope.variable_scope("many2one_encoder_{}".format(id_)):
-        encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols_, embedding_)
+        encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols_,
+                                                 embedding_)
         encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell,
                                                     encoder_inputs_,
                                                     dtype=dtype)
@@ -386,7 +387,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
           num_decoder_symbols, num_heads=num_heads, output_size=output_size,
           output_projection=output_projection, feed_previous=feed_previous,
           initial_state_attention=initial_state_attention,
-          encoder_num=encoder_num,embedding=embedding[-1])
+          encoder_num=encoder_num, embedding=embedding[-1])
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
@@ -399,7 +400,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
             output_projection=output_projection,
             feed_previous=feed_previous_bool,
             initial_state_attention=initial_state_attention,
-            encoder_num=encoder_num,embedding=embedding[-1])
+            encoder_num=encoder_num, embedding=embedding[-1])
         return outputs + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
@@ -444,8 +445,9 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
       than the largest (last) bucket.
   """
   if len(encoder_inputs[0]) < buckets[-1][0]:
-    raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
-                     "st bucket (%d)." % (len(encoder_inputs[0]), buckets[-1][0]))
+    raise ValueError("Length of encoder_inputs (%d) must be at least that of "
+                     "last bucket (%d)." % (len(encoder_inputs[0]),
+                                            buckets[-1][0]))
   if len(targets) < buckets[-1][1]:
     raise ValueError("Length of targets (%d) must be at least that of last"
                      "bucket (%d)." % (len(targets), buckets[-1][1]))
@@ -481,4 +483,3 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
               softmax_loss_function=softmax_loss_function))
 
   return outputs, losses
-

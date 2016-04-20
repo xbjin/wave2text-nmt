@@ -126,7 +126,9 @@ def create_vocabulary(id_, args):
 
 
 def create_ids(corpus, id_, vocab, args):
-    
+    if args.align:
+        create_ids_with_align(corpus, id_, vocab, args)
+
     filename = '{}.{}'.format(corpus, args.extensions[id_])
     output_filename = '{}.ids{}.{}'.format(corpus, args.vocab_size[id_],
                                            args.extensions[id_])
@@ -321,12 +323,7 @@ def create_lookup_dictionnary(filenames, output_dir):
     with open(ouput_dict, "w+") as output_file:
         for key, value in highest_prob_dict.iteritems():
             output_file.write(key + ' ' + value + '\n')  
-    
-        
-                  
 
-
-           
             
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
@@ -377,10 +374,11 @@ if __name__ == '__main__':
                         'the vocabularies (0 for no limit, '
                         'default: no vocabulary).')
     parser.add_argument('--create-ids', help='create train, test and dev id '
-                                             'files. Vocab size needed', action='store_true')
+                        'files. Vocab size needed', action='store_true')
     parser.add_argument('--threads', type=int, default=16)
     
-    parser.add_argument('--align', help='creates alignements with fast align', action='store_true')
+    parser.add_argument('--align', help='create alignments with fast align',
+                        action='store_true')
 
     args = parser.parse_args()
 
@@ -442,12 +440,12 @@ if __name__ == '__main__':
             logging.info('splitting files')
             split_corpus(filenames, dest_corpora, args.extensions)
                 
-            if(args.align):
+            if args.align:
                 logging.info('creating alignement')  
                 #alignements is only for a pair of language
                 # 1st given is soure, last given is target
                 lang_pair = ['{}.{}'.format(output_train, args.extensions[0]),
-                                 '{}.{}'.format(output_train, args.extensions[-1])]
+                             '{}.{}'.format(output_train, args.extensions[-1])]
                 #align is needed for train only
                 align_file = create_align(lang_pair, args.output_dir) 
                 
@@ -465,10 +463,7 @@ if __name__ == '__main__':
                 logging.info('creating ids')
                 for corpus in [output_train, output_dev, output_test]:
                     for id_ in range(len(args.extensions)):
-                        if(args.align):
-                            create_ids_with_align(corpus, id_, vocabs[id_], args)
-                        else:                            
-                            create_ids(corpus, id_, vocabs[id_], args)
+                        create_ids(corpus, id_, vocabs[id_], args)
 
     finally:
         logging.info('removing temporary files')
