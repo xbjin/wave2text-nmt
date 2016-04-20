@@ -271,7 +271,7 @@ def create_ids_with_align(corpus, id_, vocab, args):
                     if(token==UNK_ID):       
                         pos_source = align_pair.get(j,j+8)#if align not found, make it so we chose UNKnull                        
                         offset = int(pos_source)-int(j)
-                        if abs(offset)<7:           
+                        if abs(offset)<=7:           
                             token = UNKS[7+offset]
                         else:
                             token = UNKS[15] #UNKnull
