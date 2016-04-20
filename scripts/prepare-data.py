@@ -54,13 +54,6 @@ EOS_ID = 2
 UNK_ID = 3
 UNKS = range(3, 19) #14 + 0 + null
 
-
-###alignements var
-FAST_ALIGN_ITER = 5 #iteration by fast align script
-SELECTION_VALUE = 100    #dictionnary selection
-FAST_ALIGN_LOC = "fast_align" #fast align location in scripts/
-
-
 temporary_files = []
 
 
@@ -223,7 +216,7 @@ def split_corpus(filenames, dest_corpora, extensions):
 
 
 
-def create_align(lang_pair, output_dir):
+def create_align(lang_pair, output_dir, args):
 
     src, trg = lang_pair
     tmp_file = os.path.join(output_dir, 'temp_align')   
@@ -240,8 +233,8 @@ def create_align(lang_pair, output_dir):
     ouput_align_file = open(ouput_align_path, 'w+')
     
     
-    fast_align_location = os.path.join(args.scripts,FAST_ALIGN_LOC)
-    _args = shlex.split(fast_align_location+" -i "+tmp_file+" -d -o -v -I "+ str(FAST_ALIGN_ITER))
+    fast_align_location = os.path.join(args.scripts,args.fast_align_loc)
+    _args = shlex.split(fast_align_location+" -i "+tmp_file+" -d -o -v -I "+ str(args.fast_align_iter))
     p = subprocess.Popen(_args, stdout=ouput_align_file, stderr=subprocess.PIPE)
     p.wait()
     ouput_align_file.flush()
@@ -275,7 +268,6 @@ def create_ids_with_align(corpus, id_, vocab, args):
                     if(token==UNK_ID):       
                         pos_source = align_pair.get(j,j+8)#if align not found, make it so we chose UNKnull                        
                         offset = int(pos_source)-int(j)
-                        print(w,offset)
                         if abs(offset)<7:           
                             token = UNKS[7+offset]
                         else:
@@ -286,7 +278,7 @@ def create_ids_with_align(corpus, id_, vocab, args):
         create_ids(corpus, id_, vocab, args)
                 
 
-def create_lookup_dictionnary(filenames, output_dir):
+def create_lookup_dictionnary(filenames, output_dir, args):
  
     src_file, trg_file, align = filenames
     
@@ -305,7 +297,7 @@ def create_lookup_dictionnary(filenames, output_dir):
       
 
     #taking all pair that have more than SELECTION_VALUE occurence                        
-    dict_top = dict( (key, value) for (key, value) in dictionnary.items() if value >= SELECTION_VALUE ) 
+    dict_top = dict( (key, value) for (key, value) in dictionnary.items() if value >= args.dict_val_select) 
     
     #taking most occurence  for a same source word
     highest_prob_dict = {}       
@@ -381,7 +373,14 @@ if __name__ == '__main__':
     parser.add_argument('--threads', type=int, default=16)
     
     parser.add_argument('--align', help='creates alignements with fast align', action='store_true')
-
+    
+    parser.add_argument('--dict_val_select', help='number of hits for a pair to get selected',
+                                            default=100)
+    parser.add_argument('--fast_align_loc', help='Location of fast_align in scripts folder',
+                                            default="fast_align")        
+    parser.add_argument('--fast_align_iter', help='Numver of iteration in fast align learning',
+                                            default=5)              
+      
     args = parser.parse_args()
 
     def fixed_length_arg(name, value, length):
@@ -449,12 +448,12 @@ if __name__ == '__main__':
                 lang_pair = ['{}.{}'.format(output_train, args.extensions[0]),
                                  '{}.{}'.format(output_train, args.extensions[-1])]
                 #align is needed for train only
-                align_file = create_align(lang_pair, args.output_dir) 
+                align_file = create_align(lang_pair, args.output_dir, args) 
                 
                 #now make dictionnary according to alignement
                 logging.info('creating lookup dictionnary')
                 filenames = lang_pair + [align_file]
-                create_lookup_dictionnary(filenames, args.output_dir)       
+                create_lookup_dictionnary(filenames, args.output_dir, args)       
                 
             
         if args.vocab_size:           
