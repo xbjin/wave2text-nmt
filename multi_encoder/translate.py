@@ -85,6 +85,7 @@ tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 tf.app.flags.DEFINE_string("fix_embeddings", None, "List of comma-separated 0/1 values specifying "
                                                    "which embeddings to freeze during training")
 tf.app.flags.DEFINE_boolean("dropout_rate", 0, "Dropout rate applied to the LSTM units")
+tf.app.flags.DEFINE_string("lookup_dict", None, "Dict to replace UNK Tokens")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -283,14 +284,15 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab):
   """
   Translate given sentence with the given seq2seq model and
     return the translation.
-  """
+  """  
+  
   tokenizer = data_utils.no_tokenizer if not FLAGS.tokenize else None
 
   token_ids = [
     data_utils.sentence_to_token_ids(sentence, vocab, tokenizer=tokenizer)
     for sentence, vocab in zip(src_sentences, src_vocab)
   ]
-
+  
   max_len = _buckets[-1][0] - 1
   if any(len(ids_) > max_len for ids_ in token_ids):
     len_ = max(map(len, token_ids))
@@ -317,7 +319,24 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab):
   if data_utils.EOS_ID in outputs:
     outputs = outputs[:outputs.index(data_utils.EOS_ID)]
 
-  return ' '.join(rev_trg_vocab[i] for i in outputs)
+  if FLAGS.lookup_dict:  
+      dict_loc= os.path.join(FLAGS.data_dir, FLAGS.lookup_dict)
+      lookup_dict = dict((line.split()[0], line.split()[1]) for line in open(dict_loc))
+      vocab_align = src_vocab[0] #align language is the first one
+      sentence_align = token_ids[0] #align language is the first one 
+      src_vocab_reverse = {v:k for k, v in vocab_align.items()} #id to word
+    
+      replace = [(i,outputs[i]-10) for i in range(len(outputs)) if outputs[i] in range(3, 18)]
+                          #-3-7 exemple : tok 3 = unk-7, 3-10 = -7  
+      for i,pos in replace:
+          if(pos in range(0,len(sentence_align))):
+              word =src_vocab_reverse.get(sentence_align[i+pos]) 
+              trans = lookup_dict.get(word,18)#if not found then unknull
+              outputs[i] = trans
+          else:
+              outputs[i] = 18 # if alignement out of source sentence then unknull
+
+  return ' '.join(rev_trg_vocab[i] for i in outputs if type(i) is int) #si token unk deja remplace on traduit plus
 
 
 def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
@@ -340,7 +359,6 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
 
   sess = sess or tf.Session()
   model = model or create_model(sess)
-
   train_batch_size = model.batch_size
   model.batch_size = 1  # decode one sentence at a time
 
@@ -348,6 +366,7 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
   src_vocab = [data_utils.initialize_vocabulary(vocab)[0]
                for vocab in FLAGS.src_vocab]
   _, rev_trg_vocab = data_utils.initialize_vocabulary(FLAGS.trg_vocab)
+
 
   # if filenames isn't specified, use default files
   if not filenames:
