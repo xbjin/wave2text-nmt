@@ -383,7 +383,7 @@ def extract_embedding(FLAGS):
     
   vocabs = FLAGS.src_vocab + [FLAGS.trg_vocab]
   
-  FLAGS.embeddings = [None for _ in exts]
+  FLAGS.embeddings = [[None, FLAGS.size, 1] for _ in exts] #embed, size, trainable
 
   if not FLAGS.embedding_prefix:
     return
@@ -397,13 +397,17 @@ def extract_embedding(FLAGS):
     if not os.path.isfile(filename):
       continue
 
+    
     with open(filename) as file_:
       lines = (line.split() for line in file_)
       _, size = next(lines)
       size = int(size)
-
+      if(size != FLAGS.size):
+           sys.exit("Warning, embedding given for lang '{}' is not the same size than new embeddings: {} vs {}".format(
+                                                  ext,size,FLAGS.size))
       embeddings = np.zeros((FLAGS.src_vocab_size, size), dtype="float32")
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
+
 
     vocab, _ = initialize_vocabulary(vocab_path)
 
@@ -414,8 +418,4 @@ def extract_embedding(FLAGS):
         embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                               size)
 
-    # TODO: same name as non-custom embeddings (checkpoint won't load these
-    # embeddings)
-    # sets embedding matrix as initial value
-    FLAGS.embeddings[i] = tf.Variable(embeddings,
-      name="custom_embedding_" + ext, trainable=not fixed)
+    FLAGS.embeddings[i] = [tf.convert_to_tensor(embeddings, dtype=tf.float32), size, not fixed]

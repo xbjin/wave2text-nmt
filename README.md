@@ -25,20 +25,25 @@ model_name
         Lets say src_ext is fr,de then model_name must have at least to name (ex : m1,m2)
 
 
-embedding
+embedding_prefix
 
         Name of the embedding file for the languages (encoder and decoder)
         Lets say you have three src_ext de,fr,en and one trg_ext it with --embedding embed_file, there should exist 
         embed_file.fr, embed_file.de, embed_file.en and embed_file.it. If one of this file doesnt exist, the model initiliaze the 
         embedding matrix for the language as usual.
     
-embedding_train
+fix_embedding
 
-        A list of True or False declaring wether an embedded given in parameters should be trained or not along with the model
+        A list of 0 or 1 declaring wether an embedded given in parameters should be fixed (not trained) or not along with the model
         Lets say src_ext fr,de and trg_ext en and there exists an embed.en we want to train and an embed.de we dont want to train.
-        We do --embedding embed and --embedding_train (None/True/False), False, True. First parameter of embedding_train doesnt matter
+        We do --embedding embed and --fix_embedding (1/0), 1, 0. First parameter of fix_embedding doesnt matter
         because embed.fr doesnt exist, 3rd is for decoder.
-        If embedding parameter is given but not embedding_train, then embeddings are trained by default
+        If embedding_prefix is given but not fix_embedding, then embeddings are trained by default
+
+
+lookup_dict
+	
+	Name of the lookup dictionnary of the unsupervised align. If mentionned, decode_sentence func will try to repace UNK tokens.
 
 
 ## PREPROCESSING FOR UNK WORDS (prepare_data.py)
