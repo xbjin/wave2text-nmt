@@ -75,8 +75,8 @@ tf.app.flags.DEFINE_boolean("verbose", False, "Verbose mode")
 tf.app.flags.DEFINE_string("train_prefix", "train", "Name of the training corpus")
 tf.app.flags.DEFINE_string("dev_prefix", "dev", "Name of the development corpus")
 tf.app.flags.DEFINE_string("embedding_prefix", None, "Prefix of the embedding files")
-tf.app.flags.DEFINE_string("src_ext", "en", "Source file extension(s) (comma-separated)")
-tf.app.flags.DEFINE_string("trg_ext", "fr", "Target file extension")
+tf.app.flags.DEFINE_string("src_ext", "fr", "Source file extension(s) (comma-separated)")
+tf.app.flags.DEFINE_string("trg_ext", "en", "Target file extension")
 
 tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl", "Path to BLEU script")
 tf.app.flags.DEFINE_boolean("pretrain", False, "Toggle pre-training")
@@ -280,7 +280,7 @@ def train():
                evaluate=True)
 
 
-def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup_dict):
+def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup_dict=None):
   """
   Translate given sentence with the given seq2seq model and
     return the translation.
@@ -319,22 +319,23 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup
   if data_utils.EOS_ID in outputs:
     outputs = outputs[:outputs.index(data_utils.EOS_ID)]
 
-  if FLAGS.lookup_dict:  
-      vocab_align = src_vocab[0] #align language is the first one
-      sentence_align = token_ids[0] #align language is the first one 
-      src_vocab_reverse = {v:k for k, v in vocab_align.items()} #id to word
-    
-      replace = [(i,outputs[i]-10) for i in range(len(outputs)) if outputs[i] in range(3, 18)]
-                          #-3-7 exemple : tok 3 = unk-7, 3-10 = -7  
-      for i,pos in replace:
-          if(pos in range(0,len(sentence_align))):
-              word =src_vocab_reverse.get(sentence_align[i+pos]) 
-              trans = lookup_dict.get(word,18)#if not found then unknull
-              outputs[i] = trans
-          else:
-              outputs[i] = 18 # if alignement out of source sentence then unknull
+  text_output = [rev_trg_vocab[i] for i in outputs]
 
-  return ' '.join(rev_trg_vocab[i] for i in outputs if type(i) is int) #si token unk deja remplace on traduit plus
+  if lookup_dict is not None:
+    src_tokens = tokenizer(src_sentences[0])
+    for trg_pos, trg_id in enumerate(outputs):
+      if not 4 <= trg_id <= 19:  # UNK symbols range
+        continue
+
+      src_pos = trg_pos + trg_id - 11   # corresponding source position (symbol 4 is UNK-7, symbol 19 is UNK+7)
+      if 0 <= src_pos < len(src_tokens):
+        src_word = src_tokens[src_pos]
+        # look for a translation, otherwise take the source word itself (e.g. name or number)
+        text_output[trg_pos] = lookup_dict.get(src_word, src_word)
+      else:   # aligned position is outside of source sentence, nothing we can do.
+        text_output[trg_pos] = '_UNK'
+
+  return ' '.join(text_output)
 
 
 def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
@@ -376,9 +377,10 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
 
   #lookup dict align
   lookup_dict = None
-  if(FLAGS.lookup_dict):
-    dict_loc= os.path.join(FLAGS.data_dir, FLAGS.lookup_dict)
-    lookup_dict = dict((line.split()[0], line.split()[1]) for line in open(dict_loc))
+  if FLAGS.lookup_dict:
+    dict_filename = os.path.join(FLAGS.data_dir, FLAGS.lookup_dict)
+    with open(dict_filename) as dict_file:
+      lookup_dict = dict((line.split()[0], line.split()[1]) for line in dict_file)
     
   with utils.open_files(filenames) as files:
     references = None

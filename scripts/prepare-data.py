@@ -39,7 +39,7 @@ _PAD = "_PAD"
 _GO = "_GO"
 _EOS = "_EOS"
 
-_UNKS = ['_UNK'] + ['_UNK{}'.format(i) for i in range(-7, 8)]
+_UNKS = ['_UNK'] + ['_UNK{0:+d}'.format(i) for i in range(-7, 8)]  # _UNK-7, ..., _UNK+0, ..., _UNK+7
 _UNK = _UNKS[0]
 
 _START_VOCAB_BASIC = [_PAD, _GO, _EOS, _UNK]
@@ -354,12 +354,12 @@ if __name__ == '__main__':
     parser.add_argument('--align', help='align target unknown words with the '
                         'source using special UNK IDs', action='store_true')
     parser.add_argument('--dict-threshold', help='min count of a word pair '
-                        'in the dictionary', default=100)
+                        'in the dictionary', type=int, default=100)
     parser.add_argument('--fast-align-bin', help='name of the fast_align '
                         'binary (relative to script directory)',
                         default='fast_align')
     parser.add_argument('--fast-align-iter', help='number of iterations in '
-                        'fast_align', default=5)
+                        'fast_align', type=int, default=5)
 
     args = parser.parse_args()
 
@@ -374,6 +374,9 @@ if __name__ == '__main__':
             return value
         else:
             sys.exit('wrong number of values for parameter {}'.format(name))
+
+    if args.create_ids and args.vocab_size is None:
+        args.vocab_size = 30000
 
     n = len(args.extensions)
     args.min = fixed_length_arg('--min', args.min, n)
@@ -435,10 +438,6 @@ if __name__ == '__main__':
             # use the newly created alignment to build a dictionary
             logging.info('creating lookup dictionary')
             create_lookup_dictionary(filenames + [align_file], args)
-                
-
-        if args.create_ids and args.vocab_size is None:
-            args.vocab_size = 30000
 
         vocabs = None
         if args.vocab_size is not None:
