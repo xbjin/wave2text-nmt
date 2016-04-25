@@ -363,6 +363,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
   with variable_scope.variable_scope(scope or "many2one_rnn_seq2seq"):
     for i, values in enumerate(zip(encoder_inputs, num_encoder_symbols,
                                    embedding)):
+
       encoder_inputs_, num_encoder_symbols_, embedding_ = values
       initializer_, embedding_size_, trainable_ = embedding_
       id_ = i if encoder_num is None else encoder_num[i]

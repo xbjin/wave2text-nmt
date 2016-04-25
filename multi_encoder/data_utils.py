@@ -401,6 +401,7 @@ def extract_embedding(FLAGS):
     if not os.path.isfile(filename):
       continue
 
+    
     with open(filename) as file_:
       lines = (line.split() for line in file_)
       _, size = next(lines)
@@ -410,6 +411,7 @@ def extract_embedding(FLAGS):
                                                   ext,size,FLAGS.size))
       embeddings = np.zeros((FLAGS.src_vocab_size, size), dtype="float32")
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
+
 
     vocab, _ = initialize_vocabulary(vocab_path)
 
