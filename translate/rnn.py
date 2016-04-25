@@ -29,7 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 
-from multi_encoder import rnn_cell
+from translate import rnn_cell
 
 
 def rnn(cell, inputs, initial_state=None, dtype=None,

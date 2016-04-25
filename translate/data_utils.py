@@ -24,6 +24,13 @@ import re
 import tarfile
 import subprocess
 import tempfile
+import numpy as np
+import tensorflow as tf
+import math
+import logging
+
+import sys
+
 
 from collections import namedtuple
 from six.moves import urllib
@@ -54,14 +61,14 @@ _WMT_ENFR_DEV_URL = "http://www.statmt.org/wmt15/dev-v2.tgz"
 def maybe_download(directory, filename, url):
   """Download filename from url unless it's already in directory."""
   if not os.path.exists(directory):
-    print("Creating directory %s" % directory)
+    logging.info("Creating directory %s" % directory)
     os.mkdir(directory)
   filepath = os.path.join(directory, filename)
   if not os.path.exists(filepath):
-    print("Downloading %s to %s" % (url, filepath))
+    logging.info("Downloading %s to %s" % (url, filepath))
     filepath, _ = urllib.request.urlretrieve(url, filepath)
     statinfo = os.stat(filepath)
-    print("Succesfully downloaded", filename, statinfo.st_size, "bytes")
+    logging.info("Succesfully downloaded", filename, statinfo.st_size, "bytes")
   return filepath
 
 
@@ -69,24 +76,22 @@ def gunzip_file(gz_path, new_path):
   """Unzips from gz_path into new_path."""
   print("Unpacking %s to %s" % (gz_path, new_path))
   with gzip.open(gz_path, "rb") as gz_file:
-    with open(new_path, "wb") as new_file:
+    with open(new_path, "w") as new_file:
       for line in gz_file:
         new_file.write(line)
 
 
 def get_wmt_enfr_train_set(directory):
   """Download the WMT en-fr training corpus to directory unless it's there."""
-  download_path = os.path.join(directory, "giga-fren.release2")
-  train_path = os.path.join(directory, "train")
-
+  train_path = os.path.join(directory, "giga-fren.release2")
   if not (gfile.Exists(train_path +".fr") and gfile.Exists(train_path +".en")):
     corpus_file = maybe_download(directory, "training-giga-fren.tar",
                                  _WMT_ENFR_TRAIN_URL)
     print("Extracting tar file %s" % corpus_file)
     with tarfile.open(corpus_file, "r") as corpus_tar:
       corpus_tar.extractall(directory)
-    gunzip_file(download_path + ".fr.gz", train_path + ".fr")
-    gunzip_file(download_path + ".en.gz", train_path + ".en")
+    gunzip_file(train_path + ".fr.gz", train_path + ".fr")
+    gunzip_file(train_path + ".en.gz", train_path + ".en")
   return train_path
 
 
@@ -138,14 +143,15 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
     normalize_digits: Boolean; if true, all digits are replaced by 0s.
   """
   if not gfile.Exists(vocabulary_path):
-    print("Creating vocabulary %s from data %s" % (vocabulary_path, data_path))
+    logging.info("Creating vocabulary %s from data %s" %
+                 (vocabulary_path, data_path))
     vocab = {}
     with gfile.GFile(data_path, mode="r") as f:
       counter = 0
       for line in f:
         counter += 1
         if counter % 100000 == 0:
-          print("  processing line %d" % counter)
+          logging.info("  processing line %d" % counter)
         tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
         for w in tokens:
           word = re.sub(_DIGIT_RE, "0", w) if normalize_digits else w
@@ -236,7 +242,7 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
     normalize_digits: Boolean; if true, all digits are replaced by 0s.
   """
   if not gfile.Exists(target_path):
-    print("Tokenizing data in %s" % data_path)
+    logging.info("Tokenizing data in %s" % data_path)
     vocab, _ = initialize_vocabulary(vocabulary_path)
     with gfile.GFile(data_path, mode="r") as data_file:
       with gfile.GFile(target_path, mode="w") as tokens_file:
@@ -244,24 +250,19 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
         for line in data_file:
           counter += 1
           if counter % 100000 == 0:
-            print("  tokenizing line %d" % counter)
+            logging.info("  tokenizing line %d" % counter)
           token_ids = sentence_to_token_ids(line, vocab, tokenizer,
                                             normalize_digits)
           tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
 
-def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size,
-                 download=True, tokenize=True):
+def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
   """Get WMT data into data_dir, create vocabularies and tokenize data.
 
   Args:
     data_dir: directory in which the data sets will be stored.
     en_vocabulary_size: size of the English vocabulary to create and use.
     fr_vocabulary_size: size of the French vocabulary to create and use.
-    download: if True, download corpus from the web, otherwise assume that it
-    is already there.
-    tokenize: if True, tokenize data on the fly, otherwise assume that
-    data is already tokenized.
 
   Returns:
     A tuple of 6 elements:
@@ -272,42 +273,27 @@ def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size,
       (5) path to the English vocabulary file,
       (6) path to the French vocabulary file.
   """
-  if tokenize:
-    tokenizer = None
-  else:
-    tokenizer = no_tokenizer
-
   # Get wmt data to the specified directory.
-  if download:
-    train_path = get_wmt_enfr_train_set(data_dir)
-    dev_path = get_wmt_enfr_dev_set(data_dir)
-  else:
-    train_path = os.path.join(data_dir, 'train')
-    dev_path = os.path.join(data_dir, 'dev')
+  train_path = get_wmt_enfr_train_set(data_dir)
+  dev_path = get_wmt_enfr_dev_set(data_dir)
 
-  # Create vocabularies of the appropriate sizes.
+  # Create vocabularies of the appropriate sizes. (vocab40000)
   fr_vocab_path = os.path.join(data_dir, "vocab%d.fr" % fr_vocabulary_size)
   en_vocab_path = os.path.join(data_dir, "vocab%d.en" % en_vocabulary_size)
-  create_vocabulary(fr_vocab_path, train_path + ".fr", fr_vocabulary_size,
-                    tokenizer=tokenizer)
-  create_vocabulary(en_vocab_path, train_path + ".en", en_vocabulary_size,
-                    tokenizer=tokenizer)
+  create_vocabulary(fr_vocab_path, train_path + ".fr", fr_vocabulary_size)
+  create_vocabulary(en_vocab_path, train_path + ".en", en_vocabulary_size)
 
-  # Create token ids for the training data.
+  # Create token ids for the training data. (giga-fren.release2.ids40000)
   fr_train_ids_path = train_path + (".ids%d.fr" % fr_vocabulary_size)
   en_train_ids_path = train_path + (".ids%d.en" % en_vocabulary_size)
-  data_to_token_ids(train_path + ".fr", fr_train_ids_path, fr_vocab_path,
-                    tokenizer=tokenizer)
-  data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path,
-                    tokenizer=tokenizer)
+  data_to_token_ids(train_path + ".fr", fr_train_ids_path, fr_vocab_path)
+  data_to_token_ids(train_path + ".en", en_train_ids_path, en_vocab_path)
 
-  # Create token ids for the development data.
+  # Create token ids for the development data. (newstest2013.ids40000)
   fr_dev_ids_path = dev_path + (".ids%d.fr" % fr_vocabulary_size)
   en_dev_ids_path = dev_path + (".ids%d.en" % en_vocabulary_size)
-  data_to_token_ids(dev_path + ".fr", fr_dev_ids_path, fr_vocab_path,
-                    tokenizer=tokenizer)
-  data_to_token_ids(dev_path + ".en", en_dev_ids_path, en_vocab_path,
-                    tokenizer=tokenizer)
+  data_to_token_ids(dev_path + ".fr", fr_dev_ids_path, fr_vocab_path)
+  data_to_token_ids(dev_path + ".en", en_dev_ids_path, en_vocab_path)
 
   return (en_train_ids_path, fr_train_ids_path,
           en_dev_ids_path, fr_dev_ids_path,
@@ -317,32 +303,41 @@ def prepare_data(data_dir, en_vocabulary_size, fr_vocabulary_size,
 def extract_filenames(FLAGS):
   """ Add filenames to the FLAGS namespace """
 
-  FLAGS.train_path = os.path.join(FLAGS.data_dir, "train")
-  FLAGS.src_train = "{}.{}".format(FLAGS.train_path, FLAGS.src_extension)
-  FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, FLAGS.trg_extension)
+  src_ext = FLAGS.src_ext.split(',')
+  trg_ext = FLAGS.trg_ext
 
-  FLAGS.src_train_ids = "{}.ids{}.{}".format(
-    FLAGS.train_path, FLAGS.src_vocab_size, FLAGS.src_extension)
-  FLAGS.trg_train_ids = "{}.ids{}.{}".format(
-    FLAGS.train_path, FLAGS.trg_vocab_size, FLAGS.trg_extension)
+  FLAGS.encoder_count = encoder_count = len(src_ext)
+  encoder_ids = range(encoder_count) if FLAGS.encoder_num is None else map(int, FLAGS.encoder_num.split(','))
+  FLAGS.encoder_ids = encoder_ids
 
-  FLAGS.dev_path = os.path.join(FLAGS.data_dir, "dev")
-  FLAGS.src_dev = "{}.{}".format(FLAGS.dev_path, FLAGS.src_extension)
-  FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, FLAGS.trg_extension)
+  FLAGS.train_path = train_path = os.path.join(FLAGS.data_dir, FLAGS.train_prefix)
+  FLAGS.src_train = ["{}.{}".format(FLAGS.train_path, ext) for ext in src_ext]
+  FLAGS.src_train_ids = ["{}.ids{}.{}".format(FLAGS.train_path, FLAGS.src_vocab_size, ext) for ext in src_ext]
 
-  FLAGS.src_dev_ids = "{}.ids{}.{}".format(
-    FLAGS.dev_path, FLAGS.src_vocab_size, FLAGS.src_extension)
+  if FLAGS.multi_task:   # one target file for each encoder
+    FLAGS.trg_train = ["{}.{}.{}".format(train_path, encoder_id, trg_ext) for encoder_id in encoder_ids]
+    FLAGS.trg_train_ids = ["{}.ids{}.{}.{}".format(train_path, FLAGS.trg_vocab_size, encoder_id, trg_ext)
+                           for encoder_id in encoder_ids]
+  else:
+    FLAGS.trg_train = "{}.{}".format(train_path, trg_ext)
+    FLAGS.trg_train_ids = "{}.ids{}.{}".format(train_path, FLAGS.trg_vocab_size, trg_ext)
+
+  FLAGS.dev_path = os.path.join(FLAGS.data_dir, FLAGS.dev_prefix)
+  FLAGS.src_dev = ["{}.{}".format(FLAGS.dev_path, ext) for ext in src_ext]
+  FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, trg_ext)
+
+  FLAGS.src_dev_ids = ["{}.ids{}.{}".format(FLAGS.dev_path, FLAGS.src_vocab_size, ext) for ext in src_ext]
   FLAGS.trg_dev_ids = "{}.ids{}.{}".format(
-    FLAGS.dev_path, FLAGS.trg_vocab_size, FLAGS.trg_extension)
+    FLAGS.dev_path, FLAGS.trg_vocab_size, trg_ext)
 
-  FLAGS.src_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
-    FLAGS.src_vocab_size, FLAGS.src_extension))
+  FLAGS.src_vocab = [os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
+    FLAGS.src_vocab_size, ext)) for ext in src_ext]
 
   FLAGS.trg_vocab = os.path.join(FLAGS.data_dir, "vocab{}.{}".format(
-    FLAGS.trg_vocab_size, FLAGS.trg_extension))
+    FLAGS.trg_vocab_size, trg_ext))
 
 
-def prepare_data_bis(FLAGS):
+def prepare_data(FLAGS):
   """ Create vocabularies and tokenize data. """
 
   tokenizer = no_tokenizer if not FLAGS.tokenize else None
@@ -351,19 +346,16 @@ def prepare_data_bis(FLAGS):
   #  get_wmt_enfr_train_set(FLAGS.data_dir)
   #  get_wmt_enfr_dev_set(FLAGS.data_dir)
 
-  create_vocabulary(FLAGS.src_vocab, FLAGS.src_train, FLAGS.src_vocab_size,
-                    tokenizer=tokenizer)
+  for vocab, train, train_ids, dev, dev_ids in zip(FLAGS.src_vocab,
+      FLAGS.src_train, FLAGS.src_train_ids, FLAGS.src_dev, FLAGS.src_dev_ids):
+    create_vocabulary(vocab, train, FLAGS.src_vocab_size, tokenizer=tokenizer)
+    data_to_token_ids(train, train_ids, vocab, tokenizer=tokenizer)
+    data_to_token_ids(dev, dev_ids, vocab, tokenizer=tokenizer)
+
+
   create_vocabulary(FLAGS.trg_vocab, FLAGS.trg_train, FLAGS.trg_vocab_size,
                     tokenizer=tokenizer)
-
-  # Create token ids for the training data.
-  data_to_token_ids(FLAGS.src_train, FLAGS.src_train_ids, FLAGS.src_vocab,
-                    tokenizer=tokenizer)
   data_to_token_ids(FLAGS.trg_train, FLAGS.trg_train_ids, FLAGS.trg_vocab,
-                    tokenizer=tokenizer)
-
-  # Create token ids for the development data.
-  data_to_token_ids(FLAGS.src_dev, FLAGS.src_dev_ids, FLAGS.src_vocab,
                     tokenizer=tokenizer)
   data_to_token_ids(FLAGS.trg_dev, FLAGS.trg_dev_ids, FLAGS.trg_vocab,
                     tokenizer=tokenizer)
@@ -374,8 +366,8 @@ def bleu_score(bleu_script, hypotheses, references):
     for ref in references:
       f.write(ref + '\n')
 
-  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                       stderr=open('/dev/null', 'w'))
+  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE,
+                       stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
 
   output, _ = p.communicate('\n'.join(hypotheses))
 
@@ -383,3 +375,51 @@ def bleu_score(bleu_script, hypotheses, references):
   values = [float(m.group(i)) for i in range(1, 4)]
 
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
+
+
+def extract_embedding(FLAGS):
+  exts = FLAGS.src_ext.split(',') + [FLAGS.trg_ext]
+
+  if FLAGS.fix_embeddings:
+    fixed_embeddings = map(int, FLAGS.fix_embeddings.split(','))
+  else:
+    fixed_embeddings = [False for _ in exts]
+    
+  vocabs = FLAGS.src_vocab + [FLAGS.trg_vocab]
+  
+  FLAGS.embeddings = [[None, FLAGS.size, 1] for _ in exts] #embed, size, trainable
+
+  if not FLAGS.embedding_prefix:
+    return
+
+  for i, (ext, vocab_path, fixed) in enumerate(zip(exts, vocabs,
+                                                   fixed_embeddings)):
+    filename = os.path.join(FLAGS.data_dir, "{}.{}".format(
+      FLAGS.embedding_prefix, ext))
+
+    # if embedding file is not given for this language, skip
+    if not os.path.isfile(filename):
+      continue
+
+    
+    with open(filename) as file_:
+      lines = (line.split() for line in file_)
+      _, size = next(lines)
+      size = int(size)
+      if(size != FLAGS.size):
+           sys.exit("Warning, embedding given for lang '{}' is not the same size than new embeddings: {} vs {}".format(
+                                                  ext,size,FLAGS.size))
+      embeddings = np.zeros((FLAGS.src_vocab_size, size), dtype="float32")
+      d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
+
+
+    vocab, _ = initialize_vocabulary(vocab_path)
+
+    for word, index in vocab.iteritems():
+      if word in d:
+        embeddings[index] = d[word]
+      else:
+        embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
+                                              size)
+
+    FLAGS.embeddings[i] = [tf.convert_to_tensor(embeddings, dtype=tf.float32), size, not fixed]

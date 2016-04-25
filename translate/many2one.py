@@ -16,8 +16,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 
-from multi_encoder import rnn_cell
-from multi_encoder import rnn
+from translate import rnn_cell
+from translate import rnn
 
 import sys
 
