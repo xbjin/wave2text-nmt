@@ -1,4 +1,4 @@
-from translate.translate import main
+from translate import main
 
 import tensorflow as tf
 

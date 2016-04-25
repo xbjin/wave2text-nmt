@@ -353,12 +353,9 @@ def prepare_data(FLAGS):
     data_to_token_ids(dev, dev_ids, vocab, tokenizer=tokenizer)
 
 
-  create_vocabulary(FLAGS.trg_vocab, FLAGS.trg_train, FLAGS.trg_vocab_size,
-                    tokenizer=tokenizer)
-  data_to_token_ids(FLAGS.trg_train, FLAGS.trg_train_ids, FLAGS.trg_vocab,
-                    tokenizer=tokenizer)
-  data_to_token_ids(FLAGS.trg_dev, FLAGS.trg_dev_ids, FLAGS.trg_vocab,
-                    tokenizer=tokenizer)
+  create_vocabulary(FLAGS.trg_vocab, FLAGS.trg_train, FLAGS.trg_vocab_size, tokenizer=tokenizer)
+  data_to_token_ids(FLAGS.trg_train, FLAGS.trg_train_ids, FLAGS.trg_vocab, tokenizer=tokenizer)
+  data_to_token_ids(FLAGS.trg_dev, FLAGS.trg_dev_ids, FLAGS.trg_vocab, tokenizer=tokenizer)
 
 
 def bleu_score(bleu_script, hypotheses, references):
@@ -392,26 +389,22 @@ def extract_embedding(FLAGS):
   if not FLAGS.embedding_prefix:
     return
 
-  for i, (ext, vocab_path, fixed) in enumerate(zip(exts, vocabs,
-                                                   fixed_embeddings)):
-    filename = os.path.join(FLAGS.data_dir, "{}.{}".format(
-      FLAGS.embedding_prefix, ext))
+  for i, (ext, vocab_path, fixed) in enumerate(zip(exts, vocabs, fixed_embeddings)):
+    filename = os.path.join(FLAGS.data_dir, "{}.{}".format(FLAGS.embedding_prefix, ext))
 
     # if embedding file is not given for this language, skip
     if not os.path.isfile(filename):
       continue
 
-    
     with open(filename) as file_:
       lines = (line.split() for line in file_)
       _, size = next(lines)
       size = int(size)
-      if(size != FLAGS.size):
-           sys.exit("Warning, embedding given for lang '{}' is not the same size than new embeddings: {} vs {}".format(
-                                                  ext,size,FLAGS.size))
+      if size != FLAGS.size:
+        sys.exit("Warning, embedding given for lang '{}' is not the same size than new embeddings: {} vs {}".format(
+                 ext, size, FLAGS.size))
       embeddings = np.zeros((FLAGS.src_vocab_size, size), dtype="float32")
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
-
 
     vocab, _ = initialize_vocabulary(vocab_path)
 
@@ -419,7 +412,6 @@ def extract_embedding(FLAGS):
       if word in d:
         embeddings[index] = d[word]
       else:
-        embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
-                                              size)
+        embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
 
     FLAGS.embeddings[i] = [tf.convert_to_tensor(embeddings, dtype=tf.float32), size, not fixed]

@@ -170,6 +170,8 @@ def create_model(session, reuse=None, model_name=None, initialize=True,
 
 
 def train():
+  """ Choo-Choo! """
+
   # We assume that data has been prepared with scripts/prepare-data.py
   # logging.info("Preparing data in {}".format(FLAGS.data_dir))
   # data_utils.prepare_data(FLAGS)
