@@ -302,27 +302,31 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size):
 
 def extract_filenames(FLAGS):
   """ Add filenames to the FLAGS namespace """
+
   src_ext = FLAGS.src_ext.split(',')
   trg_ext = FLAGS.trg_ext
 
-  FLAGS.train_path = os.path.join(FLAGS.data_dir, FLAGS.train_prefix)
+  FLAGS.encoder_count = encoder_count = len(src_ext)
+  encoder_ids = range(encoder_count) if FLAGS.encoder_num is None else map(int, FLAGS.encoder_num.split(','))
+  FLAGS.encoder_ids = encoder_ids
 
+  FLAGS.train_path = train_path = os.path.join(FLAGS.data_dir, FLAGS.train_prefix)
   FLAGS.src_train = ["{}.{}".format(FLAGS.train_path, ext) for ext in src_ext]
-  FLAGS.trg_train = "{}.{}".format(FLAGS.train_path, trg_ext)
+  FLAGS.src_train_ids = ["{}.ids{}.{}".format(FLAGS.train_path, FLAGS.src_vocab_size, ext) for ext in src_ext]
 
-  FLAGS.src_train_ids = [
-    "{}.ids{}.{}".format(FLAGS.train_path, FLAGS.src_vocab_size, ext)
-    for ext in src_ext]
-  FLAGS.trg_train_ids = "{}.ids{}.{}".format(
-    FLAGS.train_path, FLAGS.trg_vocab_size, trg_ext)
+  if FLAGS.multi_task:   # one target file for each encoder
+    FLAGS.trg_train = ["{}.{}.{}".format(train_path, encoder_id, trg_ext) for encoder_id in encoder_ids]
+    FLAGS.trg_train_ids = ["{}.ids{}.{}.{}".format(train_path, FLAGS.trg_vocab_size, encoder_id, trg_ext)
+                           for encoder_id in encoder_ids]
+  else:
+    FLAGS.trg_train = "{}.{}".format(train_path, trg_ext)
+    FLAGS.trg_train_ids = "{}.ids{}.{}".format(train_path, FLAGS.trg_vocab_size, trg_ext)
 
   FLAGS.dev_path = os.path.join(FLAGS.data_dir, FLAGS.dev_prefix)
   FLAGS.src_dev = ["{}.{}".format(FLAGS.dev_path, ext) for ext in src_ext]
   FLAGS.trg_dev = "{}.{}".format(FLAGS.dev_path, trg_ext)
 
-  FLAGS.src_dev_ids = [
-    "{}.ids{}.{}".format(FLAGS.dev_path, FLAGS.src_vocab_size, ext)
-    for ext in src_ext]
+  FLAGS.src_dev_ids = ["{}.ids{}.{}".format(FLAGS.dev_path, FLAGS.src_vocab_size, ext) for ext in src_ext]
   FLAGS.trg_dev_ids = "{}.ids{}.{}".format(
     FLAGS.dev_path, FLAGS.trg_vocab_size, trg_ext)
 
@@ -383,7 +387,7 @@ def extract_embedding(FLAGS):
     
   vocabs = FLAGS.src_vocab + [FLAGS.trg_vocab]
   
-  FLAGS.embeddings = [None for _ in exts]
+  FLAGS.embeddings = [[None, FLAGS.size, 1] for _ in exts] #embed, size, trainable
 
   if not FLAGS.embedding_prefix:
     return
@@ -401,7 +405,9 @@ def extract_embedding(FLAGS):
       lines = (line.split() for line in file_)
       _, size = next(lines)
       size = int(size)
-
+      if(size != FLAGS.size):
+           sys.exit("Warning, embedding given for lang '{}' is not the same size than new embeddings: {} vs {}".format(
+                                                  ext,size,FLAGS.size))
       embeddings = np.zeros((FLAGS.src_vocab_size, size), dtype="float32")
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
 
@@ -414,8 +420,4 @@ def extract_embedding(FLAGS):
         embeddings[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                               size)
 
-    # TODO: same name as non-custom embeddings (checkpoint won't load these
-    # embeddings)
-    # sets embedding matrix as initial value
-    FLAGS.embeddings[i] = tf.Variable(embeddings,
-      name="custom_embedding_" + ext, trainable=not fixed)
+    FLAGS.embeddings[i] = [tf.convert_to_tensor(embeddings, dtype=tf.float32), size, not fixed]

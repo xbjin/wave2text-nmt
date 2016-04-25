@@ -29,6 +29,7 @@ from multi_encoder import many2one
 from multi_encoder import data_utils
 
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import init_ops
 
 
 class Seq2SeqModel(object):
@@ -84,11 +85,13 @@ class Seq2SeqModel(object):
          variable_scope.get_variable_scope(), reuse=reuse):
       # if `model_name` is specified, those parameters are specific to the
       # model.
-      self.learning_rate = tf.Variable(float(learning_rate), trainable=False,
-                                       name='learning_rate')
-      with tf.device("/cpu:0"):  # cannot put ints on GPU
-        self.global_step = tf.Variable(0, trainable=False,
-                                       name='global_step')
+      #self.learning_rate = tf.Variable(float(learning_rate), trainable=False, name='learning_rate')
+      # learning rate is shared accross models
+      initializer = init_ops.constant_initializer(learning_rate, dtype=tf.float32)
+      self.learning_rate = variable_scope.get_variable('learning_rate', (), initializer=initializer, trainable=False)
+      with tf.device('/cpu:0'):  # cannot put ints on GPU
+        # one for each model, couln't figure out how to share non-float variables
+        self.global_step = tf.Variable(0, trainable=False, name='global_step')
 
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)

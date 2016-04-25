@@ -238,8 +238,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
         with variable_scope.variable_scope("loop_function", reuse=True):
           inp = array_ops.stop_gradient(loop_function(prev, i))
       # Merge input and previous attentions into one vector of the right size.
-
-      x = rnn_cell.linear([inp] + attns, cell.input_size, True)
+      input_size = inp.get_shape().with_rank(2)[1]
+      if input_size.value is None:
+        raise ValueError("Could not infer input size from input: %s" % inp.name)
+      x = rnn_cell.linear([inp] + attns, input_size, True)
       # Run the RNN.
       cell_output, state = cell(x, state)
       # Run the attention mechanism.
@@ -317,9 +319,15 @@ def embedding_attention_decoder(decoder_inputs, initial_state, attention_states,
 
   with variable_scope.variable_scope(scope or "embedding_attention_decoder"):
     with ops.device("/cpu:0"):
-      if(not embedding):
+      initializer_, embedding_size_, trainable_ = embedding
+      if(not initializer_):
           embedding = variable_scope.get_variable("embedding",
-                                              [num_symbols, cell.input_size])
+                                              [num_symbols, embedding_size_])
+      else:
+          embedding = variable_scope.get_variable("embedding",
+                                                  None,
+                                                  initializer=initializer_,
+                                                  trainable=trainable_)
 
     def extract_argmax_and_embed(prev, _):
       """Loop_function that extracts the symbol from prev and embeds it."""
@@ -356,10 +364,15 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
     for i, values in enumerate(zip(encoder_inputs, num_encoder_symbols,
                                    embedding)):
       encoder_inputs_, num_encoder_symbols_, embedding_ = values
+      initializer_, embedding_size_, trainable_ = embedding_
       id_ = i if encoder_num is None else encoder_num[i]
       with variable_scope.variable_scope("many2one_encoder_{}".format(id_)):
-        encoder_cell = rnn_cell.EmbeddingWrapper(cell, num_encoder_symbols_,
-                                                 embedding_)
+        encoder_cell = rnn_cell.EmbeddingWrapper(cell,
+                                                 embedding_classes = num_encoder_symbols_,
+                                                 embedding_size = embedding_size_,
+                                                 initializer = initializer_,
+                                                 trainable = trainable_
+                                                 )
         encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell,
                                                     encoder_inputs_,
                                                     dtype=dtype)
