@@ -76,13 +76,13 @@ def call_prepare_data(args):
         else:
             corpus_dict[name].append(ext)
 
-    
-    data_dir = os.path.join(args.output_dir,(args.corpus+'_'+args.corpus_type+'_')+'_'.join(args.extensions))
+    args.data_folder = (args.corpus+'_'+args.corpus_type+'_')+'_'.join(args.extensions)
+    args.data_dir = os.path.join(args.output_dir, args.data_folder)
        
     for key, value in corpus_dict.iteritems():
 
         #base
-        args_ = [args.python, 'scripts/prepare-data.py', key, data_dir, 
+        args_ = [args.python, 'scripts/prepare-data.py', key, args.data_dir, 
                   '--dev-size', '0', '--test-size', '0']
         
         #insert languages
@@ -111,7 +111,52 @@ def call_prepare_data(args):
         subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
  
 
+def call_translate(args):
 
+    args.model_dir = os.path.join(args.train_dir, args.data_folder)
+    if not os.path.isdir(args.model_dir):
+        os.makedirs(args.model_dir)  
+        
+        
+    #base
+    args_ = [args.python, '-m', 'translate.translate', '--data_dir', args.data_dir,
+             '--train_dir', args.model_dir]  
+             
+    #insert translate_type
+    args_[3:1] = [args.translate_type]  
+
+    #insert num_layers
+    if(args.num_layers):
+        args_[len(args_):1] = ['--num_layers', args.num_layers]   
+
+    #insert steps_per_checkpoint
+    if(args.steps_per_checkpoint):
+        args_[len(args_):1] = ['--steps_per_checkpoint', args.steps_per_checkpoint]   
+
+    #insert model_name
+    if(args.model_name):
+        args_[len(args_):1] = ['--model_name', args.model_name]  
+ 
+    #insert encoder_num
+    if(args.encoder_num):
+        args_[len(args_):1] = ['--encoder_num', args.encoder_num]    
+        
+     #insert embedding_prefix
+    if(args.embedding_prefix):
+        args_[len(args_):1] = ['--embedding_prefix', args.embedding_prefix]         
+
+     #insert embedding_prefix
+    if(args.fix_embeddings):
+        args_[len(args_):1] = ['--fix_embeddings', args.fix_embeddings]
+
+    #insert lookup_dict
+    if(args.align):
+        args_[len(args_):1] = ['--lookup_dict', os.path.join(args.data_dir,"lookup_dict")]        
+        
+        
+    print(args_)           
+    #subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+   
     
 if __name__ == '__main__':
     
@@ -143,12 +188,29 @@ if __name__ == '__main__':
                         'binary (relative to script directory)')  #if none, default fast_align
     parser.add_argument('--fast-align-iter', help='number of iterations in '
                         'fast_align', type=str) #if none, default 5
+                        
+    #param for translate.py
+    parser.add_argument('--translate-type', help='train or pretrain',
+                        choices=['train', 'pretrain'])
+    parser.add_argument('--train-dir', help='directory where the files will be copied', 
+                        default='model/') 
+    parser.add_argument('--size', help='Size of each layer')  #if none, default 1024                       
+    parser.add_argument('--num_layers', help='Number of layers in the model')  #if none, default 1                       
+    parser.add_argument('--steps_per_checkpoint', help='How many training steps to do per checkpoint')  #if none, default 200                       
+    parser.add_argument('--model_name', help='Name of the model')                      
+    parser.add_argument('--encoder_num', help='List of comma-separated encoder ids to include in the model '
+                                                '(useful for pre-training), same size as src_ext')                 
+    parser.add_argument('--embedding_prefix', help='Prefix of the embedding files')  
+    parser.add_argument('--fix_embeddings', help='List of comma-separated 0/1 values specifying '
+                                                   'which embeddings to freeze during training')
+  
 
-                      
+   
     args = parser.parse_args()
     
     args.url_corpus = eval(args.corpus + "_" + args.corpus_type)
 
     fetch_corpus(args) 
     call_prepare_data(args)
-                             
+    if(args.translate_type):
+        call_translate(args)                             
