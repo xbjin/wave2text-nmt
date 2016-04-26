@@ -65,8 +65,6 @@ def fetch_corpus(args, unzipped=False):
     
 def call_prepare_data(args):
    
-   # scripts/prepare-data.py scripts/news en fr scripts/output_dir --create-ids --vocab-size 40000 --align
-
     #key is filename , value is list of extension with this filename
     #europarl-v7.fr-en : [en,fr]    
     corpus_dict = {}
@@ -78,12 +76,37 @@ def call_prepare_data(args):
         else:
             corpus_dict[name].append(ext)
 
+    
+    data_dir = os.path.join(args.output_dir,(args.corpus+'_'+args.corpus_type+'_')+'_'.join(args.extensions))
+       
     for key, value in corpus_dict.iteritems():
 
-        args_ = [args.python, 'scripts/prepare-data.py', str(key), 'scripts/output_dir', 
-                 '--vocab-size', '40000', '--create-ids', '--dev-size', '0', '--test-size', '0']
+        #base
+        args_ = [args.python, 'scripts/prepare-data.py', key, data_dir, 
+                  '--dev-size', '0', '--test-size', '0']
+        
+        #insert languages
         args_[3:1] = value
         
+        #insert vocab size
+        if(args.vocab_size):
+            args_[len(args_):1] = ['--vocab-size', ' '.join(args.vocab_size)]
+            
+        #insert create ids
+        if(args.create_ids):
+            args_[len(args_):1] = ['--create-ids']
+        
+        #insert alignement
+        if(args.align):
+            args_[len(args_):1] = ['--align'] 
+            if(args.dict_threshold): #default 100
+                args_[len(args_):1] = ['--dict-threshold', args.dict_threshold] 
+            if(args.fast_align_bin): #default fast_align
+                args_[len(args_):1] = ['--fast-align-bin', args.fast_align_bin]             
+            if(args.fast_align_iter): #default 5
+                args_[len(args_):1] = ['--fast-align-iter', args.fast_align_iter]          
+                        
+                        
         print("Calling prepare_data.py with params : ", args_)
         subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
  
@@ -97,17 +120,30 @@ if __name__ == '__main__':
 
     parser.add_argument('corpus', help='corpus either europarl or news',
                         choices=['europarl', 'news'])
-    parser.add_argument('extensions', nargs='+', help='list of extensions for the corpus')
-
-    #parser.add_argument('output_dir', help='directory where the files will be copied')
-    
-    parser.add_argument('--corpus_type', help='parallel or mono', default="mono",
+    parser.add_argument('corpus_type', help='parallel or mono',
                         choices=['parallel', 'mono'])
-                        
-    parser.add_argument('--exp', help='path to expe directory '
-                        '(None if in $PATH)', default='experiments')
+    parser.add_argument('extensions', nargs='+', help='list of extensions for the corpus')  
     
+    parser.add_argument('--exp', help='path to expe directory', default='experiments')
     parser.add_argument('--python', help='python bin', default='python') 
+    
+    #param for prepare_data.py
+    parser.add_argument('--output-dir', help='directory where the files will be copied', 
+                        default='data/')
+    parser.add_argument('--vocab-size', nargs='+', type=str, help='size of '
+                        'the vocabularies (0 for no limit, '
+                        'default: no vocabulary)')    #TODO QUID QUAND PARALLEL AVEC EN ?
+    parser.add_argument('--create-ids', help='create train, test and dev id '
+                        'files', action='store_true') 
+    parser.add_argument('--align', help='align target unknown words with the '
+                        'source using special UNK IDs', action='store_true')
+    parser.add_argument('--dict-threshold', help='min count of a word pair '
+                        'in the dictionary', type=str) #if none, default 100
+    parser.add_argument('--fast-align-bin', help='name of the fast_align '
+                        'binary (relative to script directory)')  #if none, default fast_align
+    parser.add_argument('--fast-align-iter', help='number of iterations in '
+                        'fast_align', type=str) #if none, default 5
+
                       
     args = parser.parse_args()
     
