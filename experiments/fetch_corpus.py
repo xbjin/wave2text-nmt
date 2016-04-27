@@ -46,7 +46,7 @@ def call_build_trilingual_corpus(args):
    
     file_without_ext = [os.path.splitext(f)[0] for f in args.corpus_lang]
     shared_lang = os.path.splitext(args.corpus_lang[0])[0][-2:]
-    extensions = args.extensions+[shared_lang]       
+    src_ext_ = args.src_ext+[shared_lang]       
     
     args_ = [args.python, 'scripts/build-trilingual-corpus.py']    
     
@@ -54,11 +54,11 @@ def call_build_trilingual_corpus(args):
     args_[len(args_):1] = file_without_ext
 
     #insert ouput (europarlv7.fr-es-en)
-    basename_=os.path.basename(os.path.splitext(file_without_ext[0])[0]+'.'+'-'.join(extensions))
+    basename_=os.path.basename(os.path.splitext(file_without_ext[0])[0]+'.'+'-'.join(src_ext_))
     args_[len(args_):1] = [os.path.join(args.output_dir, basename_)]
 
     #insert lang 
-    args_[len(args_):1] = extensions
+    args_[len(args_):1] = src_ext_
     
     print("Calling build-trilingual-corpus with params : ", args_)
     subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -86,25 +86,34 @@ def fetch_corpus(args):
         for filename in filenames: 
             args.all_corpus_lang.append(os.path.join(root,filename))                
    
-   #getting file according to extension input
-    args.corpus_lang = [c for c in args.all_corpus_lang if (os.path.splitext(c)[-1][1:] in args.extensions) ]
-    if len(args.corpus_lang) < len(args.extensions):
+    #getting file according to src_ext and trg_ext input 
+    if args.corpus_type == 'mono':
+        args.corpus_lang = [c for c in args.all_corpus_lang 
+                            if os.path.splitext(c)[-1][1:] in args.src_ext]
+    else:
+        args.corpus_lang = [c for c in args.all_corpus_lang 
+                            if os.path.splitext(c)[-1][1:] in args.src_ext and os.path.splitext(c)[0][-2:] in args.trg_ext]
+    
+    if len(args.corpus_lang) < len(args.src_ext):
         sys.exit("This corpus doesnt contain all of the ext(s) given")
     
     #we sort files according to order given in extension input
-    args.corpus_lang.sort(key=lambda (x): args.extensions.index(os.path.splitext(x)[-1][1:]))
+    args.corpus_lang.sort(key=lambda (x): args.src_ext.index(os.path.splitext(x)[-1][1:]))
 
 
-    #copying file in output dir  
-    for f in args.corpus_lang:
-        copyfile(f, os.path.join(args.output_dir, os.path.basename(f)))
-    
-    
+
+    if(args.corpus_type == "parallel"):   
+        args.corpus_lang += [c for c in args.all_corpus_lang 
+            if os.path.splitext(c)[-1][1:] in args.trg_ext and os.path.splitext(c)[-0][-5:-3] in args.src_ext]
+            
+  
     #if trilingual given, call script    
     if(args.corpus_type == "trilingual"):
         call_build_trilingual_corpus(args) 
         
-        
+    #copying file in output dir  
+    for f in args.corpus_lang:
+        copyfile(f, os.path.join(args.output_dir, os.path.basename(f)))        
     
 if __name__ == '__main__':
     
@@ -115,8 +124,9 @@ if __name__ == '__main__':
                         choices=['europarl', 'news'])
     parser.add_argument('corpus_type', help='parallel or mono',
                         choices=['parallel', 'mono', 'trilingual'])
-    parser.add_argument('extensions', nargs='+', help='list of extensions for the corpus')   
+    parser.add_argument('src_ext', nargs='+', help='list of ext for the corpus')   
     parser.add_argument('output_dir', help='output_dir') 
+    parser.add_argument('--trg_ext', help='target ext', default='en') 
     parser.add_argument('--exp', help='path to expe directory', default='experiments')
     parser.add_argument('--python', help='python bin', default='python') 
    
