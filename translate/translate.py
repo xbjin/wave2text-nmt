@@ -51,53 +51,54 @@ from translate import utils
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Initial learning rate")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99, "Learning rate decay factor")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm")
+tf.app.flags.DEFINE_float("dropout_rate", 0, "Dropout rate applied to the LSTM units")
+
 tf.app.flags.DEFINE_integer("batch_size", 64, "Training batch size")
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each layer")
 tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model")
 tf.app.flags.DEFINE_integer("src_vocab_size", 30000, "Source vocabulary size")
 tf.app.flags.DEFINE_integer("trg_vocab_size", 30000, "Target vocabulary size")
-tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "model", "Training directory")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0, "Limit on the size of training data (0: no limit)")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "How many training steps to do per checkpoint")
 tf.app.flags.DEFINE_integer("steps_per_eval", 4000, "How many training steps to do per BLEU evaluation")
-
-tf.app.flags.DEFINE_string("decode", None, "Translate this corpus")
-tf.app.flags.DEFINE_string("eval", None, "Compute BLEU score on this corpus")
+tf.app.flags.DEFINE_integer("gpu_id", None, "Index of the GPU where to run the computation (default: 0)")
 
 tf.app.flags.DEFINE_boolean("download", False, "Download WMT data")
 tf.app.flags.DEFINE_boolean("tokenize", False, "Tokenize data on the fly")
-tf.app.flags.DEFINE_integer("gpu_id", None, "Index of the GPU where to run the computation (default: 0)")
 tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU")
 tf.app.flags.DEFINE_boolean("reset", False, "Reset model (don't load any checkpoint)")
 tf.app.flags.DEFINE_boolean("verbose", False, "Verbose mode")
 tf.app.flags.DEFINE_boolean("reset_learning_rate", False, "Reset learning rate (useful for pre-training)")
+tf.app.flags.DEFINE_boolean("multi_task", False, "Train each encoder as a separate task")
+
+tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "model", "Training directory")
+tf.app.flags.DEFINE_string("decode", None, "Translate this corpus")
+tf.app.flags.DEFINE_string("eval", None, "Compute BLEU score on this corpus")
 
 tf.app.flags.DEFINE_string("train_prefix", "train", "Name of the training corpus")
 tf.app.flags.DEFINE_string("dev_prefix", "dev", "Name of the development corpus")
 tf.app.flags.DEFINE_string("embedding_prefix", None, "Prefix of the embedding files")
 tf.app.flags.DEFINE_string("src_ext", "fr", "Source file extension(s) (comma-separated)")
 tf.app.flags.DEFINE_string("trg_ext", "en", "Target file extension")
-
 tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl", "Path to BLEU script")
-tf.app.flags.DEFINE_boolean("multi_task", False, "Train each encoder as a separate task")
 tf.app.flags.DEFINE_string("encoder_num", None, "List of comma-separated encoder ids to include in the model "
                                                 "(useful for pre-training), same size as src_ext")
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 tf.app.flags.DEFINE_string("fix_embeddings", None, "List of comma-separated 0/1 values specifying "
                                                    "which embeddings to freeze during training")
-tf.app.flags.DEFINE_boolean("dropout_rate", 0, "Dropout rate applied to the LSTM units")
 tf.app.flags.DEFINE_string("lookup_dict", None, "Dict to replace UNK Tokens")
+tf.app.flags.DEFINE_string("logfile", None, "Log to this file instead of standard output")
 
 FLAGS = tf.app.flags.FLAGS
 
 data_utils.extract_filenames(FLAGS)  # add filenames to namespace
 data_utils.extract_embedding(FLAGS)  # add embeddings to namespace
 
-# We use a number of buckets and pad to the closest one for efficiency.
-# See seq2seq_model.Seq2SeqModel for details of how they work.
+# We use a number of buckets and pad to the closest one for efficiency
+# See seq2seq_model.Seq2SeqModel for details on how they work
 # TODO: pick bucket sizes automatically
-# The same bucket size is used for all encoders.
+# The same bucket size is used for all encoders
 _buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
 
 if FLAGS.trg_ext == 'en':  # temporary hack for fr->en
@@ -172,6 +173,10 @@ def create_model(session, reuse=None, model_name=None, initialize=True,
 def train():
   """ Choo-Choo! """
 
+  # print values of program arguments
+  arguments = '\n'.join('  {}: {}'.format(k, repr(v)) for k, v in tf.app.flags.FLAGS.__flags.iteritems())
+  logging.info('Arguments:\n' + arguments)
+
   # We assume that data has been prepared with scripts/prepare-data.py
   # logging.info("Preparing data in {}".format(FLAGS.data_dir))
   # data_utils.prepare_data(FLAGS)
@@ -232,7 +237,6 @@ def train():
     ]
 
     step_time, loss = 0.0, 0.0
-    current_step = 0
     previous_losses = []
 
     losses = [0.0] * len(models)
@@ -257,7 +261,7 @@ def train():
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       # average loss over last steps
       loss += step_loss / FLAGS.steps_per_checkpoint
-      current_step += 1
+      current_step = full_model.global_step.eval()
 
       # update loss and number of steps for selected model
       losses[i] += step_loss
@@ -268,7 +272,7 @@ def train():
         perplexity = math.exp(loss) if loss < 300 else float('inf')
 
         logging.info("global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}".format(
-          full_model.global_step.eval(), full_model.learning_rate.eval(), step_time, perplexity))
+          current_step, full_model.learning_rate.eval(), step_time, perplexity))
 
         if FLAGS.multi_task:  # detail per model
           perplexities = [math.exp(loss / steps_) if loss / steps_ < 300 else float('inf')
@@ -436,7 +440,8 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
 def main(_):
   if not FLAGS.decode:  # no logging in decoding mode
     logging_level = logging.DEBUG if FLAGS.verbose else logging.INFO
-    logging.basicConfig(format='%(message)s', level=logging_level)
+    logging.basicConfig(filename=FLAGS.logfile, format='%(asctime)s %(message)s', level=logging_level,
+                        datefmt='%m/%d %H:%M:%S')
 
   if FLAGS.decode:
     decode()
