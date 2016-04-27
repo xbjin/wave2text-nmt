@@ -236,13 +236,14 @@ def split_corpus(filenames, dest_corpora, extensions):
       
     with open_files(filenames) as input_files:
         for corpus, size in reversed(dest_corpora):  # puts train corpus last
-            output_filenames = ['{}.{}'.format(corpus, ext)
-                                for ext in extensions]
-            with open_files(output_filenames, mode='w') as output_files:
-                for input_file, output_file in zip(input_files, output_files):
-                    output_file.writelines(islice(input_file, size))
-                    # If size is None, this will read the whole file.
-                    # That's why we put train last.
+            if size != 0:
+                output_filenames = ['{}.{}'.format(corpus, ext)
+                                    for ext in extensions]
+                with open_files(output_filenames, mode='w') as output_files:
+                    for input_file, output_file in zip(input_files, output_files):
+                        output_file.writelines(islice(input_file, size))
+                        # If size is None, this will read the whole file.
+                        # That's why we put train last.
 
 
 def create_align(filenames, args):
