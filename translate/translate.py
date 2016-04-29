@@ -280,7 +280,7 @@ def train():
           current_step, full_model.learning_rate.eval(), step_time, perplexity))
 
         if FLAGS.multi_task:  # detail per model
-          perplexities = [math.exp(loss / steps_) if loss / steps_ < 300 else float('inf')
+          perplexities = [math.exp(loss / steps_) if steps_ > 0 and loss / steps_ < 300 else float('inf')
                           for loss, steps_ in zip(losses, steps)]
 
           logging.info('details per model ' + ' '.join('{{steps {} perplexity {}}}'.format(steps_, perplexity)
