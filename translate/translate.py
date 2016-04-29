@@ -15,13 +15,6 @@
 
 """Binary for training translation models and decoding from them.
 
-Running this program without --decode will download the WMT corpus into
-the directory specified as --data_dir and tokenize it in a very basic way,
-and then start training a model saving checkpoints to --train_dir.
-
-Running with --decode starts an interactive loop so you can see how
-the current checkpoint translates English sentences into French.
-
 See the following papers for more information on neural translation models.
  * http://arxiv.org/abs/1409.3215
  * http://arxiv.org/abs/1409.0473
@@ -38,6 +31,8 @@ import sys
 import time
 import logging
 
+import argparse
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -48,10 +43,50 @@ from translate import seq2seq_model
 from translate import utils
 
 
-tf.app.flags.DEFINE_float("learning_rate", 0.5, "Initial learning rate")
-tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99, "Learning rate decay factor")
-tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm")
-tf.app.flags.DEFINE_float("dropout_rate", 0, "Dropout rate applied to the LSTM units")
+parser = argparse.ArgumentParser()
+parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
+parser.add_argument('--learning-rate-decay-factor', type=float, default=0.99, help='learning rate decay factor')
+parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
+parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
+parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
+parser.add_argument('--size', type=int, default=1024, help='size of each layer')
+parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
+parser.add_argument('--src-vocab-size', type=int, nargs='+', default=30000, help='source vocabulary size(s)')
+parser.add_argument('--trg-vocab-size', type=int, nargs='+', default=30000, help='target vocabulary size(s)')
+parser.add_argument('--max-train-size', type=int, default=0, help='maximum size of training data (default: no limit)')
+parser.add_argument('--checkpoint-freq', type=int, default=200, help='number of updates per checkpoint')
+parser.add_argument('--eval-freq', type=int, default=4000, help='number of updates per BLEU evaluation')
+parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
+
+parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
+parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
+parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
+parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
+parser.add_argument('--multi_task', help='train each encoder as a separate task', action='store_true')
+
+
+parser.add_argument('data_dir', default='data', help='data directory')
+parser.add_argument('train_dir', default='model', help='training directory')
+parser.add_argument('--decode', help='translate this corpus')
+parser.add_argument('--eval', help='compute BLEU score on this corpus')
+
+
+parser.add_argument('--train-prefix', default='train', help='name of the training corpus')
+parser.add_argument('--dev-prefix', default='dev', help='name of the development corpus')
+parser.add_argument('--embedding-prefix', help='prefix of the embedding files')
+
+parser.add_argument('--src-ext', nargs='+', default=('fr',), help='source file extension(s)')
+parser.add_argument('--trg-ext', nargs='+', default=('en',), help='target file extension(s)')
+
+parser.add_argument("src_ext_train", None, "Source file extension(s) used for training "
+                                                  " if different than those in the model (useful for pre-training)")
+
+parser.add_argument('--bleu_script', default='scripts/multi-bleu.perl', help='path to BLEU script')
+#tf.app.flags.DEFINE_string("encoder_ids", None, "List of comma-separated encoder ids to include in the model "
+#                                                "(useful for pre-training), same size as src_ext")
+parser.add_argument('--fix_embeddings', nargs='+', "List of comma-separated 0/1 values specifying which embeddings to freeze during training")
+parser.add_argument('--logfile', help="log to this file instead of standard output")
+
 
 tf.app.flags.DEFINE_integer("batch_size", 64, "Training batch size")
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each layer")
@@ -63,8 +98,6 @@ tf.app.flags.DEFINE_integer("steps_per_checkpoint", 200, "How many training step
 tf.app.flags.DEFINE_integer("steps_per_eval", 4000, "How many training steps to do per BLEU evaluation")
 tf.app.flags.DEFINE_integer("gpu_id", None, "Index of the GPU where to run the computation (default: 0)")
 
-tf.app.flags.DEFINE_boolean("download", False, "Download WMT data")
-tf.app.flags.DEFINE_boolean("tokenize", False, "Tokenize data on the fly")
 tf.app.flags.DEFINE_boolean("no_gpu", False, "Train model on CPU")
 tf.app.flags.DEFINE_boolean("reset", False, "Reset model (don't load any checkpoint)")
 tf.app.flags.DEFINE_boolean("verbose", False, "Verbose mode")
@@ -81,9 +114,11 @@ tf.app.flags.DEFINE_string("dev_prefix", "dev", "Name of the development corpus"
 tf.app.flags.DEFINE_string("embedding_prefix", None, "Prefix of the embedding files")
 tf.app.flags.DEFINE_string("src_ext", "fr", "Source file extension(s) (comma-separated)")
 tf.app.flags.DEFINE_string("trg_ext", "en", "Target file extension")
+tf.app.flags.DEFINE_string("src_ext_train", None, "Source file extension(s) used for training "
+                                                  " if different than those in the model (useful for pre-training)")
 tf.app.flags.DEFINE_string("bleu_script", "scripts/multi-bleu.perl", "Path to BLEU script")
-tf.app.flags.DEFINE_string("encoder_num", None, "List of comma-separated encoder ids to include in the model "
-                                                "(useful for pre-training), same size as src_ext")
+#tf.app.flags.DEFINE_string("encoder_ids", None, "List of comma-separated encoder ids to include in the model "
+#                                                "(useful for pre-training), same size as src_ext")
 tf.app.flags.DEFINE_string("model_name", None, "Name of the model")
 tf.app.flags.DEFINE_string("fix_embeddings", None, "List of comma-separated 0/1 values specifying "
                                                    "which embeddings to freeze during training")
@@ -324,12 +359,10 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup
   """
   Translate given sentence with the given seq2seq model and
     return the translation.
-  """  
-  
-  tokenizer = data_utils.no_tokenizer if not FLAGS.tokenize else None
+  """
 
   token_ids = [
-    data_utils.sentence_to_token_ids(sentence, vocab, tokenizer=tokenizer)
+    data_utils.sentence_to_token_ids(sentence, vocab)
     for sentence, vocab in zip(src_sentences, src_vocab)
   ]
   
@@ -359,7 +392,7 @@ def decode_sentence(sess, model, src_sentences, src_vocab, rev_trg_vocab, lookup
 
   if lookup_dict is not None:
     # first source is used for UNK replacement
-    src_tokens = tokenizer(src_sentences[0])
+    src_tokens = src_sentences[0]
     for trg_pos, trg_id in enumerate(outputs):
       if not 4 <= trg_id <= 19:  # UNK symbols range
         continue
@@ -443,6 +476,19 @@ def decode(sess=None, model=None, filenames=None, output=None, evaluate=False):
 
         
 def main(_):
+  flags = tf.app.flags.FLAGS
+  flags.src_ext = flags.src_ext and flags.src_ext.split(',')
+  flags.encoder_ids = flags.encoder_ids and flags.encoder_ids.split(',')
+  flags.fix_embeddings = flags.fix_embeddings and map(int, flags.fix_embeddings.split(','))
+
+  flags_as_dict = flags.__flags
+  flags.encoder_count = len(flags.src_ext)
+  flags.encoder_ids = flags.encoder_ids or range(flags.encoder_count)   # TODO: encoder id = source extension
+
+  filenames = data_utils.get_filenames(**flags_as_dict)
+  embeddings = data_utils.read_embeddings(**flags_as_dict)
+
+  """
   if not FLAGS.decode:  # no logging in decoding mode
     logging_level = logging.DEBUG if FLAGS.verbose else logging.INFO
     logging.basicConfig(filename=FLAGS.logfile, format='%(asctime)s %(message)s', level=logging_level,
@@ -454,6 +500,7 @@ def main(_):
     decode(evaluate=True)
   else:
     train()
+  """
 
 if __name__ == "__main__":
   tf.app.run()
