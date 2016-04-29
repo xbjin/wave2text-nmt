@@ -135,7 +135,7 @@ def read_data(source_paths, target_path, max_size=None):
 
 
 def create_model(session, reuse=None, model_name=None, embeddings=None,
-                 encoder_count=None, encoder_num=None):
+                 encoder_count=None, encoder_num=None, global_step=None):
   """Create translation model and initialize or load parameters in session."""
 
   device = None
@@ -156,7 +156,7 @@ def create_model(session, reuse=None, model_name=None, embeddings=None,
       FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
       encoder_count=encoder_count, reuse=reuse, encoder_num=encoder_num,
       model_name=model_name, embedding=embeddings,
-      dropout_rate=FLAGS.dropout_rate)
+      dropout_rate=FLAGS.dropout_rate, global_step=global_step)
 
   session.run(tf.initialize_all_variables())
 
@@ -206,7 +206,7 @@ def train():
       models = []
       for embeddings, encoder_id in zip(FLAGS.embeddings, FLAGS.encoder_ids):
         model = create_model(sess, encoder_count=1, reuse=True, encoder_num=[encoder_id],
-                             embeddings=(embeddings, FLAGS.embeddings[-1]))
+                             embeddings=(embeddings, FLAGS.embeddings[-1]), global_step=full_model.global_step)
         models.append(model)
     else:
       models = [full_model]
@@ -246,6 +246,8 @@ def train():
 
     losses = [0.0] * len(models)
     steps = [0] * len(models)
+
+    logging.info('Starting training: current step {}'.format(full_model.global_step.eval()))
 
     while True:
       # randomly choose a model to train

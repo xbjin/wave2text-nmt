@@ -51,7 +51,8 @@ class Seq2SeqModel(object):
                num_layers, max_gradient_norm, batch_size, learning_rate,
                learning_rate_decay_factor, use_lstm=True,
                num_samples=512, encoder_count=1, reuse=None, encoder_num=None,
-               model_name=None, embedding=None, dropout_rate=0):
+               model_name=None, embedding=None, dropout_rate=0,
+               global_step=None):
     """Create the model.
 
     Args:
@@ -89,9 +90,10 @@ class Seq2SeqModel(object):
       # learning rate is shared accross models
       initializer = init_ops.constant_initializer(learning_rate, dtype=tf.float32)
       self.learning_rate = variable_scope.get_variable('learning_rate', (), initializer=initializer, trainable=False)
+
       with tf.device('/cpu:0'):  # cannot put ints on GPU
         # one for each model, couln't figure out how to share non-float variables
-        self.global_step = tf.Variable(0, trainable=False, name='global_step')
+        self.global_step = tf.Variable(1, trainable=False, name='global_step') if global_step is None else global_step
 
     self.learning_rate_decay_op = self.learning_rate.assign(
         self.learning_rate * learning_rate_decay_factor)
