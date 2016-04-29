@@ -134,8 +134,8 @@ def read_data(source_paths, target_path, max_size=None):
   return data_set
 
 
-def create_model(session, reuse=None, model_name=None, initialize=True,
-                 embeddings=None, encoder_count=None, encoder_num=None):
+def create_model(session, reuse=None, model_name=None, embeddings=None,
+                 encoder_count=None, encoder_num=None):
   """Create translation model and initialize or load parameters in session."""
 
   device = None
@@ -158,16 +158,18 @@ def create_model(session, reuse=None, model_name=None, initialize=True,
       model_name=model_name, embedding=embeddings,
       dropout_rate=FLAGS.dropout_rate)
 
-  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-  if initialize:
-      if not FLAGS.reset and ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-        logging.info("Reading model parameters from {}".format(ckpt.model_checkpoint_path))
-        model.saver.restore(session, ckpt.model_checkpoint_path)
-      else:
-        logging.info("Created model with fresh parameters")
-        session.run(tf.initialize_all_variables())
-       
+  session.run(tf.initialize_all_variables())
+
   return model
+
+
+def load_checkpoint(session, saver):
+  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+  if not FLAGS.reset and ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+    logging.info("Reading model parameters from {}".format(ckpt.model_checkpoint_path))
+    saver.restore(session, ckpt.model_checkpoint_path)
+  else:
+    logging.info("Created model with fresh parameters")
 
 
 def train():
@@ -196,17 +198,20 @@ def train():
   with tf.Session(config=config) as sess:
     logging.info("Creating {} layers of {} units".format(FLAGS.num_layers,
                                                          FLAGS.size))
-    full_model = create_model(sess)   # model that contains all the variables
+    full_model = create_model(sess)
+
     if FLAGS.multi_task:  # creating partial models for multi-task training
       logging.info('Multi-task training, creating {} models'.format(FLAGS.encoder_count))
+      # model that contains all the variables
       models = []
       for embeddings, encoder_id in zip(FLAGS.embeddings, FLAGS.encoder_ids):
         model = create_model(sess, encoder_count=1, reuse=True, encoder_num=[encoder_id],
-                             embeddings=(embeddings, FLAGS.embeddings[-1]), initialize=False)
+                             embeddings=(embeddings, FLAGS.embeddings[-1]))
         models.append(model)
     else:
       models = [full_model]
-    # sess.run(tf.initialize_all_variables())
+
+    load_checkpoint(sess, full_model.saver)  # TODO: improve design
 
     logging.info('Printing variables')
     for e in tf.all_variables():
