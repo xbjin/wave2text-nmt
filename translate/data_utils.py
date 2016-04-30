@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilities for downloading data from WMT, tokenizing, vocabularies."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,14 +25,14 @@ import numpy as np
 import tensorflow as tf
 import math
 import logging
-
 import sys
 
 from collections import namedtuple
+from contextlib import contextmanager
 
 from tensorflow.python.platform import gfile
 
-# Special vocabulary symbols - we always put them at the start.
+# Special vocabulary symbols - we always put them at the start
 _PAD = "_PAD"
 _GO = "_GO"
 _EOS = "_EOS"
@@ -44,6 +43,25 @@ PAD_ID = 0
 GO_ID = 1
 EOS_ID = 2
 UNK_ID = 3
+
+
+@contextmanager
+def open_files(names, mode='r'):
+  """ Safely open a list of files in a context manager.
+  Example:
+  >>> with open_files(['foo.txt', 'bar.csv']) as f:
+  ...   pass
+  """
+
+  files = []
+  try:
+    for name_ in names:
+      files.append(open(name_, mode=mode))
+    yield files
+  finally:
+    for file_ in files:
+      file_.close()
+
 
 def initialize_vocabulary(vocabulary_path):
   """Initialize vocabulary from file.
@@ -92,29 +110,29 @@ def sentence_to_token_ids(sentence, vocabulary):
   return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
 
 
-def get_filenames(data_dir, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
-                  train_prefix, dev_prefix, multi_task=False, **kwargs):
-
+def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, multi_task=False, **kwargs):
+  trg_ext = trg_ext[0]    # FIXME: for now
+  
   train_path = train_path = os.path.join(data_dir, train_prefix)
   src_train = ["{}.{}".format(train_path, ext) for ext in src_ext]
-  src_train_ids = ["{}.ids{}.{}".format(train_path, src_vocab_size, ext) for ext in src_ext]
+  src_train_ids = ["{}.ids.{}".format(train_path, ext) for ext in src_ext]
 
-  if multi_task is not None:  # multi-task setting: one target file for each encoder
+  if multi_task:  # multi-task setting: one target file for each encoder
     trg_train = ["{}.{}.{}".format(train_path, ext, trg_ext) for ext in src_ext]
-    trg_train_ids = ["{}.ids{}.{}.{}".format(train_path, trg_vocab_size, ext, trg_ext) for ext in src_ext]
+    trg_train_ids = ["{}.ids.{}.{}".format(train_path, ext, trg_ext) for ext in src_ext]
   else:
     trg_train = "{}.{}".format(train_path, trg_ext)
-    trg_train_ids = "{}.ids{}.{}".format(train_path, trg_vocab_size, trg_ext)
+    trg_train_ids = "{}.ids.{}".format(train_path, trg_ext)
 
   dev_path = os.path.join(data_dir, dev_prefix)
   src_dev = ["{}.{}".format(dev_path, ext) for ext in src_ext]
   trg_dev = "{}.{}".format(dev_path, trg_ext)
 
-  src_dev_ids = ["{}.ids{}.{}".format(dev_path, src_vocab_size, ext) for ext in src_ext]
-  trg_dev_ids = "{}.ids{}.{}".format(dev_path, trg_vocab_size, trg_ext)
+  src_dev_ids = ["{}.ids.{}".format(dev_path, ext) for ext in src_ext]
+  trg_dev_ids = "{}.ids.{}".format(dev_path, trg_ext)
 
-  src_vocab = [os.path.join(data_dir, "vocab{}.{}".format(src_vocab_size, ext)) for ext in src_ext]
-  trg_vocab = os.path.join(data_dir, "vocab{}.{}".format(trg_vocab_size, trg_ext))
+  src_vocab = [os.path.join(data_dir, "vocab.{}".format(ext)) for ext in src_ext]
+  trg_vocab = os.path.join(data_dir, "vocab.{}".format(trg_ext))
 
   # cleaner than using FLAGS namespace
   files = namedtuple('Files', ['src_train', 'trg_train', 'src_dev', 'trg_dev', 'src_vocab', 'trg_vocab',
@@ -176,3 +194,32 @@ def read_embeddings(data_dir, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
     embeddings.append(tf.convert_to_tensor(embedding, dtype=tf.float32))
 
   return embeddings
+
+
+def read_dataset(source_paths, target_path, buckets, max_size=None):
+  data_set = [[] for _ in buckets]
+
+  filenames = source_paths + [target_path]
+  with open_files(filenames) as files:
+
+    for counter, lines in enumerate(zip(*files), 1):
+      if max_size and counter >= max_size:
+        break
+      if counter % 100000 == 0:
+        logging.info("  reading data line {}".format(counter))
+
+      ids = [map(int, line.split()) for line in lines]
+      source_ids, target_ids = ids[:-1], ids[-1]
+
+      # FIXME: why only target sequence gets an EOS token?
+      target_ids.append(EOS_ID)
+
+      if any(len(ids_) == 0 for ids_ in ids):  # skip empty lines
+        continue
+
+      for bucket_id, (source_size, target_size) in enumerate(buckets):
+        if len(target_ids) < target_size and all(len(ids_) < source_size for ids_ in source_ids):
+          data_set[bucket_id].append(source_ids + [target_ids])
+          break
+
+  return data_set

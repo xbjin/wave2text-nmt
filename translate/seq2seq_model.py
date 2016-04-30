@@ -25,11 +25,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from translate import rnn_cell
-from translate import many2one
+from translate import seq2seq
 from translate import data_utils
 
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import init_ops
 
 
 class Seq2SeqModel(object):
@@ -47,16 +46,14 @@ class Seq2SeqModel(object):
     http://arxiv.org/abs/1412.2007
   """
 
-  def __init__(self, source_vocab_size, target_vocab_size, buckets, size,
-               num_layers, max_gradient_norm, batch_size, learning_rate,
-               learning_rate_decay_factor, use_lstm=True,
-               num_samples=512, encoder_count=1, reuse=None, encoder_num=None,
-               model_name=None, embedding=None, dropout_rate=0):
+  def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, src_vocab_size, trg_vocab_size, size,
+               num_layers, max_gradient_norm, batch_size, use_lstm=True,
+               num_samples=512, reuse=None, dropout_rate=0.0, **kwargs):
     """Create the model.
 
     Args:
-      source_vocab_size: size of the sources vocabularies.
-      target_vocab_size: size of the target vocabulary.
+      src_vocab_size: size of the sources vocabularies.
+      trg_vocab_size: size of the target vocabulary.
       buckets: a list of pairs (I, O), where I specifies maximum input length
         that will be processed in that bucket, and O specifies maximum output
         length. Training instances that have inputs longer than I or outputs
@@ -72,58 +69,39 @@ class Seq2SeqModel(object):
       learning_rate_decay_factor: decay learning rate by this much when needed.
       use_lstm: if true, we use LSTM cells instead of GRU cells.
       num_samples: number of samples for sampled softmax.
-      encoder_count: number of encoders to create
-      encoder_num: list of encoders ids to put in the model
     """
-    # TODO : changer le model_name en encoder_num? (c est aussi unique)
-    self.target_vocab_size = target_vocab_size
     self.buckets = buckets
     self.batch_size = batch_size
-    self.model_name = model_name
+    self.encoder_count = len(src_ext)
+    
+    self.learning_rate = learning_rate
+    self.global_step = global_step    
+    
+    trg_ext = trg_ext[0]   # FIXME: for now we assume we have only one decoder
+    self.trg_vocab_size = trg_vocab_size[0]
+    
+    assert len(src_vocab_size) == self.encoder_count
 
-    with variable_scope.variable_scope(model_name or
-         variable_scope.get_variable_scope(), reuse=reuse):
-      # if `model_name` is specified, those parameters are specific to the
-      # model.
-      #self.learning_rate = tf.Variable(float(learning_rate), trainable=False, name='learning_rate')
-      # learning rate is shared accross models
-      initializer = init_ops.constant_initializer(learning_rate, dtype=tf.float32)
-      self.learning_rate = variable_scope.get_variable('learning_rate', (), initializer=initializer, trainable=False)
-      with tf.device('/cpu:0'):  # cannot put ints on GPU
-        # one for each model, couln't figure out how to share non-float variables
-        self.global_step = tf.Variable(0, trainable=False, name='global_step')
-
-    self.learning_rate_decay_op = self.learning_rate.assign(
-        self.learning_rate * learning_rate_decay_factor)
-    self.encoder_count = encoder_count
-
-    self.feed_previous = tf.Variable(False, trainable=False,
-                                     name='feed_previous')
+    self.feed_previous = tf.Variable(False, trainable=False, name='feed_previous')
     self.train_op = self.feed_previous.assign(False)
     self.decode_op = self.feed_previous.assign(True)
-    
-    # TODO: For now, we assume that all source languages
-    # have the same vocabulary size.
-    source_vocab_sizes = [source_vocab_size for _ in range(self.encoder_count)]
 
     # If we use sampled softmax, we need an output projection.
     output_projection = None
     softmax_loss_function = None
     # Sampled softmax only makes sense if we sample less than vocabulary size.
-    if 0 < num_samples < self.target_vocab_size:
+    if 0 < num_samples < self.trg_vocab_size:
       with tf.device("/cpu:0"):
-        with variable_scope.variable_scope(variable_scope.get_variable_scope(),
-                                           reuse=reuse):
-          w = tf.get_variable("proj_w", [size, self.target_vocab_size])
+        with variable_scope.variable_scope(variable_scope.get_variable_scope(), reuse=reuse):
+          w = tf.get_variable("proj_w", [size, self.trg_vocab_size])
           w_t = tf.transpose(w)
-          b = tf.get_variable("proj_b", [self.target_vocab_size])
+          b = tf.get_variable("proj_b", [self.trg_vocab_size])
       output_projection = (w, b)
 
       def sampled_loss(inputs, labels):
         with tf.device("/cpu:0"):
           labels = tf.reshape(labels, [-1, 1])
-          return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples,
-                                            self.target_vocab_size)
+          return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples, self.trg_vocab_size)
       softmax_loss_function = sampled_loss
 
     # Create the internal multi-layer cell for our RNN.
@@ -142,71 +120,61 @@ class Seq2SeqModel(object):
     if num_layers > 1:
       cell = rnn_cell.MultiRNNCell([single_cell] * num_layers)
 
-    # The seq2seq function: we use embedding for the input and attention.
-    def seq2seq_f(encoder_inputs, decoder_inputs, feed_previous):
-      return many2one.many2one_rnn_seq2seq(
-          encoder_inputs, decoder_inputs, cell, source_vocab_sizes,
-          target_vocab_size, output_projection=output_projection,
-          feed_previous=feed_previous, encoder_num=encoder_num,
-          embedding=embedding)
-
-    # Feeds for inputs.
     self.encoder_inputs = []
     self.decoder_inputs = []
     self.target_weights = []
 
-    # Last bucket is the biggest one.
-    src_bucket_size, trg_bucket_size = buckets[-1]
-    for k in range(self.encoder_count):
-      encoder_inputs_ = []
-      start_index = k * src_bucket_size
+    self.encoder_names = list(src_ext)
+    self.decoder_name = trg_ext
+    self.embedding_size = size
 
+    # last bucket is the largest one
+    src_bucket_size, trg_bucket_size = buckets[-1]
+    for encoder_name in self.encoder_names:
+      encoder_inputs_ = []
       for i in xrange(src_bucket_size):
-        encoder_inputs_.append(tf.placeholder(tf.int32, shape=[None],
-                               name="encoder{0}".format(i + start_index)))
+        encoder_inputs_.append(tf.placeholder(tf.int32, shape=[None], name="encoder_{}_{}".format(encoder_name, i)))
 
       self.encoder_inputs.append(encoder_inputs_)
 
     for i in xrange(trg_bucket_size + 1):
       self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                name="decoder{0}".format(i)))
+                                                name="decoder_{}_{}".format(self.decoder_name, i)))
       self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-                                                name="weight{0}".format(i)))
+                                                name="weight_{}_{}".format(self.decoder_name, i)))
 
-    # Our targets are decoder inputs shifted by one.
-    targets = [self.decoder_inputs[i + 1]
-               for i in xrange(len(self.decoder_inputs) - 1)]
+    # our targets are decoder inputs shifted by one
+    targets = [self.decoder_inputs[i + 1] for i in xrange(len(self.decoder_inputs) - 1)]
+    
+    def seq2seq_function(encoder_inputs, decoder_inputs):
+      return seq2seq.many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, self.encoder_names, self.decoder_name,
+                                          cell, src_vocab_size, self.trg_vocab_size, self.embedding_size,
+                                          output_projection=output_projection, feed_previous=self.feed_previous)
 
-    # Training outputs and losses.
-    self.outputs, self.losses = many2one.model_with_buckets(
+    # training outputs and losses
+    self.outputs, self.losses = seq2seq.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
-      self.target_weights, buckets,
-      lambda x, y: seq2seq_f(x, y, self.feed_previous),
+      self.target_weights, buckets, seq2seq_function,
       softmax_loss_function=softmax_loss_function, reuse=reuse)
 
     if output_projection is not None:
       self.decode_outputs = [
-        [tf.matmul(output, output_projection[0]) + output_projection[1]
-         for output in self.outputs[b]]
-        for b in range(len(buckets))]
+        [tf.matmul(output, output_projection[0]) + output_projection[1] for output in bucket_outputs]
+        for bucket_outputs in self.outputs]
     else:
       self.decode_outputs = self.outputs
 
-    # Gradients and SGD update operation for training the model.
+    # gradients and SGD update operation for training the model
     params = tf.trainable_variables()
 
     self.gradient_norms = []
     self.updates = []
     opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-    for b in xrange(len(buckets)):
-      gradients = tf.gradients(self.losses[b], params)
-      clipped_gradients, norm = tf.clip_by_global_norm(gradients,
-                                                       max_gradient_norm)
+    for bucket_loss in self.losses:
+      gradients = tf.gradients(bucket_loss, params)
+      clipped_gradients, norm = tf.clip_by_global_norm(gradients, max_gradient_norm)
       self.gradient_norms.append(norm)
-      self.updates.append(opt.apply_gradients(
-        zip(clipped_gradients, params), global_step=self.global_step))
-
-    self.saver = tf.train.Saver(tf.all_variables())
+      self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
            bucket_id, forward_only=False, decode=False):
@@ -355,3 +323,17 @@ class Seq2SeqModel(object):
       batch_weights.append(batch_weight)
 
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights
+
+
+  def read_data(self, train_set, buckets, max_train_size=None):
+    src_train_ids, trg_train_ids = train_set
+    self.train_set = data_utils.read_dataset(src_train_ids, trg_train_ids, buckets, max_train_size)
+
+    train_bucket_sizes = map(len, self.train_set)
+    train_total_size = float(sum(train_bucket_sizes))
+
+    # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
+    # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
+    # the size if i-th training bucket, as used later.
+    self.train_bucket_scales = [sum(train_bucket_sizes[:i + 1]) / train_total_size
+                                for i in xrange(len(train_bucket_sizes))]
