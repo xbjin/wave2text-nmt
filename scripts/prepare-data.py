@@ -438,9 +438,14 @@ if __name__ == '__main__':
             vocabs = [create_vocabulary(id_, args)
                       for id_ in range(len(args.extensions))]
 
+        corpora = [output_train, output_dev, output_test]
+        sizes = [args.train_size, args.dev_size, args.test_size]
+
         if args.create_ids:
             logging.info('creating ids')
-            for corpus in [output_train, output_dev, output_test]:
+            for corpus, size in zip(corpora, sizes):
+                if size is not None and size == 0:
+                    continue
                 for id_ in range(len(args.extensions)):
                     create_ids(corpus, id_, vocabs[id_], args)
 

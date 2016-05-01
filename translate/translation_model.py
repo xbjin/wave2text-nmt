@@ -17,7 +17,7 @@ class TranslationModel(object):
                learning_rate_decay_factor, multi_task=False):
     self.buckets = [(10, 5), (15, 10), (25, 20), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
-    self.multi_task = multi_task    
+    self.multi_task = multi_task
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
     self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
@@ -27,7 +27,7 @@ class TranslationModel(object):
     
     # main model
     self.model = seq2seq_model.Seq2SeqModel(src_ext, trg_ext, self.buckets, self.learning_rate, self.global_step,
-                                            **vars(parameters))    
+                                            **vars(parameters))
     self.models = []
     
     if multi_task:  # multi-task

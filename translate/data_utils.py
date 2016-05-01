@@ -210,8 +210,7 @@ def read_dataset(source_paths, target_path, buckets, max_size=None):
 
       ids = [map(int, line.split()) for line in lines]
       source_ids, target_ids = ids[:-1], ids[-1]
-
-      # FIXME: why only target sequence gets an EOS token?
+      
       target_ids.append(EOS_ID)
 
       if any(len(ids_) == 0 for ids_ in ids):  # skip empty lines
