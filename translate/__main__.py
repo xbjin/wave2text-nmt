@@ -31,7 +31,7 @@ import argparse
 
 import tensorflow as tf
 
-from translate import data_utils
+from translate import utils
 from collections import namedtuple
 from translate.translation_model import TranslationModel
 
@@ -41,14 +41,14 @@ parser.add_argument('--learning-rate', type=float, default=0.5, help='initial le
 parser.add_argument('--learning-rate-decay-factor', type=float, default=0.99, help='learning rate decay factor')
 parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
-parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
-parser.add_argument('--size', type=int, default=1024, help='size of each layer')
+parser.add_argument('--batch-size', type=int, default=16, help='training batch size')
+parser.add_argument('--size', type=int, default=128, help='size of each layer')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
 parser.add_argument('--src-vocab-size', type=int, nargs='+', default=(30000,), help='source vocabulary size(s)')
 parser.add_argument('--trg-vocab-size', type=int, nargs='+', default=(30000,), help='target vocabulary size(s)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
-parser.add_argument('--steps-per-checkpoint', type=int, default=200, help='number of updates per checkpoint')
-parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
+parser.add_argument('--steps-per-checkpoint', type=int, default=10, help='number of updates per checkpoint')
+parser.add_argument('--steps-per-eval', type=int, default=50, help='number of updates per BLEU evaluation')
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
@@ -72,18 +72,20 @@ parser.add_argument('--trg-ext', nargs='+', default=('en',), help='target file e
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
 
 # TODO: list of extensions
-parser.add_argument('--fix-embeddings', type=int, nargs='+', help='list of 0/1 values specifying which embeddings to '
-                                                                  'freeze during training')
+parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions for which to fix the embeddings during '
+                                                          'training')
 parser.add_argument('--log-file', help='log to this file instead of standard output')
+parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
+                    action='store_true')
 
-        
+
 def main():
   args = parser.parse_args()
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   logging.basicConfig(filename=args.log_file, format='%(asctime)s %(message)s', level=logging_level,
                       datefmt='%m/%d %H:%M:%S')
   
-  logging.info(args)  
+  logging.info(args)   # TODO: nicer logging
   
   # enforce constraints
   assert len(args.src_ext) == len(args.src_vocab_size)
@@ -93,19 +95,20 @@ def main():
     logging.info("Creating directory {}".format(args.train_dir))
     os.makedirs(args.train_dir)
 
-  filenames = data_utils.get_filenames(**vars(args))
-  # embeddings = data_utils.read_embeddings(**vars(args))
+  filenames = utils.get_filenames(**vars(args))
+  #embeddings = utils.read_embeddings(**vars(args))
   embeddings = None
 
-  Params = namedtuple('Params', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
-                                 'src_vocab_size', 'trg_vocab_size'])
-  parameters = Params(**{k: v for k, v in vars(args).items() if k in Params._fields})
+  # NMT model parameters
+  parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
+                                         'src_vocab_size', 'trg_vocab_size'])
+  parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
-                       'checkpoints.{}_{}'.format('-'.join(args.src_ext), '-'.join(args.trg_ext))  )
+                       'checkpoints.{}_{}'.format('-'.join(args.src_ext), '-'.join(args.trg_ext)))
   checkpoint_dir = os.path.join(args.train_dir, checkpoint_prefix)
-  load_checkpoints = args.load_checkpoints and [os.path.join(args.train_dir, checkpoint)
-                                                for checkpoint in args.load_checkpoints]
+  checkpoints = args.load_checkpoints and [os.path.join(args.train_dir, checkpoint)
+                                           for checkpoint in args.load_checkpoints]
   
   device = None
   if args.no_gpu:
@@ -117,29 +120,25 @@ def main():
   logging.info('using device: {}'.format(device))
   
   with tf.device(device):
-    model = TranslationModel(args.src_ext, args.trg_ext, parameters, embeddings, checkpoint_dir,
+    model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task)
 
-  logging.info('reading training and development data')
-  model.read_data(filenames, args.max_train_size)
-
-  gpu_options = tf.GPUOptions()
-  log_device_placement = args.verbose
-
-  config = tf.ConfigProto(log_device_placement=log_device_placement, allow_soft_placement=True,
-                          gpu_options=gpu_options)
-                           
+  config = tf.ConfigProto(log_device_placement=args.verbose, allow_soft_placement=True)
   with tf.Session(config=config) as sess:
-    logging.info('initializing model')
-    model.initialize(sess, load_checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+    model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
     
-    try:
-      logging.info('starting training')
-      model.train(sess, args.steps_per_checkpoint, args.steps_per_eval)
-    except KeyboardInterrupt:
-      logging.info('exiting...')
-      model.save(sess)
-      sys.exit()
+    if args.decode:
+      model.decode(sess, filenames, output=None)
+    elif args.eval:
+      model.evaluate(sess, filenames, bleu_script=args.bleu_script)
+    else:
+      try:
+        model.train(sess, filenames, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
+                    args.max_train_size)
+      except KeyboardInterrupt:
+        logging.info('exiting...')
+        model.save(sess)
+        sys.exit()
 
 if __name__ == "__main__":
   main()

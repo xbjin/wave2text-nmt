@@ -22,15 +22,12 @@ import re
 import subprocess
 import tempfile
 import numpy as np
-import tensorflow as tf
 import math
 import logging
 import sys
 
 from collections import namedtuple
 from contextlib import contextmanager
-
-from tensorflow.python.platform import gfile
 
 # Special vocabulary symbols - we always put them at the start
 _PAD = "_PAD"
@@ -82,13 +79,13 @@ def initialize_vocabulary(vocabulary_path):
   Raises:
     ValueError: if the provided vocabulary_path does not exist.
   """
-  if gfile.Exists(vocabulary_path):
+  if os.path.exists(vocabulary_path):
     rev_vocab = []
-    with gfile.GFile(vocabulary_path, mode="r") as f:
+    with open(vocabulary_path) as f:
       rev_vocab.extend(f.readlines())
     rev_vocab = [line.strip() for line in rev_vocab]
     vocab = dict([(x, y) for (y, x) in enumerate(rev_vocab)])
-    return vocab, rev_vocab
+    return namedtuple('vocab', 'vocab reverse')(vocab, rev_vocab)
   else:
     raise ValueError("Vocabulary file %s not found.", vocabulary_path)
 
@@ -110,10 +107,11 @@ def sentence_to_token_ids(sentence, vocabulary):
   return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
 
 
-def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, multi_task=False, **kwargs):
+def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix,
+                  multi_task=False, replace_unk=False, **kwargs):
   trg_ext = trg_ext[0]    # FIXME: for now
   
-  train_path = train_path = os.path.join(data_dir, train_prefix)
+  train_path = os.path.join(data_dir, train_prefix)
   src_train = ["{}.{}".format(train_path, ext) for ext in src_ext]
   src_train_ids = ["{}.ids.{}".format(train_path, ext) for ext in src_ext]
 
@@ -134,11 +132,25 @@ def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, multi_ta
   src_vocab = [os.path.join(data_dir, "vocab.{}".format(ext)) for ext in src_ext]
   trg_vocab = os.path.join(data_dir, "vocab.{}".format(trg_ext))
 
-  # cleaner than using FLAGS namespace
-  files = namedtuple('Files', ['src_train', 'trg_train', 'src_dev', 'trg_dev', 'src_vocab', 'trg_vocab',
-                               'src_train_ids', 'trg_train_ids', 'src_dev_ids', 'trg_dev_ids'])
+  test_path = kwargs.get('decode', kwargs.get('eval'))  # `decode` or `eval` or None
+    
+  if test_path is not None:
+    src_test = ["{}.{}".format(test_path, ext) for ext in src_ext]
+    trg_test = "{}.{}".format(test_path, trg_ext)
+  else:
+    src_test = None
+    trg_test = None
+    
+  if replace_unk:
+    lookup_dict = os.path.join(data_dir, 'lookup_dict')
+  else:
+    lookup_dict = None
 
-  return files(**{k: v for k, v in locals().items() if k in files._fields})
+  filenames = namedtuple('filenames', ['src_train', 'trg_train', 'src_dev', 'trg_dev', 'src_vocab', 'trg_vocab',
+                                       'src_train_ids', 'trg_train_ids', 'src_dev_ids', 'trg_dev_ids',
+                                       'src_test', 'trg_test', 'lookup_dict'])
+
+  return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})
 
 
 def bleu_score(bleu_script, hypotheses, references):
@@ -157,22 +169,17 @@ def bleu_score(bleu_script, hypotheses, references):
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
 
 
-def read_embeddings(data_dir, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
-                    src_vocab, trg_vocab, embedding_prefix, size, **kwargs):
-  extensions = src_ext + [trg_ext]
-  vocab_paths = src_vocab + [trg_vocab]
-  vocab_sizes = [src_vocab_size] * len(src_ext) + [trg_vocab_size]
-  embeddings = []
+def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size, size,
+                    fixed_embeddings=None, **kwargs):
+  extensions = src_ext + trg_ext
+  vocab_sizes = src_vocab_size + trg_vocab_size
+  vocab_paths = filenames.src_vocab + [filenames.trg_vocab]
 
-  if not embedding_prefix:
-    return None
+  embeddings = {}
 
-  for ext, vocab_path, vocab_size in zip(extensions, vocab_paths, vocab_sizes):
-    filename = os.path.join(data_dir, "{}.{}".format(embedding_prefix, ext))
-
+  for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes, vocab_paths, filenames.embeddings):
     # if embedding file is not given for this language, skip
     if not os.path.isfile(filename):
-      embeddings.append(None)
       continue
 
     with open(filename) as file_:
@@ -183,7 +190,7 @@ def read_embeddings(data_dir, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
 
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
 
-    vocab, _ = initialize_vocabulary(vocab_path)
+    vocab = initialize_vocabulary(vocab_path).vocab
 
     for word, index in vocab.iteritems():
       if word in d:
@@ -191,7 +198,8 @@ def read_embeddings(data_dir, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
       else:
         embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
 
-    embeddings.append(tf.convert_to_tensor(embedding, dtype=tf.float32))
+    fixed = fixed_embeddings is not None and ext in fixed_embeddings
+    embeddings[ext] = (embedding, fixed)
 
   return embeddings
 
@@ -222,3 +230,26 @@ def read_dataset(source_paths, target_path, buckets, max_size=None):
           break
 
   return data_set
+
+
+def replace_unk(src_tokens, trg_tokens, trg_token_ids, lookup_dict):
+  trg_tokens = list(trg_tokens)
+
+  for trg_pos, trg_id in enumerate(trg_token_ids):
+    if not 4 <= trg_id <= 19:  # UNK symbols range
+      continue
+
+    src_pos = trg_pos + trg_id - 11   # aligned source position (symbol 4 is UNK-7, symbol 19 is UNK+7)
+    if 0 <= src_pos < len(src_tokens):
+      src_word = src_tokens[src_pos]
+      # look for a translation, otherwise take the source word itself (e.g. name or number)
+      trg_tokens[trg_pos] = lookup_dict.get(src_word, src_word)
+    else:   # aligned position is outside of source sentence, nothing we can do.
+      trg_tokens[trg_pos] = _UNK
+
+  return trg_tokens
+
+
+def initialize_lookup_dict(lookup_dict_path):
+  with open(lookup_dict_path) as f:
+    return dict(line.split() for line in f)
