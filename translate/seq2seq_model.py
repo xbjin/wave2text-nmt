@@ -46,8 +46,8 @@ class Seq2SeqModel(object):
     http://arxiv.org/abs/1412.2007
   """
 
-  def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, src_vocab_size, trg_vocab_size, size,
-               num_layers, max_gradient_norm, batch_size, use_lstm=True,
+  def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
+               src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size, use_lstm=True,
                num_samples=512, reuse=None, dropout_rate=0.0, **kwargs):
     """Create the model.
 
@@ -148,7 +148,7 @@ class Seq2SeqModel(object):
     
     def seq2seq_function(encoder_inputs, decoder_inputs):
       return seq2seq.many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, self.encoder_names, self.decoder_name,
-                                          cell, src_vocab_size, self.trg_vocab_size, self.embedding_size,
+                                          cell, src_vocab_size, self.trg_vocab_size, self.embedding_size, embeddings,
                                           output_projection=output_projection, feed_previous=self.feed_previous)
 
     # training outputs and losses

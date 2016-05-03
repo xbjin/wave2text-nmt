@@ -19,6 +19,7 @@ from tensorflow.python.ops import variable_scope
 from translate import rnn_cell
 from translate import rnn
 
+import tensorflow as tf
 import sys
 
 
@@ -260,10 +261,11 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
 
 
 def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, attention_states,
-                                cell, num_symbols, embedding_size, embedding_initializer=None, num_heads=1,
+                                cell, num_symbols, embedding_size, num_heads=1,
                                 output_size=None, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
-                                scope=None, initial_state_attention=False):
+                                scope=None, initial_state_attention=False,
+                                embedding_initializer=None, embedding_trainable=True):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -315,8 +317,10 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
 
   with variable_scope.variable_scope(scope or "embedding_attention_decoder"):
     with ops.device("/cpu:0"):
-      embedding = variable_scope.get_variable("embedding", [num_symbols, embedding_size],
-                                              initializer=embedding_initializer)
+      embedding_shape = [num_symbols, embedding_size] if embedding_initializer is None else None
+      embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
+                                              initializer=embedding_initializer,
+                                              trainable=embedding_trainable)
 
     def extract_argmax_and_embed(prev, _):
       """Loop_function that extracts the symbol from prev and embeds it."""
@@ -343,13 +347,14 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
   Args:
     embeddings: dictionary of (encoder/decoder name, embedding matrix) used for initializing the
       embeddings
-    encoder_names: list of unique names for each encoder (usually the language codes, e.g. ['fr', 'de'])
+    encoder_names: list of unique names for each encoder (usually the language codes,
+      e.g. ['fr', 'de'])
     decoder_name: name of the decoder (e.g. 'en')
   """
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
-  embeddings = {name: tf.convert_to_tensor(embedding, dtype=tf.float32)
+  embeddings = {name: (tf.convert_to_tensor(embedding.value, dtype=tf.float32), embedding.trainable)
                 for name, embedding in embeddings.items()}
 
   encoder_states = []
@@ -358,9 +363,11 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
     for encoder_name, encoder_inputs_, num_encoder_symbols_ in zip(encoder_names, encoder_inputs,
                                                                    num_encoder_symbols):
       with variable_scope.variable_scope("encoder_{}".format(encoder_name)):
-        initializer = embeddings.get(encoder_name)  # get returns None by default
+        initializer, trainable = embeddings.get(encoder_name, (None, True))
         encoder_cell = rnn_cell.EmbeddingWrapper(cell, embedding_classes=num_encoder_symbols_,
-                                                 embedding_size=embedding_size, initializer=initializer)
+                                                 embedding_size=embedding_size,
+                                                 initializer=initializer, trainable=trainable)
+        
         encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell, encoder_inputs_, dtype=dtype)
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
@@ -381,13 +388,15 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
 
     decoder_scope = 'decoder_{}'.format(decoder_name)
 
+    embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
+
     if isinstance(feed_previous, bool):
       return embedding_attention_decoder(
           decoder_inputs, encoder_state_sum, encoder_names, attention_states, cell,
-          num_decoder_symbols, embedding_size, embedding=embeddings.get(decoder_name),
-          num_heads=num_heads, output_size=output_size,
-          output_projection=output_projection, feed_previous=feed_previous,
-          scope=decoder_scope, initial_state_attention=initial_state_attention)
+          num_decoder_symbols, embedding_size, num_heads=num_heads, output_size=output_size,
+          output_projection=output_projection, feed_previous=feed_previous, scope=decoder_scope,
+          initial_state_attention=initial_state_attention,
+          embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
@@ -396,11 +405,10 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
                                          reuse=reuse):
         outputs, state = embedding_attention_decoder(
             decoder_inputs, encoder_state_sum, encoder_names, attention_states, cell,
-            num_decoder_symbols, embedding_size, embedding_initializer=embeddings.get(decoder_name),
-            num_heads=num_heads, output_size=output_size,
-            output_projection=output_projection,
-            feed_previous=feed_previous_bool,
-            scope=decoder_scope, initial_state_attention=initial_state_attention)
+            num_decoder_symbols, embedding_size, num_heads=num_heads, output_size=output_size,
+            output_projection=output_projection, feed_previous=feed_previous_bool,
+            scope=decoder_scope, initial_state_attention=initial_state_attention,
+            embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable)
         return outputs + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,

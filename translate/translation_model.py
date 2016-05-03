@@ -5,7 +5,6 @@ from __future__ import print_function
 import tensorflow as tf
 import os
 import cPickle
-import logging
 import time
 import math
 import numpy as np
@@ -27,14 +26,14 @@ class TranslationModel(object):
     
     # main model
     self.model = seq2seq_model.Seq2SeqModel(src_ext, trg_ext, self.buckets, self.learning_rate, self.global_step,
-                                            **vars(parameters))
+                                            embeddings, **vars(parameters))
     self.models = []
     
     if multi_task:  # multi-task
       for ext, vocab_size in zip(src_ext, parameters.src_vocab_size):
         params = {k: v for k, v in vars(parameters).items() if k != 'src_vocab_size'}  # FIXME: ugly
         partial_model = seq2seq_model.Seq2SeqModel([ext], trg_ext, self.buckets, self.learning_rate, self.global_step,
-                                                   src_vocab_size=[vocab_size], reuse=True, **params)
+                                                   embeddings, src_vocab_size=[vocab_size], reuse=True, **params)
         self.models.append(partial_model)
     else:  # multi-source
       self.models.append(self.model)
@@ -70,7 +69,7 @@ class TranslationModel(object):
         load_checkpoint(sess, checkpoint, blacklist=('learning_rate', 'global_step'))
 
   def train(self, sess, filenames, steps_per_checkpoint, steps_per_eval=None, bleu_script=None, max_train_size=None):
-    logging.info('reading training and development data')
+    utils.log('reading training and development data')
     self._read_data(filenames, max_train_size)
     
     # check read_data has been called
@@ -81,7 +80,7 @@ class TranslationModel(object):
     times = [0.0] * len(self.models)
     steps = [0] * len(self.models)
     
-    logging.info('starting training')
+    utils.log('starting training')
     while True:
       i = np.random.randint(len(self.models))
       model = self.models[i]
@@ -100,7 +99,7 @@ class TranslationModel(object):
         step_time = sum(times) / steps_per_checkpoint
         perplexity = math.exp(loss) if loss < 300 else float('inf')
 
-        logging.info('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
+        utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
           global_step, self.model.learning_rate.eval(), step_time, perplexity))
           
         # decay learning rate when loss is worse than 3 last losses
@@ -115,7 +114,7 @@ class TranslationModel(object):
           step_times = [time_ / steps_ if steps_ > 0 else 0.0 for time_, steps_ in zip(times, steps)]                      
           detail = ' '.join('{{steps {} step-time {:.2f} perplexity {:.2f}}}'.format(steps_, step_time_, perplexity_)
               for steps_, step_time_, perplexity_ in zip(steps, step_times, perplexities))
-          logging.info('details per model {}'.format(detail))
+          utils.log('details per model {}'.format(detail))
         
         losses = [0.0] * len(self.models)
         times = [0.0] * len(self.models)
@@ -125,7 +124,7 @@ class TranslationModel(object):
         self.save(sess)
         
       if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
-        logging.info('starting BLEU eval')
+        utils.log('starting BLEU eval')
         # TODO: save best models under a special checkpoint
         self.evaluate(sess, filenames, bleu_script, on_dev=True)
 
@@ -142,7 +141,7 @@ class TranslationModel(object):
     # compute perplexity on dev set
     for bucket_id in xrange(len(self.buckets)):
       if not model.dev_set[bucket_id]:
-        logging.info("  eval: empty bucket {}".format(bucket_id))
+        utils.log("  eval: empty bucket {}".format(bucket_id))
         continue
 
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.dev_set, bucket_id)
@@ -150,7 +149,7 @@ class TranslationModel(object):
                                    forward_only=True, decode=False)
 
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-      logging.info("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
+      utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
   def _decode_sentence(self, sess, src_sentences):
     tokens = [sentence.split() for sentence in src_sentences]
@@ -161,7 +160,7 @@ class TranslationModel(object):
     
     if any(len(ids_) > max_len for ids_ in token_ids):
       len_ = max(map(len, token_ids))
-      logging.warn("line is too long ({} tokens), truncating".format(len_))
+      utils.warn("line is too long ({} tokens), truncating".format(len_))
       token_ids = [ids_[:max_len] for ids_ in token_ids]
     
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
@@ -212,7 +211,7 @@ class TranslationModel(object):
       references = trg_file.readlines()
       
       score = utils.bleu_score(bleu_script, hypotheses, references)
-      logging.info(score)
+      utils.log(score)
       
       if output is not None:
         with open(output, 'w') as f:
@@ -238,7 +237,7 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   
   ckpt = tf.train.get_checkpoint_state(checkpoint_dir)  # loads last checkpoint
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-    logging.info('reading model parameters from {}'.format(ckpt.model_checkpoint_path))
+    utils.log('reading model parameters from {}'.format(ckpt.model_checkpoint_path))
     tf.train.Saver(variables).restore(sess, ckpt.model_checkpoint_path)  
 
 
@@ -248,14 +247,14 @@ def save_checkpoint(sess, checkpoint_dir, step=None, name=None):
   name = name or 'translate'
   
   if not os.path.exists(checkpoint_dir):
-    logging.info("creating directory {}".format(checkpoint_dir))
+    utils.log("creating directory {}".format(checkpoint_dir))
     os.makedirs(checkpoint_dir)  
   
   with open(var_file, 'wb') as f:
     var_names = [var.name for var in tf.all_variables()]
     cPickle.dump(var_names, f)
   
-  logging.info('saving model to {}'.format(checkpoint_dir))
+  utils.log('saving model to {}'.format(checkpoint_dir))
   checkpoint_path = os.path.join(checkpoint_dir, name)
   tf.train.Saver().save(sess, checkpoint_path, step)
-  logging.info('finished saving model')
+  utils.log('finished saving model')
