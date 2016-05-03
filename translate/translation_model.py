@@ -6,6 +6,7 @@ import tensorflow as tf
 import os
 import cPickle
 import time
+import sys
 import math
 import numpy as np
 from translate import seq2seq_model, utils
@@ -191,6 +192,7 @@ class TranslationModel(object):
     self._read_vocab(filenames)
       
     with utils.open_files(filenames.src_test) as files:
+      output_file = None
       try:
         output_file = sys.stdout if output is None else open(output, 'w')
         
@@ -200,7 +202,8 @@ class TranslationModel(object):
           output_file.flush()
           
       finally:
-        output_file.close()
+        if output_file is not None:
+          output_file.close()
 
   def evaluate(self, sess, filenames, bleu_script, on_dev=False, output=None):
     self._read_vocab(filenames)

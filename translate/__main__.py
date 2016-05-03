@@ -115,9 +115,9 @@ def main():
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
     
     if args.decode:
-      model.decode(sess, filenames, output=None)
+      model.decode(sess, filenames, output=args.output)
     elif args.eval:
-      model.evaluate(sess, filenames, bleu_script=args.bleu_script)
+      model.evaluate(sess, filenames, bleu_script=args.bleu_script, output=args.output)
     else:
       try:
         model.train(sess, filenames, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,

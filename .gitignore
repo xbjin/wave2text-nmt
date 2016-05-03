@@ -62,6 +62,7 @@ target/
 .ipynb_checkpoints
 
 data/
+experiments/
 .idea/
 model/
 .spyderproject

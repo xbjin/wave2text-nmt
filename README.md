@@ -64,4 +64,12 @@ fast_align_iter
 
 	Number of iterations in fast align learning. Default : 5            
       
-	
+## TODO
+
+* Update this documentation
+* Limit number of checkpoints
+* Special checkpoint for best model
+* Better handling of buckets
+* Possibility to freeze encoder or decoder weights during training
+* Docstrings
+* Better batch handling

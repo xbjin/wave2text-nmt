@@ -33,8 +33,8 @@ file_formats = {
 }
 
 
-def concat_files_(args,unzip_folder_path):    
-    langs = args.src_ext+[args.trg_ext] 
+def concat_files_(args, unzip_folder_path):    
+    langs = args.src_ext + [args.trg_ext] 
     outputs=[]
     for l in langs:
         output_file = os.path.join(unzip_folder_path, args.corpus+"-concat"+"."+l)
@@ -109,6 +109,7 @@ def call_build_trilingual_corpus(args):
     print("Calling build-trilingual-corpus with params : ", args_)
     subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
   
+  
 def fetch_corpus(args):
     exp_dir = args.exp
     if not os.path.isdir(exp_dir):
@@ -127,10 +128,9 @@ def fetch_corpus(args):
     for root, directories, filenames in os.walk(unzip_folder_path):
         for filename in filenames: 
             _,ext = os.path.splitext(os.path.join(root,filename))
-            if(ext not in [".tgz",".gz"]):
+            if ext not in [".tgz",".gz"]:
                 all_corpus_lang.append(os.path.join(root,filename))                
-        
-    #corpus we want
+
     corpus_wanted = []
     if args.corpus_type == 'mono':
         for ext in args.src_ext:
@@ -153,7 +153,7 @@ def fetch_corpus(args):
         args.corpus_lang = concat_files_(args, unzip_folder_path)
       
     #if trilingual given, call script    
-    if(args.corpus_type == "trilingual"):
+    if args.corpus_type == "trilingual":
         call_build_trilingual_corpus(args) 
         
     #copying file in output dir  
@@ -161,7 +161,8 @@ def fetch_corpus(args):
         copyfile(f, os.path.join(args.output_dir, os.path.basename(f)))        
     
     #shutil.rmtree(unzip_folder_path)
-    
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
             formatter_class=argparse.RawDescriptionHelpFormatter)
