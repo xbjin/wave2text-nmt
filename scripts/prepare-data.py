@@ -89,21 +89,16 @@ def create_vocabulary(id_, args):
     ext = args.extensions[id_]
     vocab_size = args.vocab_size[id_]
     filename = os.path.join(args.output_dir, 'train.{}'.format(ext))
-    output_filename = os.path.join(args.output_dir, 'vocab{}.{}'.format(
-        vocab_size, ext))
+    output_filename = os.path.join(args.output_dir, 'vocab.{}'.format(ext))
 
     logging.info('creating vocabulary {} from {}'.format(output_filename,
                                                          filename))
     vocab = {}
     with open(filename) as input_file,\
-            open(output_filename, 'w') as output_file:
+         open(output_filename, 'w') as output_file:
         for i, line in enumerate(input_file, 1):
-            if i % 100000 == 0:
-                logging.info(' processing line {}'.format(i))
-            tokens = line.split()
-            for w in tokens:
+            for w in line.split():
                 vocab[w] = vocab.get(w, 0) + 1
-
 
         vocab_list = start_vocab + sorted(vocab, key=vocab.get, reverse=True)
         if 0 < vocab_size < len(vocab_list):
@@ -114,7 +109,6 @@ def create_vocabulary(id_, args):
     return dict(map(reversed, enumerate(vocab_list)))
 
 
-
 def create_ids(corpus, id_, vocab, args):
     if id_ == len(args.extensions) - 1 and id_ > 0 and args.align:
         if 'train' in corpus:
@@ -122,8 +116,7 @@ def create_ids(corpus, id_, vocab, args):
             return
 
     filename = '{}.{}'.format(corpus, args.extensions[id_])
-    output_filename = '{}.ids{}.{}'.format(corpus, args.vocab_size[id_],
-                                           args.extensions[id_])
+    output_filename = '{}.ids.{}'.format(corpus, args.extensions[id_])
 
     with open(filename) as input_file,\
             open(output_filename, 'w') as output_file:
@@ -135,8 +128,7 @@ def create_ids(corpus, id_, vocab, args):
 def create_ids_with_align(corpus, id_, vocab, args):
     align_filename = os.path.join(args.output_dir, 'train.align')
     trg_filename = '{}.{}'.format(corpus, args.extensions[id_])
-    output_filename = '{}.ids{}.{}'.format(corpus, args.vocab_size[id_],
-                                           args.extensions[id_])
+    output_filename = '{}.ids.{}'.format(corpus, args.extensions[id_])
 
     with open_files([trg_filename, align_filename]) as files,\
          open(output_filename, 'w') as output_file:
@@ -425,7 +417,7 @@ if __name__ == '__main__':
             split_corpus(filenames, dest_corpora, args.extensions)
                 
         if args.align:
-            logging.info('creating alignement')
+            logging.info('creating alignment')
             src_ext, trg_ext = args.extensions[0], args.extensions[-1]
 
             # alignment works only for one pair of languages
@@ -446,9 +438,14 @@ if __name__ == '__main__':
             vocabs = [create_vocabulary(id_, args)
                       for id_ in range(len(args.extensions))]
 
+        corpora = [output_train, output_dev, output_test]
+        sizes = [args.train_size, args.dev_size, args.test_size]
+
         if args.create_ids:
             logging.info('creating ids')
-            for corpus in [output_train, output_dev, output_test]:
+            for corpus, size in zip(corpora, sizes):
+                if size is not None and size == 0:
+                    continue
                 for id_ in range(len(args.extensions)):
                     create_ids(corpus, id_, vocabs[id_], args)
 
