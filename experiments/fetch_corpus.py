@@ -13,55 +13,43 @@ import shutil
 
 help_msg = ""
 
-europarl_trilingual = "http://www.statmt.org/wmt13/training-parallel-europarl-v7.tgz"
 europarl_parallel = "http://www.statmt.org/wmt13/training-parallel-europarl-v7.tgz"
 europarl_mono = "http://www.statmt.org/wmt13/training-monolingual-europarl-v7.tgz"
-news_trilingual = "http://www.statmt.org/wmt15/training-parallel-nc-v10.tgz"
 news_parallel = "http://www.statmt.org/wmt15/training-parallel-nc-v10.tgz"
 news_mono = "http://www.statmt.org/wmt15/training-monolingual-nc-v10.tgz"
 bitext = "http://www-lium.univ-lemans.fr/~schwenk/cslm_joint_paper/data/bitexts.tgz"
 dev_v2 = "http://www.statmt.org/wmt15/dev-v2.tgz"
 
-#use it if folder name of unzip is not same as args.corpus name
-redirect_url = {    
-    'nc9' : 'bitext',
-    'ccb2_pc30' : 'bitext',
-    'crawl' : 'bitext',
-    'ep7_pc45' : 'bitext',
-    'un2000_pc34' : 'bitext',
-    'dev08_11' : 'bitext'
-}
-
 
 file_formats = {
-'europarl_trilingual': ['europarl-v7.{src}-{trg}.{src}'],
-'europarl_parallel': ['europarl-v7.{src}-{trg}'],
-'europarl_mono': ['europarl-v7.{src}'],
-'news_trilingual' : ['news-commentary-v10.{src}-{trg}.{src}'],
-'news_parallel' : ['news-commentary-v10.{src}-{trg}'],
-'news_mono' : ['news-commentary-v10.{src}'],
-'dev_v2' : ['newstest{year}.{trg}'],
-'dev_v2_concat' : ['newsdev1112.{trg}'], 
-'nc9' : ['nc9.{src}', 'nc9.{trg}'],
-'ccb2_pc30' : ['ccb2_pc30.{src}', 'ccb2_pc30.{trg}'],
-'crawl' : ['crawl.{src}', 'crawl.{trg}'],
-'ep7_pc45' : ['ep7_pc45.{src}', 'ep7_pc45.{trg}'],
-'un2000_pc34' : ['un2000_pc34.{src}', 'un2000_pc34.{trg}'],
-'dev08_11' : ['dev08_11.{src}', 'dev08_11.{trg}']       
+'europarl':         ('europarl-v7.{src}-{trg}', europarl_parallel),
+'europarl-mono':    ('europarl-v7',europarl_mono),
+'news-crawl-2007': '',
+'wmt14':        (['ep7_pc45', 'nc9', 'ccb2_pc30', 'un2000_pc34', 'dev08_11', 'crawl'],bitext),
+'news-mono':    ('news-commentary-v10',news_mono),
+'news':         ('news-commentary-v10.{src}-{trg}', news_parallel),
+'news-dev' :    (['newstest2011', 'newstest2012'],dev_v2),
+'news-test' :   ('newstest2013',dev_v2)
+
 }
 
 
 
-def concat_files(corpus_test, args, key):
-    
-    f1213 = [c for c in corpus_test if any(w in c for w in ['2011','2012'])]
-    filenames = f1213
-    
-    with open(os.path.join(args.output_dir, file_formats[key+"_concat"][0].format(trg=args.trg_ext)), 'w') as outfile:
-        for fname in filenames:
-            with open(fname) as infile:
-                for line in infile:
-                    outfile.write(line)
+def concat_files_(args,unzip_folder_path):    
+    langs = args.src_ext+[args.trg_ext] 
+    outputs=[]
+    for l in langs :
+        output_file = os.path.join(unzip_folder_path, args.corpus+"-concat"+"."+l)
+        filenames_lang = [c for c in args.corpus_lang if l in os.path.splitext(c)[1]]
+        if len(filenames_lang) == 0:
+            continue
+        outputs.append(output_file)
+        with open(output_file, 'w') as outfile:
+            for fname in filenames_lang:
+                with open(fname) as infile:
+                    for line in infile:
+                        outfile.write(line)
+    return outputs
 
 
 def gzip_(gz_path, new_path):
@@ -84,22 +72,13 @@ def gunzip_file(gz_path, new_path, args):
   for root, directories, filenames in os.walk(new_path):
     for filename in filenames: 
       name ,ext = os.path.splitext(os.path.join(root,filename))
-      if(args.corpus in name and ext in [".tgz",".gz"]):
+      if(any(f in name for f in args.corp_filenames) and ext in [".tgz",".gz"]):
           gzip_(os.path.join(root,filename), new_path)
 
 
-def maybe_download(exp_dir, unzip_folder, args):
-    # maybe download download the archive if it doesnt exits and unzip
-    # in unzip_folder. Return folder and the key of the corpus file_formats 
-    try:
-        url_corpus = eval(unzip_folder) 
-        key = unzip_folder
-    except NameError:
-        key = args.corpus
-        unzip_folder = redirect_url[key]        
-        url_corpus = eval(unzip_folder)
-    
-    
+def maybe_download(exp_dir, args):
+    unzip_folder = args.corpus
+    url_corpus = file_formats[args.corpus][1]
     
     all_dir = [f for f in os.listdir(exp_dir) if os.path.isdir(os.path.join(exp_dir, f))] 
     unzip_folder_path = os.path.join(exp_dir, unzip_folder)
@@ -109,19 +88,16 @@ def maybe_download(exp_dir, unzip_folder, args):
         if not os.path.exists(filepath):
             filepath, _ = urllib.request.urlretrieve(url_corpus, filepath)
             statinfo = os.stat(filepath)
-            print("Succesfully downloaded", filepath, statinfo.st_size, "bytes")
-        
+            print("Succesfully downloaded", filepath, statinfo.st_size, "bytes")      
 
-        gunzip_file(filepath, unzip_folder_path, args)
-        
-    return unzip_folder_path, key
+        gunzip_file(filepath, unzip_folder_path, args)        
+    return unzip_folder_path
     
 def call_build_trilingual_corpus(args):
 
     #we sort files according to order given in extension input
     langs = args.src_ext+[args.trg_ext] 
-    args.corpus_lang.sort(key=lambda (x): langs.index(os.path.splitext(x)[-1][1:]))
-    
+    args.corpus_lang.sort(key=lambda (x): langs.index(os.path.splitext(x)[-1][1:]))    
     
     file_without_ext = [os.path.splitext(f)[0] for f in args.corpus_lang]
     basename_=os.path.basename(os.path.splitext(file_without_ext[0])[0]+'.'+'-'.join(langs))
@@ -131,31 +107,10 @@ def call_build_trilingual_corpus(args):
             + file_without_ext \
             + [os.path.join(args.output_dir, basename_)] \
             + langs
-
     
     print("Calling build-trilingual-corpus with params : ", args_)
     subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
   
-def fetch_testdev(args):
-    
-    folder_unzip = args.test_file
-    folder_unzip_path, key = maybe_download(args.exp, folder_unzip, args) 
-    all_test = []
-    for root, directories, filenames in os.walk(folder_unzip_path):
-        for filename in filenames: 
-            all_test.append(os.path.join(root,filename))                
-            
-
-    corpus_wanted = [f.format(year=y,trg=args.trg_ext) for y in [2011,2012,2013]  for f in file_formats[key]]
-
-    corpus_test = [c for c in all_test if any(w in c for w in corpus_wanted)]
-    
-    concat_files(corpus_test, args, key)
-    
-    for f in corpus_test:
-        copyfile(f, os.path.join(args.output_dir, os.path.basename(f))) 
-        
-            
 def fetch_corpus(args):
     exp_dir = args.exp
     if not os.path.isdir(exp_dir):
@@ -164,9 +119,10 @@ def fetch_corpus(args):
     if not os.path.isdir(args.output_dir):
         os.makedirs(args.output_dir)  
 
+    files = file_formats[args.corpus][0]    
+    args.corp_filenames = [files] if type(files) is not list else files 
     
-    unzip_folder = args.corpus+"_"+args.corpus_type        
-    unzip_folder_path, key = maybe_download(exp_dir, unzip_folder, args) 
+    unzip_folder_path = maybe_download(exp_dir, args) 
     
     #getting all file unzipped with their path
     all_corpus_lang = []
@@ -175,13 +131,29 @@ def fetch_corpus(args):
             _,ext = os.path.splitext(os.path.join(root,filename))
             if(ext not in [".tgz",".gz"]):
                 all_corpus_lang.append(os.path.join(root,filename))                
-    
-   
-    #getting coprus name we want    
-    key = unzip_folder if key is None else key
-    corpus_wanted = [f.format(src=l,trg=args.trg_ext) for l in args.src_ext for f in file_formats[key]]
+        
+    #corpus we want
+    corpus_wanted = []
+    if args.corpus_type == 'mono':
+        for ext in args.src_ext:
+            corpus_wanted += [f + '.' + ext for f in args.corp_filenames]
+    elif args.corpus_type == 'parallel':
+        for ext in args.src_ext:
+            corpus_wanted += [f.format(src=ext, trg=args.trg_ext) for f in args.corp_filenames]
+    else:
+        if len(args.src_ext) != 2:
+            sys.exit("If trinlingual given, need exactly 2 src_ext")
+        for ext in args.src_ext:
+            corpus_wanted += [f.format(src=ext, trg=args.trg_ext) + '.' + ext for f in args.corp_filenames]
+
+    print(corpus_wanted)
     #extracting corpus we want from all corpus
     args.corpus_lang = [c for c in all_corpus_lang if any(w in c for w in corpus_wanted)]
+    
+
+    if type(files) is list:
+        args.corpus_lang = concat_files_(args, unzip_folder_path)
+      
     #if trilingual given, call script    
     if(args.corpus_type == "trilingual"):
         call_build_trilingual_corpus(args) 
@@ -190,7 +162,7 @@ def fetch_corpus(args):
     for f in args.corpus_lang:
         copyfile(f, os.path.join(args.output_dir, os.path.basename(f)))        
     
-    shutil.rmtree(unzip_folder_path)
+    #shutil.rmtree(unzip_folder_path)
     
 if __name__ == '__main__':
     
@@ -203,12 +175,17 @@ if __name__ == '__main__':
     parser.add_argument('src_ext', nargs='+', help='list of ext for the corpus')   
     parser.add_argument('output_dir', help='output_dir') 
     parser.add_argument('--trg_ext', help='target ext', default='en') 
-    parser.add_argument('--test-file', help='test files to use', default='dev_v2')
+    parser.add_argument('--test-file', help='test files to use', default='news-test')
+    parser.add_argument('--dev-file', help='test files to use', default='news-dev')
     parser.add_argument('--exp', help='path to expe directory', default='experiments')
    
     args = parser.parse_args()
     
-    fetch_corpus(args) 
-    fetch_testdev(args)
+    calls = [[args.corpus, args.corpus_type], [args.test_file, 'mono'], [args.dev_file, 'mono']]
+    for c in calls: 
+        args.corpus = c[0]
+        args.corpus_type = c[1]
+        fetch_corpus(args) 
+    #fetch_testdev(args)
 
         
