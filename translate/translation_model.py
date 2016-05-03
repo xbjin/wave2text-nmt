@@ -68,7 +68,8 @@ class TranslationModel(object):
       for checkpoint in checkpoints:
         load_checkpoint(sess, checkpoint, blacklist=('learning_rate', 'global_step'))
 
-  def train(self, sess, filenames, steps_per_checkpoint, steps_per_eval=None, bleu_script=None, max_train_size=None):
+  def train(self, sess, filenames, steps_per_checkpoint, steps_per_eval=None, bleu_script=None, max_train_size=None,
+            eval_output=None):
     utils.log('reading training and development data')
     self._read_data(filenames, max_train_size)
     
@@ -95,8 +96,8 @@ class TranslationModel(object):
       global_step = self.global_step.eval(sess)
       
       if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:        
-        loss = sum(losses) / steps_per_checkpoint
-        step_time = sum(times) / steps_per_checkpoint
+        loss = sum(losses) / sum(steps)
+        step_time = sum(times) / sum(steps)
         perplexity = math.exp(loss) if loss < 300 else float('inf')
 
         utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
@@ -126,7 +127,8 @@ class TranslationModel(object):
       if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
         utils.log('starting BLEU eval')
         # TODO: save best models under a special checkpoint
-        self.evaluate(sess, filenames, bleu_script, on_dev=True)
+        output = '{}.{}'.format(eval_output, global_step)
+        self.evaluate(sess, filenames, bleu_script, on_dev=True, output=output)
 
   def _train_step(self, sess, model):
     r = np.random.random_sample()

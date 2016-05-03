@@ -44,6 +44,7 @@ parser.add_argument('data_dir', default='data', help='data directory')
 parser.add_argument('train_dir', default='model', help='training directory')
 parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
+parser.add_argument('--output', help='output file for decoding')
 parser.add_argument('--train-prefix', default='train', help='name of the training corpus')
 parser.add_argument('--dev-prefix', default='dev', help='name of the development corpus')
 parser.add_argument('--embedding-prefix', help='prefix of the embedding files to use as initialization (won\'t be used '
@@ -94,6 +95,7 @@ def main():
   checkpoint_dir = os.path.join(args.train_dir, checkpoint_prefix)
   checkpoints = args.load_checkpoints and [os.path.join(args.train_dir, checkpoint)
                                            for checkpoint in args.load_checkpoints]
+  eval_output = os.path.join(args.train_dir, 'eval.out')
   
   device = None
   if args.no_gpu:
@@ -119,7 +121,7 @@ def main():
     else:
       try:
         model.train(sess, filenames, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
-                    args.max_train_size)
+                    args.max_train_size, eval_output)
       except KeyboardInterrupt:
         utils.log('exiting...')
         model.save(sess)
