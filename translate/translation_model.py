@@ -193,7 +193,7 @@ class TranslationModel(object):
 
   def decode(self, sess, filenames, output=None):
     self._read_vocab(filenames)
-    utils.debug('decoding, UNK replacement {}'.format('off' if self.lookup_dict is None else 'on'))
+    utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
       
     with utils.open_files(filenames.src_test) as files:
       output_file = None
@@ -211,7 +211,7 @@ class TranslationModel(object):
 
   def evaluate(self, sess, filenames, bleu_script, on_dev=False, output=None):
     self._read_vocab(filenames)
-    utils.debug('decoding, UNK replacement {}'.format('off' if self.lookup_dict is None else 'on'))
+    utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
     
     src_filenames = filenames.src_dev if on_dev else filenames.src_test
     trg_filename = filenames.trg_dev if on_dev else filenames.trg_test
@@ -242,7 +242,6 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   else:
     variables = tf.all_variables()
   
-  # TODO: log retrieved parameters
   # remove variables from blacklist
   variables = [var for var in variables if not any(var.name.startswith(prefix) for prefix in blacklist)]
   

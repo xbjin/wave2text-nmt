@@ -67,6 +67,11 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
 
 def main():
   args = parser.parse_args()
+
+  if not os.path.exists(args.train_dir):
+    utils.log("Creating directory {}".format(args.train_dir))
+    os.makedirs(args.train_dir)
+
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   logger = utils.create_logger(args.log_file)
   logger.setLevel(logging_level)
@@ -78,10 +83,6 @@ def main():
   # enforce constraints
   assert len(args.src_ext) == len(args.src_vocab_size)
   assert len(args.trg_ext) == len(args.trg_vocab_size)
-
-  if not os.path.exists(args.train_dir):
-    utils.log("Creating directory {}".format(args.train_dir))
-    os.makedirs(args.train_dir)
 
   filenames = utils.get_filenames(**vars(args))
   utils.debug('filenames')
