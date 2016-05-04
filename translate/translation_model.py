@@ -213,7 +213,7 @@ class TranslationModel(object):
 
     with utils.open_files(src_filenames) as src_files, open(trg_filename) as trg_file:
       hypotheses = [self._decode_sentence(sess, src_sentences) for src_sentences in zip(*src_files)]
-      references = trg_file.readlines()
+      references = [line.strip() for line in trg_file]
       
       score = utils.bleu_score(bleu_script, hypotheses, references)
       utils.log(score)
