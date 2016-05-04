@@ -71,7 +71,9 @@ def main():
   logger = utils.create_logger(args.log_file)
   logger.setLevel(logging_level)
   
-  utils.log(args)   # TODO: nicer logging
+  utils.log('program arguments')
+  for k, v in vars(args).items():
+    utils.log('  {:<20} {}'.format(k, v))
   
   # enforce constraints
   assert len(args.src_ext) == len(args.src_vocab_size)
@@ -82,6 +84,10 @@ def main():
     os.makedirs(args.train_dir)
 
   filenames = utils.get_filenames(**vars(args))
+  utils.debug('filenames')
+  for k, v in vars(filenames).items():
+    utils.log('  {:<20} {}'.format(k, v))
+  
   embeddings = utils.read_embeddings(filenames, **vars(args))
   utils.debug('embeddings {}'.format(embeddings))
 
@@ -110,7 +116,11 @@ def main():
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task)
 
-  config = tf.ConfigProto(log_device_placement=args.verbose, allow_soft_placement=True)
+  utils.log('model parameters')
+  for var in tf.all_variables():
+    utils.log('  {} shape {}'.format(var.name, var.get_shape()))
+
+  config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
   with tf.Session(config=config) as sess:
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
     

@@ -218,6 +218,10 @@ def read_dataset(source_paths, target_path, buckets, max_size=None):
           data_set[bucket_id].append(source_ids + [target_ids])
           break
 
+  debug('retrieved dataset')
+  for bucket_id, data in enumerate(data_set):
+    debug('  bucket {} size ({}, {})'.format(bucket_id, len(data), len(data[-1])))
+
   return data_set
 
 

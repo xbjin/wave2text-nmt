@@ -43,6 +43,7 @@ class TranslationModel(object):
     self.trg_vocab = None
 
   def _read_data(self, filenames, max_train_size):
+    utils.debug('reading training data')
     if self.multi_task:
       for model, src_train_ids, trg_train_ids in zip(self.models, filenames.src_train_ids, filenames.trg_train_ids):
         train_set = ([src_train_ids], trg_train_ids)
@@ -51,7 +52,8 @@ class TranslationModel(object):
     else:
       train_set = (filenames.src_train_ids, filenames.trg_train_ids)
       self.model.read_data(train_set, self.buckets, max_train_size)
-      
+    
+    utils.debug('reading development data')
     self.model.dev_set = utils.read_dataset(filenames.src_dev_ids, filenames.trg_dev_ids, self.buckets)
 
   def _read_vocab(self, filenames):
@@ -62,12 +64,12 @@ class TranslationModel(object):
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
     if not reset:
-      blacklist = ('learning_rate',) if reset_learning_rate else ()
+      blacklist = ('feed_previous', 'learning_rate',) if reset_learning_rate else ('feed_previous',)
       load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
       
     if checkpoints is not None:  # load partial checkpoints
       for checkpoint in checkpoints:
-        load_checkpoint(sess, checkpoint, blacklist=('learning_rate', 'global_step'))
+        load_checkpoint(sess, checkpoint, blacklist=('feed_previous', 'learning_rate', 'global_step'))
 
   def train(self, sess, filenames, steps_per_checkpoint, steps_per_eval=None, bleu_script=None, max_train_size=None,
             eval_output=None):
@@ -104,19 +106,20 @@ class TranslationModel(object):
         utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
           global_step, self.model.learning_rate.eval(), step_time, perplexity))
           
-        # decay learning rate when loss is worse than 3 last losses
-        if len(previous_losses) > 2 and loss > max(previous_losses):
+        # decay learning rate when loss is worse than last losses
+        if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+          utils.debug('decreasing learning rate')
           sess.run(self.learning_rate_decay_op)
 
-        previous_losses.append(loss)          
+        previous_losses.append(loss)
         
         if self.multi_task:  # detail per model
           perplexities = [math.exp(loss_ / steps_) if steps_ > 0 and loss_ / steps_ < 300 else float('inf')
                           for loss_, steps_ in zip(losses, steps)]
           step_times = [time_ / steps_ if steps_ > 0 else 0.0 for time_, steps_ in zip(times, steps)]                      
-          detail = ' '.join('{{steps {} step-time {:.2f} perplexity {:.2f}}}'.format(steps_, step_time_, perplexity_)
+          detail = '\n'.join('  steps {} step-time {:.2f} perplexity {:.2f}'.format(steps_, step_time_, perplexity_)
               for steps_, step_time_, perplexity_ in zip(steps, step_times, perplexities))
-          utils.log('details per model {}'.format(detail))
+          utils.log('details per model\n{}'.format(detail))
         
         losses = [0.0] * len(self.models)
         times = [0.0] * len(self.models)
@@ -190,6 +193,7 @@ class TranslationModel(object):
 
   def decode(self, sess, filenames, output=None):
     self._read_vocab(filenames)
+    utils.debug('decoding, UNK replacement {}'.format('off' if self.lookup_dict is None else 'on'))
       
     with utils.open_files(filenames.src_test) as files:
       output_file = None
@@ -207,6 +211,7 @@ class TranslationModel(object):
 
   def evaluate(self, sess, filenames, bleu_script, on_dev=False, output=None):
     self._read_vocab(filenames)
+    utils.debug('decoding, UNK replacement {}'.format('off' if self.lookup_dict is None else 'on'))
     
     src_filenames = filenames.src_dev if on_dev else filenames.src_test
     trg_filename = filenames.trg_dev if on_dev else filenames.trg_test
@@ -237,6 +242,7 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   else:
     variables = tf.all_variables()
   
+  # TODO: log retrieved parameters
   # remove variables from blacklist
   variables = [var for var in variables if not any(var.name.startswith(prefix) for prefix in blacklist)]
   
@@ -244,6 +250,10 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     utils.log('reading model parameters from {}'.format(ckpt.model_checkpoint_path))
     tf.train.Saver(variables).restore(sess, ckpt.model_checkpoint_path)  
+
+  utils.debug('retrieved parameters')
+  for var in variables:
+    utils.debug('  {} {}'.format(var.name, var.get_shape()))
 
 
 def save_checkpoint(sess, checkpoint_dir, step=None, name=None):
