@@ -29,8 +29,8 @@ parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rat
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
 parser.add_argument('--size', type=int, default=1024, help='size of each layer')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
-parser.add_argument('--src-vocab-size', type=int, nargs='+', default=(30000,), help='source vocabulary size(s)')
-parser.add_argument('--trg-vocab-size', type=int, nargs='+', default=(30000,), help='target vocabulary size(s)')
+parser.add_argument('--src-vocab-size', type=int, nargs='+', default=[30000,], help='source vocabulary size(s)')
+parser.add_argument('--trg-vocab-size', type=int, nargs='+', default=[30000,], help='target vocabulary size(s)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
 parser.add_argument('--steps-per-checkpoint', type=int, default=50, help='number of updates per checkpoint')
 parser.add_argument('--steps-per-eval', type=int, default=1000, help='number of updates per BLEU evaluation')
@@ -52,9 +52,9 @@ parser.add_argument('--embedding-prefix', help='prefix of the embedding files to
 parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --load-checkpoints and --reset are '
                                                 'not specified, will try to load earlier versions of this checkpoint')
 parser.add_argument('--load-checkpoints', nargs='+', help='list of checkpoints to load (in loading order)')
-parser.add_argument('--src-ext', nargs='+', default=('fr',), help='source file extension(s) '
+parser.add_argument('--src-ext', nargs='+', default=['fr',], help='source file extension(s) '
                                                                   '(also used as encoder ids)')
-parser.add_argument('--trg-ext', nargs='+', default=('en',), help='target file extension(s) '
+parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file extension(s) '
                                                                   '(also used as decoder ids)')
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
 parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions for which to fix the embeddings during '
