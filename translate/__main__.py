@@ -66,29 +66,46 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
 
 
 def main():
+  # TODO higher learning rate decay
+  # TODO Prepare data multi-task
+  # TODO experiment with pre-trained embeddings
+  # TODO prepare data pre-defined vocabulary parameter
+  # TODO embeddings on CPU
   args = parser.parse_args()
-
-  if not os.path.exists(args.train_dir):
-    utils.log("Creating directory {}".format(args.train_dir))
-    os.makedirs(args.train_dir)
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   logger = utils.create_logger(args.log_file)
   logger.setLevel(logging_level)
-  
+
+  if not os.path.exists(args.train_dir):
+    os.makedirs(args.train_dir)
+    utils.log('creating directory {}'.format(args.train_dir))
+
+  utils.log(' '.join(sys.argv))
+
   utils.log('program arguments')
   for k, v in vars(args).items():
     utils.log('  {:<20} {}'.format(k, v))
   
   # enforce constraints
-  assert len(args.src_ext) == len(args.src_vocab_size)
-  assert len(args.trg_ext) == len(args.trg_vocab_size)
+  assert len(args.src_ext) == len(args.src_vocab_size), (
+    '--src-vocab-size takes {} parameter(s)'.format(len(args.src_ext)))
+  assert len(args.trg_ext) == len(args.trg_vocab_size), (
+    '--trg-vocab-size takes {} parameter(s)'.format(len(args.trg_ext)))
 
   filenames = utils.get_filenames(**vars(args))
   utils.debug('filenames')
   for k, v in vars(filenames).items():
     utils.log('  {:<20} {}'.format(k, v))
-  
+
+  # flatten list of files
+  all_filenames = [filename for names in filenames if names is not None
+    for filename in (names if isinstance(names, list) else [names]) if filename is not None]
+  all_filenames.append(args.bleu_script)
+  # check that those files exist
+  for filename in all_filenames:
+    assert os.path.exists(filename), 'file {} does not exist'.format(filename)
+
   embeddings = utils.read_embeddings(filenames, **vars(args))
   utils.debug('embeddings {}'.format(embeddings))
 

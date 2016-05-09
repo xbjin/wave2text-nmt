@@ -38,7 +38,9 @@ class TranslationModel(object):
         self.models.append(partial_model)
     else:  # multi-source
       self.models.append(self.model)
-      
+
+    self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
+
     self.src_vocabs = None
     self.trg_vocab = None
 
@@ -228,7 +230,7 @@ class TranslationModel(object):
           f.writelines(line + '\n' for line in hypotheses)
 
   def save(self, sess):
-    save_checkpoint(sess, self.checkpoint_dir, self.global_step)
+    save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
 
 
 def load_checkpoint(sess, checkpoint_dir, blacklist=()):
@@ -255,7 +257,7 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
     utils.debug('  {} {}'.format(var.name, var.get_shape()))
 
 
-def save_checkpoint(sess, checkpoint_dir, step=None, name=None):
+def save_checkpoint(sess, saver, checkpoint_dir, step=None, name=None):
   """ `checkpoint_dir` should be unique to this model """
   var_file = os.path.join(checkpoint_dir, 'vars.pkl')
   name = name or 'translate'
@@ -270,5 +272,5 @@ def save_checkpoint(sess, checkpoint_dir, step=None, name=None):
   
   utils.log('saving model to {}'.format(checkpoint_dir))
   checkpoint_path = os.path.join(checkpoint_dir, name)
-  tf.train.Saver().save(sess, checkpoint_path, step)
+  saver.save(sess, checkpoint_path, step)
   utils.log('finished saving model')
