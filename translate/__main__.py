@@ -69,7 +69,6 @@ def main():
   args = parser.parse_args()
 
   if not os.path.exists(args.train_dir):
-    utils.log("Creating directory {}".format(args.train_dir))
     os.makedirs(args.train_dir)
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO

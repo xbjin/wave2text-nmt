@@ -10,6 +10,7 @@ import tempfile
 import os
 import logging
 import sys
+import shutil
 import shlex
 
 
@@ -80,43 +81,37 @@ def open_temp_files(num=1, mode='w', delete=False):
             file_.close()
 
 
-def create_vocabulary(id_, args):
-    if id_ == len(args.extensions) - 1 and id_ > 0 and args.align:
-        start_vocab = _START_VOCAB_UNK
-    else:
-        start_vocab = _START_VOCAB_BASIC
-        
-    ext = args.extensions[id_]
-    vocab_size = args.vocab_size[id_]
-    filename = os.path.join(args.output_dir, 'train.{}'.format(ext))
-    output_filename = os.path.join(args.output_dir, 'vocab.{}'.format(ext))
+def read_vocabulary(filename):
+    with open(filename) as vocab_file:
+        words = [line.strip() for line in vocab_file]
+        return dict(map(reversed, enumerate(words)))
+
+
+def create_vocabulary(filename, output_filename, size, unk_align=False):
+    start_vocab = _START_VOCAB_UNK if unk_align else _START_VOCAB_BASIC
 
     logging.info('creating vocabulary {} from {}'.format(output_filename,
                                                          filename))
     vocab = {}
-    with open(filename) as input_file,\
+    with open(filename) as input_file, \
          open(output_filename, 'w') as output_file:
         for i, line in enumerate(input_file, 1):
             for w in line.split():
                 vocab[w] = vocab.get(w, 0) + 1
 
         vocab_list = start_vocab + sorted(vocab, key=vocab.get, reverse=True)
-        if 0 < vocab_size < len(vocab_list):
-            vocab_list = vocab_list[:vocab_size]
+        if 0 < size < len(vocab_list):
+            vocab_list = vocab_list[:size]
 
         output_file.writelines(w + '\n' for w in vocab_list)
 
     return dict(map(reversed, enumerate(vocab_list)))
 
 
-def create_ids(corpus, id_, vocab, args):
-    if id_ == len(args.extensions) - 1 and id_ > 0 and args.align:
-        if 'train' in corpus:
-            create_ids_with_align(corpus, id_, vocab, args)
-            return
-
-    filename = '{}.{}'.format(corpus, args.extensions[id_])
-    output_filename = '{}.ids.{}'.format(corpus, args.extensions[id_])
+def create_ids(filename, output_filename, vocab, align_filename=None):
+    if align_filename is not None:
+        create_ids_with_align(filename, output_filename, align_filename, vocab)
+        return
 
     with open(filename) as input_file,\
             open(output_filename, 'w') as output_file:
@@ -125,21 +120,17 @@ def create_ids(corpus, id_, vocab, args):
             output_file.write(' '.join(ids) + '\n')
 
 
-def create_ids_with_align(corpus, id_, vocab, args):
-    align_filename = os.path.join(args.output_dir, 'train.align')
-    trg_filename = '{}.{}'.format(corpus, args.extensions[id_])
-    output_filename = '{}.ids.{}'.format(corpus, args.extensions[id_])
-
-    with open_files([trg_filename, align_filename]) as files,\
+def create_ids_with_align(filename, output_filename, align_filename, vocab):
+    with open_files([filename, align_filename]) as files,\
          open(output_filename, 'w') as output_file:
-        for trg_line, align_line in zip(*files):
+        for line, align_line in zip(*files):
             # reverse the alignment
             align_pair = dict(map(int, item.split('-'))[::-1]
                               for item in align_line.split())
 
             ids = []
 
-            for trg_pos, trg_word in enumerate(trg_line.split()):
+            for trg_pos, trg_word in enumerate(line.split()):
                 token = vocab.get(trg_word, None)
                 if token is None:
                     src_pos = align_pair.get(trg_pos, trg_pos + 8)
@@ -154,10 +145,8 @@ def create_ids_with_align(corpus, id_, vocab, args):
             output_file.write(' '.join(ids) + '\n')
 
 
-def process_file(corpus, id_, args):
-    filename = '{}.{}'.format(corpus, args.extensions[id_])
+def process_file(filename, id_, args):
     logging.info('processing ' + filename)
-
     lang = args.lang[id_]
 
     with open_temp_files(num=1) as output_, open(filename) as input_:
@@ -194,18 +183,12 @@ def process_file(corpus, id_, args):
         return output_.name
 
 
-def process_corpus(corpus, args, output_corpus=None):
-    input_filenames = [process_file(corpus, i, args)
-                 for i in range(len(args.extensions))]
+def process_corpus(filenames, args):
+    filenames = [process_file(filename, id_, args)
+                 for id_, filename in enumerate(filenames)]
 
-    output_filenames = None
-    if output_corpus is not None:
-        output_filenames = ['{}.{}'.format(output_corpus, ext)
-                            for ext in args.extensions]
-
-    with open_files(input_filenames) as input_files,\
-            (open_temp_files(len(input_filenames)) if not output_filenames
-            else open_files(output_filenames, 'w')) as output_files:
+    with open_files(filenames) as input_files, \
+         open_temp_files(len(filenames)) as output_files:
 
         # (lazy) sequence of sentence tuples
         all_lines = (lines for lines in izip(*input_files) if
@@ -224,18 +207,23 @@ def process_corpus(corpus, args, output_corpus=None):
         return [f.name for f in output_files]
 
 
-def split_corpus(filenames, dest_corpora, extensions):
-      
+def split_corpus(filenames, sizes):
     with open_files(filenames) as input_files:
-        for corpus, size in reversed(dest_corpora):  # puts train corpus last
-            if size != 0:
-                output_filenames = ['{}.{}'.format(corpus, ext)
-                                    for ext in extensions]
-                with open_files(output_filenames, mode='w') as output_files:
-                    for input_file, output_file in zip(input_files, output_files):
-                        output_file.writelines(islice(input_file, size))
-                        # If size is None, this will read the whole file.
-                        # That's why we put train last.
+        output_filenames = []
+
+        for size in sizes:
+            if size == 0:
+                output_filenames.append(None)
+                continue
+
+            with open_temp_files(num=len(filenames)) as output_files:
+                for input_file, output_file in zip(input_files, output_files):
+                    # If size is None, this will read the whole file.
+                    # That's why we put train last.
+                    output_file.writelines(islice(input_file, size))
+                output_filenames.append([f.name for f in output_files])
+
+        return output_filenames
 
 
 def create_align(filenames, args):
@@ -258,9 +246,9 @@ def create_align(filenames, args):
     return align_filename
                 
 
-def create_lookup_dictionary(filenames, args):
+def create_lookup_dictionary(filenames, align_filename, args):
     counts = {}  # word pair counts
-    with open_files(filenames) as files:
+    with open_files(list(filenames) + [align_filename]) as files:
        for src_line, trg_line, alignment_line in izip(*files):
            alignment = [map(int, item.split('-'))
                         for item in alignment_line.split()]
@@ -302,6 +290,20 @@ if __name__ == '__main__':
     parser.add_argument('output_dir',
                         help='directory where the files will be copied')
 
+    parser.add_argument('--mode', help='prepare: preprocess and copy corpora, '
+                        'vocab: create vocabularies from train files, '
+                        'ids: map words to ids using vocabulary, '
+                        'all: do all of the above', default='all',
+                        choices=('prepare', 'vocab', 'ids', 'all'))
+
+    parser.add_argument('--output-prefix', help='start filenames with '
+                        'this prefix (prefix.train, prefix.dev, prefix.test)',
+                        default='')
+    parser.add_argument('--dev-suffix', default='dev')
+    parser.add_argument('--test-suffix', default='test')
+    parser.add_argument('--train-suffix', default='train')
+    # TODO: vocab prefix, lookup dict name, align prefix, ids suffix
+
     parser.add_argument('--dev-corpus', help='development corpus')
     parser.add_argument('--test-corpus', help='test corpus')
 
@@ -309,9 +311,9 @@ if __name__ == '__main__':
                         '(None if in $PATH)', default='scripts')
 
     parser.add_argument('--dev-size', type=int,
-                        help='size of development corpus', default=3000)
+                        help='size of development corpus', default=0)
     parser.add_argument('--test-size', type=int,
-                        help='size of test corpus', default=6000)
+                        help='size of test corpus', default=0)
     parser.add_argument('--train-size', type=int,
                         help='size of training corpus (defaults to maximum)')
 
@@ -340,11 +342,11 @@ if __name__ == '__main__':
 
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
                         'the vocabularies (0 for no limit, '
-                        'default: no vocabulary)')
-    parser.add_argument('--create-ids', help='create train, test and dev id '
-                        'files', action='store_true')
+                        'default: no vocabulary)', default=30000)
+    parser.add_argument('--vocab-path', nargs='+', help='path to existing '
+                        'vocabularies (no vocabulary creation)')
     parser.add_argument('--threads', type=int, default=16)
-    parser.add_argument('--align', help='align target unknown words with the '
+    parser.add_argument('--unk-align', help='align target unknown words with the '
                         'source using special UNK IDs', action='store_true')
     parser.add_argument('--dict-threshold', help='min count of a word pair '
                         'in the dictionary', type=int, default=100)
@@ -368,86 +370,165 @@ if __name__ == '__main__':
         else:
             sys.exit('wrong number of values for parameter {}'.format(name))
 
-    if args.create_ids and args.vocab_size is None:
-        args.vocab_size = 30000
-
     n = len(args.extensions)
     args.min = fixed_length_arg('--min', args.min, n)
     args.max = fixed_length_arg('--max', args.max, n)
     args.vocab_size = fixed_length_arg('--vocab-size', args.vocab_size, n)
 
-    args.max = [n if n > 0 else float('inf') for n in args.max]
+    args.max = [i if i > 0 else float('inf') for i in args.max]
 
     if args.lang is None:
         args.lang = args.extensions
-    elif len(args.lang) != args.extensions:
+    elif len(args.lang) != n:
         sys.exit('wrong number of values for parameter --lang')
+    if args.vocab_path is not None and len(args.vocab_path) != n:
+        sys.exit('wrong number of values for parameter --vocab_path')
 
     if args.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)
+
+    create_corpus_ = args.mode in ('all', 'prepare')
+    create_vocab_ = args.mode in ('all', 'vocab')
+    create_ids_ = args.mode in ('all', 'ids')
+
+    if create_ids_ and args.vocab_path is None:
+        # vocabulary is needed for conversion to ids
+        create_vocab_ = True
 
     if not os.path.exists(args.output_dir):
         logging.info('creating directory')
         os.makedirs(args.output_dir)
 
-    output_train = os.path.join(args.output_dir, 'train')
-    output_test = os.path.join(args.output_dir, 'test')
-    output_dev = os.path.join(args.output_dir, 'dev')
+    input_corpora = (args.dev_corpus, args.test_corpus, args.corpus)
+
+    # corpora names are a concatenation of a prefix and a suffix (e.g. europarl.train)
+    output_corpora_names = [
+        args.output_prefix if not suffix else
+        suffix if not args.output_prefix else
+        '{}.{}'.format(args.output_prefix, suffix)
+        for suffix in (args.dev_suffix, args.test_suffix, args.train_suffix)
+    ]
+
+    # corpora names must be non-empty and unique
+    if (not all(output_corpora_names) or
+        len(set(output_corpora_names)) != len(output_corpora_names)):
+        sys.exit('invalid output names')
+
+    # full paths to dev, test and train corpora
+    output_corpora = [
+        os.path.join(args.output_dir, name)
+        for name in output_corpora_names
+    ]
 
     try:
-        if args.dev_corpus:
-            logging.info('processing dev corpus')
-            process_corpus(args.dev_corpus, args, output_dev)
-        if args.test_corpus:
-            logging.info('processing test corpus')
-            process_corpus(args.test_corpus, args, output_test)
+        # list of corpora, where a corpus is a list of filenames
+        corpora = [
+            (None if corpus is None else
+            ['{}.{}'.format(corpus, args.extensions[id_]) for id_ in range(len(args.extensions))])
+            for corpus in input_corpora
+        ]
 
-        logging.info('processing train corpus')
-        if args.dev_corpus and args.test_corpus:
-            process_corpus(args.corpus, args, output_train)
-        else:
-            filenames = process_corpus(args.corpus, args)                
-            dest_corpora = [(output_train, args.train_size)]
-            if not args.test_corpus:
-                dest_corpora.append((output_test, args.test_size))
-            if not args.dev_corpus:
-                dest_corpora.append((output_dev, args.dev_size))
+        sizes = [
+            args.dev_size if not args.dev_corpus else 0,
+            args.test_size if not args.test_corpus else 0,
+            args.train_size  # train must be last for `split_corpus`
+        ]
 
-            logging.info('splitting files')
-            split_corpus(filenames, dest_corpora, args.extensions)
-                
-        if args.align:
-            logging.info('creating alignment')
-            src_ext, trg_ext = args.extensions[0], args.extensions[-1]
+        ## process corpora and copy them to their destination
+        if create_corpus_:
+            # list of temporary files for each corpus (dev, test, train)
+            # a value of None (default for dev and test) means that no
+            # corpus is provided (in which case, a part of train corpus is used)
+            for i, corpus in enumerate(corpora):
+                if corpus is not None:
+                    corpora[i] = process_corpus(corpus, args)
 
-            # alignment works only for one pair of languages
-            # first extension is source, last one is target.
-            # we only align training data
-            filenames = ['{}.{}'.format(output_train, src_ext),
-                         '{}.{}'.format(output_train, trg_ext)]
+            # split corpus into train/dev/test
+            # size of 0: no corpus is created
+            # size of None: copy everything (default for train)
+            # if dev/test corpus is provided, we don't split
+            if any(sizes):
+                logging.info('splitting files')
+                split_corpora = split_corpus(corpora[-1], sizes)
 
-            align_file = create_align(filenames, args)
+                # union of `filenames` and `split_filenames`
+                for i, corpus in enumerate(split_corpora):
+                    if corpus is None:
+                        continue
+                    corpora[i] = corpus
 
-            # use the newly created alignment to build a dictionary
-            logging.info('creating lookup dictionary')
-            create_lookup_dictionary(filenames + [align_file], args)
-
-        vocabs = None
-        if args.vocab_size is not None:
-            logging.info('creating vocab files')
-            vocabs = [create_vocabulary(id_, args)
-                      for id_ in range(len(args.extensions))]
-
-        corpora = [output_train, output_dev, output_test]
-        sizes = [args.train_size, args.dev_size, args.test_size]
-
-        if args.create_ids:
-            logging.info('creating ids')
-            for corpus, size in zip(corpora, sizes):
-                if size is not None and size == 0:
+            # move temporary files to their destination
+            for i, corpus in enumerate(corpora):
+                if corpus is None:
                     continue
-                for id_ in range(len(args.extensions)):
-                    create_ids(corpus, id_, vocabs[id_], args)
+                output_corpus = ['{}.{}'.format(output_corpora[i], ext)
+                                 for ext in args.extensions]
+                for filename, output_filename in zip(corpus, output_corpus):
+                    shutil.move(filename, output_filename)
+
+                corpora[i] = output_corpus
+
+        ## create vocabularies
+        vocab_output_filenames = [
+            os.path.join(args.output_dir, 'vocab.{}'.format(ext))
+            for ext in args.extensions
+        ]
+
+        if args.vocab_path is not None:
+            logging.info('reading vocabulary files')
+            vocabs = [read_vocabulary(filename) for filename in args.vocab_path]
+
+            if create_vocab_:
+                # copy vocabularies if necessary
+                for vocab_filename, output_filename in zip(args.vocab_path,
+                                                           vocab_output_filenames):
+                    if vocab_filename != output_filename:
+                        shutil.copy(vocab_filename, output_filename)
+        elif create_vocab_:
+            logging.info('creating vocabulary files')
+            vocabs = []
+            for i, values in enumerate(zip(corpora[-1], vocab_output_filenames, args.vocab_size)):
+                filename, output_filename, size = values
+                unk_align = args.unk_align and i == len(args.extensions) - 1
+                vocab = create_vocabulary(filename, output_filename, size, unk_align)
+                vocabs.append(vocab)
+        else:
+            vocabs = None
+
+        ## create ids
+        if create_ids_:
+            if args.unk_align:
+                logging.info('creating alignment')
+                # we only align training data
+                train_corpus = corpora[-1]
+
+                # alignment only works for a pair of languages
+                # by convention, first extension is the main source
+                # and last extension is the target
+                align_input_filenames = (train_corpus[0], train_corpus[-1])
+
+                # TODO: possibility to use a different corpus to create lookup dict
+                align_filename = create_align(align_input_filenames, args)
+                # use the newly created alignment to build a dictionary
+                logging.info('creating lookup dictionary')
+                create_lookup_dictionary(align_input_filenames,
+                                         align_filename, args)
+            else:
+                align_filename = None
+
+            logging.info('creating ids')
+            for corpus, output_corpus, size in zip(corpora, output_corpora, sizes):
+                if corpus is None:
+                    continue
+                for ext, vocab, filename in zip(args.extensions, vocabs, corpus):
+                    output_filename = '{}.ids.{}'.format(output_corpus, ext)
+
+                    # special UNK symbols for target train file
+                    if (args.unk_align and ext == args.extensions[-1] and
+                        output_corpus == output_corpora[-1]):
+                        create_ids_with_align(filename, output_filename, align_filename, vocab)
+                    else:
+                        create_ids(filename, output_filename, vocab)
 
     finally:
         logging.info('removing temporary files')
