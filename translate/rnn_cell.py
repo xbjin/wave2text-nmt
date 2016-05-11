@@ -730,17 +730,18 @@ class EmbeddingWrapper(RNNCell):
           # Default initializer for embeddings should have variance=1.
           sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
           initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-          
-        if isinstance(initializer, ops.Tensor): #If initializer is a constant, do not specify shape.
-            embedding = vs.get_variable("embedding", 
-                                    None,
-                                    initializer=initializer,
-                                    trainable=self._trainabe)
-        else:
-            embedding = vs.get_variable("embedding", 
-                                    [self._embedding_classes, self._embedding_size],
-                                    initializer=initializer,
-                                    trainable=self._trainabe)                            
+
+        with ops.device("/cpu:0"):
+          if isinstance(initializer, ops.Tensor):  # If initializer is a constant, do not specify shape.
+              embedding = vs.get_variable("embedding",
+                                      None,
+                                      initializer=initializer,
+                                      trainable=self._trainabe)
+          else:
+              embedding = vs.get_variable("embedding",
+                                      [self._embedding_classes, self._embedding_size],
+                                      initializer=initializer,
+                                      trainable=self._trainabe)
        
         embedded = embedding_ops.embedding_lookup(
             embedding, array_ops.reshape(inputs, [-1]))

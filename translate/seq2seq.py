@@ -220,6 +220,7 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
       return ds
 
     outputs = []
+    attentions = []
     prev = None
     batch_attn_size = array_ops.pack([batch_size, attn_size])
     attns = [array_ops.zeros(batch_attn_size, dtype=dtype)
@@ -242,6 +243,8 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
       x = rnn_cell.linear([inp] + attns, input_size, True)
       # Run the RNN.
       cell_output, state = cell(x, state)
+      attentions.append(attns)
+
       # Run the attention mechanism.
       if i == 0 and initial_state_attention:
         with variable_scope.variable_scope(variable_scope.get_variable_scope(),
@@ -251,13 +254,14 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
         attns = attention(state)
 
       with variable_scope.variable_scope("AttnOutputProjection"):
-        output = rnn_cell.linear([cell_output] + attns, output_size, True)
+        output = rnn_cell.linear([cell_output] + attns, output_size, True)  # TODO: why attns here?
       if loop_function is not None:
         # We do not propagate gradients over the loop function.
         prev = array_ops.stop_gradient(output)
+
       outputs.append(output)
 
-  return outputs, state
+  return outputs, state, attentions
 
 
 def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, attention_states,
@@ -403,18 +407,21 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
       reuse = None if feed_previous_bool else True
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          reuse=reuse):
-        outputs, state = embedding_attention_decoder(
+        outputs, state, attentions = embedding_attention_decoder(
             decoder_inputs, encoder_state_sum, encoder_names, attention_states, cell,
             num_decoder_symbols, embedding_size, num_heads=num_heads, output_size=output_size,
             output_projection=output_projection, feed_previous=feed_previous_bool,
             scope=decoder_scope, initial_state_attention=initial_state_attention,
             embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable)
-        return outputs + [state]
+        return outputs + attentions + [state]  # TODO flatten attentions
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-    return outputs_and_state[:-1], outputs_and_state[-1]                          
+
+    # import pdb; pdb.set_trace()
+
+    return outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
