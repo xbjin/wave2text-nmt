@@ -158,7 +158,7 @@ def fetch_corpus(args):
         
     #copying file in output dir  
     for f in args.corpus_lang:
-        copyfile(f, os.path.join(args.output_dir, os.path.basename(f)))        
+        copyfile(f, os.path.join(args.output_dir, args.corpus+os.path.splitext(os.path.basename(f))[1]))
     
     #shutil.rmtree(unzip_folder_path)
 
