@@ -167,7 +167,7 @@ def process_file(filename, id_, args):
                               str(args.threads)])
         if args.lowercase:
             processes.append([path_to('lowercase.perl')])
-        if args.normalize_numbers:
+        if args.normalize_digits:
             processes.append(['sed', 's/[[:digit:]]/0/g'])
 
         ps = None
@@ -324,7 +324,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--normalize-punk', help='normalize punctuation',
                         action='store_true')
-    parser.add_argument('--normalize-numbers', help='normalize numbers '
+    parser.add_argument('--normalize-digits', help='normalize digits '
                         '(replace all digits with 0)', action='store_true')
     parser.add_argument('--lowercase', help='put everything to lowercase',
                         action='store_true')
