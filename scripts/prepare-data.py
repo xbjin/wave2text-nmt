@@ -297,11 +297,12 @@ if __name__ == '__main__':
                         choices=('prepare', 'vocab', 'ids', 'all'))
 
     parser.add_argument('--output-prefix', help='start filenames with '
-                        'this prefix (prefix.train, prefix.dev, prefix.test)',
-                        default='')
+                        'this prefix', default='')
+
+    parser.add_argument('--suffix', default='train')
     parser.add_argument('--dev-suffix', default='dev')
     parser.add_argument('--test-suffix', default='test')
-    parser.add_argument('--train-suffix', default='train')
+
     # TODO: vocab prefix, lookup dict name, align prefix, ids suffix
 
     parser.add_argument('--dev-corpus', help='development corpus')
