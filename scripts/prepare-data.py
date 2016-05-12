@@ -407,7 +407,7 @@ if __name__ == '__main__':
         args.output_prefix if not suffix else
         suffix if not args.output_prefix else
         '{}.{}'.format(args.output_prefix, suffix)
-        for suffix in (args.dev_suffix, args.test_suffix, args.train_suffix)
+        for suffix in (args.dev_suffix, args.test_suffix, args.suffix)
     ]
 
     # corpora names must be non-empty and unique
