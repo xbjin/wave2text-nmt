@@ -178,7 +178,7 @@ def process_file(filename, lang, args):
 
 
 def process_corpus(filenames, args):
-    filenames = [process_file(filename, id_, args)
+    filenames = [process_file(filename, lang, args)
                  for lang, filename in zip(args.lang, filenames)]
 
     with open_files(filenames) as input_files, \

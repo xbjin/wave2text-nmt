@@ -142,7 +142,7 @@ class TranslationModel(object):
   
     # get a batch and make a training step
     encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.train_set, bucket_id)
-    _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
+    _, step_loss, _, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
     return step_loss
 
   def _eval_step(self, sess, model):
@@ -153,8 +153,8 @@ class TranslationModel(object):
         continue
 
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.dev_set, bucket_id)
-      _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
-                                   forward_only=True, decode=False)
+      _, eval_loss, _, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
+                                      forward_only=True, decode=False)
 
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
@@ -176,9 +176,12 @@ class TranslationModel(object):
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
     
-    _, _, output_logits = self.model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
-                                          forward_only=True, decode=True)
-    
+    _, _, output_logits, output_attentions = self.model.step(sess, encoder_inputs, decoder_inputs,
+                                                             target_weights, bucket_id,
+                                                             forward_only=True, decode=True)
+
+    import pdb; pdb.set_trace()
+
     # TODO: beam-search
     trg_token_ids = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # greedy decoder
     

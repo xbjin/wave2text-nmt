@@ -215,9 +215,9 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
           attn_output.append(d_)
           attn_weights.append(a_)
 
-      d = math_ops.add_n(attn_output)
-      attn_output = array_ops.reshape(d, [-1, attn_size])
-      return ds, attn_weights
+      attn_output = array_ops.reshape(math_ops.add_n(attn_output),
+                                      [-1, attn_size])
+      return attn_output, attn_weights
 
     outputs = []
     attentions = []
@@ -413,16 +413,25 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
             scope=decoder_scope, initial_state_attention=initial_state_attention,
             embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable)
 
-        import pdb; pdb.set_trace()
-        return outputs + [state]  # TODO flatten attentions
+        return outputs + [tensor for attn_weights in attentions for tensor in attn_weights]  + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
 
-    #import pdb; pdb.set_trace()
+    output_len = len(decoder_inputs)
 
-    return outputs_and_state[:-1], outputs_and_state[-1]
+    state = outputs_and_state[-1]
+    # list of [batch size x num_decoder_symbols] tensors for each output
+    outputs = outputs_and_state[:output_len]
+    attentions = outputs_and_state[output_len:-1]
+
+    encoder_count = len(encoder_inputs)
+    # list of (encoder_count x [batch size x input size]) tensor tuples for each output
+    attentions = [attentions[i:i + encoder_count]
+                  for i in range(0, len(attentions) // encoder_count, encoder_count)]
+
+    return outputs, state, attentions
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
@@ -455,6 +464,9 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         of 2D Tensors of shape [batch_size x num_decoder_symbols] (jth outputs).
       losses: List of scalar Tensors, representing losses for each bucket, or,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
+      attentions: The attention weights for each bucket: 1st dimension is bucket
+        id, 2nd dimension is output size, 3rd dimension is encoder count.
+        4th and 5th dimensions are batch_size and input_size.
 
   Raises:
     ValueError: If length of encoder_inputsut, targets, or weights is smaller
@@ -476,6 +488,7 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
 
   losses = []
   outputs = []
+  attentions = []
 
   with ops.op_scope(all_inputs, name, "model_with_buckets"):
     for j, bucket in enumerate(buckets):
@@ -486,9 +499,11 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         encoder_size, decoder_size = bucket
 
         trunc_encoder_inputs = [v[:encoder_size] for v in encoder_inputs]
-        bucket_outputs, _ = seq2seq(trunc_encoder_inputs,
-                                    decoder_inputs[:decoder_size])
+        bucket_outputs, _, bucket_attentions = seq2seq(trunc_encoder_inputs,
+                                                       decoder_inputs[:decoder_size])
         outputs.append(bucket_outputs)
+        attentions.append(bucket_attentions)
+
         if per_example_loss:
           losses.append(sequence_loss_by_example(
               bucket_outputs, targets[:decoder_size], weights[:decoder_size],
@@ -498,4 +513,4 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
               bucket_outputs, targets[:decoder_size], weights[:decoder_size],
               softmax_loss_function=softmax_loss_function))
 
-  return outputs, losses
+  return outputs, losses, attentions

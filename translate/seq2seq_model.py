@@ -152,7 +152,7 @@ class Seq2SeqModel(object):
                                           output_projection=output_projection, feed_previous=self.feed_previous)
 
     # training outputs and losses
-    self.outputs, self.losses = seq2seq.model_with_buckets(
+    self.outputs, self.losses, self.attentions = seq2seq.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
       self.target_weights, buckets, seq2seq_function,
       softmax_loss_function=softmax_loss_function, reuse=reuse)
@@ -245,15 +245,22 @@ class Seq2SeqModel(object):
       # variable
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
-        # output_feed.append(self.outputs[bucket_id][l])
         output_feed.append(outputs_[bucket_id][l])
+      for l in xrange(decoder_size):
+        output_feed.extend(self.attentions[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
 
     if not forward_only:
-      return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
+      return outputs[1], outputs[2], None, None  # Gradient norm, loss, no outputs, no attentions.
     else:
-      return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
+      loss_ = outputs[0]
+      output_logits = outputs[1:1 + decoder_size]
+
+      output_attentions = [outputs[i:i + self.encoder_count]
+        for i in range(1 + decoder_size, len(outputs), self.encoder_count)]
+
+      return None, loss_, output_logits, output_attentions  # No gradient norm, loss, outputs, attentions.
 
   def get_batch(self, data, bucket_id, batch_size=None):
     """Get a random batch of data from the specified bucket, prepare for step.
