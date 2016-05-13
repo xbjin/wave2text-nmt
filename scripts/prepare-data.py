@@ -11,7 +11,6 @@ import os
 import logging
 import sys
 import shutil
-import shlex
 
 
 help_msg = """\
@@ -289,9 +288,11 @@ if __name__ == '__main__':
 
     parser.add_argument('--output-prefix', help='start filenames with '
                         'this prefix', default='')
+
+    parser.add_argument('--suffix', default='train')
     parser.add_argument('--dev-suffix', default='dev')
     parser.add_argument('--test-suffix', default='test')
-    parser.add_argument('--train-suffix', default='train')
+
     # TODO: vocab prefix, lookup dict name, align prefix, ids suffix
 
     parser.add_argument('--dev-corpus', help='development corpus')
@@ -394,7 +395,7 @@ if __name__ == '__main__':
         args.output_prefix if not suffix else
         suffix if not args.output_prefix else
         '{}.{}'.format(args.output_prefix, suffix)
-        for suffix in (args.dev_suffix, args.test_suffix, args.train_suffix)
+        for suffix in (args.dev_suffix, args.test_suffix, args.suffix)
     ]
 
     # corpora names must be non-empty and unique

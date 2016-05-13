@@ -28,7 +28,7 @@ file_formats = {
     'wmt14': (['ep7_pc45', 'nc9', 'ccb2_pc30', 'un2000_pc34', 'dev08_11', 'crawl'], wmt14),
     'news-mono': ('news-commentary-v10', news_mono),
     'news': ('news-commentary-v10.{src}-{trg}', news_parallel),
-    'news-test': (['newstest2011', 'newstest2011'], dev_v2),
+    'news-test': (['newstest2011', 'newstest2012'], dev_v2),
     'news-dev': ('newstest2013', dev_v2)
 }
 
@@ -172,15 +172,9 @@ if __name__ == '__main__':
     parser.add_argument('src_ext', nargs='+', help='list of source extensions')
     parser.add_argument('output_dir', help='destination directory') 
     parser.add_argument('--trg-ext', help='target extension', default='en')
-    parser.add_argument('--test-file', help='test files to use', default='news-test')
-    parser.add_argument('--dev-file', help='test files to use', default='news-dev')
     parser.add_argument('--exp', help='directory where the files will be downloaded', default='experiments')
    
     args = parser.parse_args()
     
-    calls = [[args.corpus, args.corpus_type], [args.test_file, 'mono'], [args.dev_file, 'mono']]
-    for c in calls: 
-        args.corpus = c[0]
-        args.corpus_type = c[1]
-        fetch_corpus(args) 
+    fetch_corpus(args) 
     #fetch_testdev(args)
