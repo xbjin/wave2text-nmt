@@ -362,7 +362,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
 
   encoder_states = []
   encoder_outputs = []
-  with variable_scope.variable_scope(scope or 'many2one'):
+  with variable_scope.variable_scope(scope or 'many2one_rnn_seq2seq'):
     for encoder_name, encoder_inputs_, num_encoder_symbols_ in zip(encoder_names, encoder_inputs,
                                                                    num_encoder_symbols):
       with variable_scope.variable_scope('encoder_{}'.format(encoder_name)):

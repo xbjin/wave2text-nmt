@@ -159,7 +159,7 @@ class TranslationModel(object):
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
-  def _decode_sentence(self, sess, src_sentences):
+  def _decode_sentence(self, sess, src_sentences, align=None):
     tokens = [sentence.split() for sentence in src_sentences]
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  for vocab, sentence in zip(self.src_vocabs, src_sentences)]
@@ -180,8 +180,6 @@ class TranslationModel(object):
                                                              target_weights, bucket_id,
                                                              forward_only=True, decode=True)
 
-    import pdb; pdb.set_trace()
-
     # TODO: beam-search
     trg_token_ids = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # greedy decoder
     
@@ -193,10 +191,20 @@ class TranslationModel(object):
     
     if self.lookup_dict is not None:
       trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
-    
+
+    if align:
+      src_align_tokens = [
+        [(tokens_ + [utils._EOS])[::-1][min(weights_.argmax(), len(tokens_))]
+         for weights_, tokens_ in zip(weights, tokens)]  # for each encoder
+        for weights in output_attentions  # for each output
+      ]
+
+      src_align_tokens = zip(*src_align_tokens)  # transpose (encoder count x output len)
+      trg_tokens = ['/'.join(tokens_) for tokens_ in zip(trg_tokens, *src_align_tokens)]
+
     return ' '.join(trg_tokens)
 
-  def decode(self, sess, filenames, output=None):
+  def decode(self, sess, filenames, output=None, align=None):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
       
@@ -206,7 +214,7 @@ class TranslationModel(object):
         output_file = sys.stdout if output is None else open(output, 'w')
         
         for src_sentences in zip(*files):
-          trg_sentence = self._decode_sentence(sess, src_sentences)
+          trg_sentence = self._decode_sentence(sess, src_sentences, align)
           output_file.write(trg_sentence + '\n')
           output_file.flush()
           
@@ -249,7 +257,7 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   
   # remove variables from blacklist
   variables = [var for var in variables if not any(var.name.startswith(prefix) for prefix in blacklist)]
-  
+
   ckpt = tf.train.get_checkpoint_state(checkpoint_dir)  # loads last checkpoint
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     utils.log('reading model parameters from {}'.format(ckpt.model_checkpoint_path))

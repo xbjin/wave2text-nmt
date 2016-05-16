@@ -153,9 +153,13 @@ def process_file(filename, lang, args):
                 return os.path.join(args.scripts, script_name)
 
         processes = [['cat']]   # just copy file if there is no other operation
+
         if args.normalize_punk:
             processes.append([path_to('normalize-punctuation.perl'), '-l',
                               lang])
+        if args.normalize_moses:
+            processes.append(['sed', 's/|//g'])
+
         if args.tokenize:
             processes.append([path_to('tokenizer.perl'), '-l', lang, '-threads',
                               str(args.threads)])
@@ -163,6 +167,7 @@ def process_file(filename, lang, args):
             processes.append([path_to('lowercase.perl')])
         if args.normalize_digits:
             processes.append(['sed', 's/[[:digit:]]/0/g'])
+
 
         ps = None
 
@@ -321,6 +326,8 @@ if __name__ == '__main__':
                         action='store_true')
     parser.add_argument('--no-tokenize', dest='tokenize',
                         help='no tokenization', action='store_false')
+    parser.add_argument('--normalize-moses', help='remove | symbols '
+                        '(used as delimiters by moses)', action='store_true')
 
     parser.add_argument('-v', '--verbose', help='verbose mode',
                         action='store_true')

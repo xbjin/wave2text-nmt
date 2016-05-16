@@ -62,6 +62,8 @@ parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions fo
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
+parser.add_argument('--align', help='output aligned source words when decoding (for testing purposes)',
+                    action='store_true')
 # TODO: fixed encoder/decoder
 
 
@@ -137,7 +139,7 @@ def main():
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
     
     if args.decode:
-      model.decode(sess, filenames, output=args.output)
+      model.decode(sess, filenames, output=args.output, align=args.align)
     elif args.eval:
       model.evaluate(sess, filenames, bleu_script=args.bleu_script, output=args.output)
     else:
