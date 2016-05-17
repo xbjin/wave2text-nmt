@@ -194,6 +194,9 @@ def process_corpus(filenames, args):
                      all(min_ <= len(line.split()) <= max_ for line, min_, max_
                          in zip(lines, args.min, args.max)))
 
+        if args.remove_duplicates:
+            all_lines = list(set(all_lines))
+
         if args.shuffle:
             all_lines = list(all_lines)  # not lazy anymore
             shuffle(all_lines)
@@ -328,7 +331,8 @@ if __name__ == '__main__':
                         help='no tokenization', action='store_false')
     parser.add_argument('--normalize-moses', help='remove | symbols '
                         '(used as delimiters by moses)', action='store_true')
-
+    parser.add_argument('--remove-duplicates', help='remove duplicate pairs',
+                        action='store_true')
     parser.add_argument('-v', '--verbose', help='verbose mode',
                         action='store_true')
 

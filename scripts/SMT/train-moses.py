@@ -16,7 +16,9 @@ $MOSES_DIR/scripts/training/train-model.perl -root-dir "{output_dir}" \
 -corpus {corpus} -f {src_ext} -e {trg_ext} -alignment grow-diag-final-and \
 -reordering msd-bidirectional-fe -lm 0:3:{lm_corpus}.blm.{trg_ext}:8 \
 -mgiza -external-bin-dir $GIZA_DIR \
--mgiza-cpus {threads} -cores {threads} --parallel \
+-mgiza-cpus {threads} -cores {threads} --parallel
+$MOSES_DIR/bin/processPhraseTableMin -in {output_dir}/model/phrase-table.gz -out {output_dir}/model/phrase-table -nscores 4 -threads {threads}
+$MOSES_DIR/bin/processLexicalTableMin -in {output_dir}/model/reordering-table.gz -out {output_dir}/model/reordering-table -threads {threads}
 """
 
 if __name__ == '__main__':
