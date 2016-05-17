@@ -17,8 +17,12 @@ $MOSES_DIR/scripts/training/train-model.perl -root-dir "{output_dir}" \
 -reordering msd-bidirectional-fe -lm 0:3:{lm_corpus}.blm.{trg_ext}:8 \
 -mgiza -external-bin-dir $GIZA_DIR \
 -mgiza-cpus {threads} -cores {threads} --parallel
-$MOSES_DIR/bin/processPhraseTableMin -in {output_dir}/model/phrase-table.gz -out {output_dir}/model/phrase-table -nscores 4 -threads {threads}
-$MOSES_DIR/bin/processLexicalTableMin -in {output_dir}/model/reordering-table.gz -out {output_dir}/model/reordering-table -threads {threads}
+mkdir {output_dir}/binarized
+$MOSES_DIR/bin/processPhraseTableMin -in {output_dir}/model/phrase-table.gz -out {output_dir}/binarized/phrase-table -nscores 4 -threads {threads}
+$MOSES_DIR/bin/processLexicalTableMin -in {output_dir}/model/reordering-table.gz -out {output_dir}/binarized/reordering-table -threads {threads}
+cat {output_dir}/model/moses.ini | sed s@PhraseDictionaryMemory@PhraseDictionaryCompact@ | \
+sed -r s@path=\(.*\)model/phrase-table.gz@path=\\\\1binarized/phrase-table@ | \
+sed -r s@path=\(.*\)model/reordering-table.wbe-msd-bidirectional-fe.gz@path=\\\\1binarized/reordering-table@ > {output_dir}/binarized/moses.ini
 """
 
 if __name__ == '__main__':

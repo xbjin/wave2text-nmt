@@ -13,13 +13,9 @@ help_msg = """Tune a translation model trained with Moses."""
 commands = """\
 $MOSES_DIR/scripts/training/mert-moses.pl {corpus}.{src_ext} {corpus}.{trg_ext} \
 $MOSES_DIR/bin/moses {config} --mertdir $MOSES_DIR/bin/ \
---decoder-flags="-threads {threads}" &> {log_file}
-mv mert-work/moses.ini {config}.tmp
+--no-filter-phrase-table --decoder-flags="-threads {threads}" &> {log_file}
+mv mert-work/moses.ini {config}
 rm -rf mert-work
-cat {config}.tmp | sed s@PhraseDictionaryMemory@PhraseDictionaryCompact@ | \
-sed -r s@path=\(.*\)phrase-table.gz@path=\\\\1phrase-table@ | \
-sed -r s@path=\(.*\)reordering-table.wbe-msd-bidirectional-fe.gz@path=\\\\1reordering-table@ > {config}
-rm {config}.tmp
 """
 
 if __name__ == '__main__':

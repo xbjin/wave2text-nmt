@@ -59,9 +59,9 @@ echo "### tuning translation model"
 
 cd ${train_dir}
 
-${script_dir}/SMT/tune-moses.py ${train_dir}/model/moses.ini ${data_dir}/${corpus}.dev \
+${script_dir}/SMT/tune-moses.py ${train_dir}/binarized/moses.ini ${data_dir}/${corpus}.dev \
     ${src} ${trg} tuning.log.txt --threads ${threads} >> ${log_file} 2>&1
 
 cd ${cur_dir}
 
-# use ${train_dir}/model/moses.ini.tuned for decoding
+# use ${train_dir}/binarized/moses.ini for decoding
