@@ -39,5 +39,5 @@ python -m translate ${data_dir} ${train_dir} \
 --trg-ext en \
 --verbose \
 --log-file ${train_dir}/log.txt \
---gpu-id ${gpu_id}
+--gpu-id ${gpu_id} \
 --replace-unk
