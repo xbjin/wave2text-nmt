@@ -109,6 +109,8 @@ def call_build_trilingual_corpus(args):
     print("Calling build-trilingual-corpus with params : ", args_)
     subprocess.call(args_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
   
+    #modifying args.corpus_lang with newly created files
+    args.corpus_lang = [os.path.join(args.output_dir, basename_)+".{trg}".format(trg=l) for l in langs]   
   
 def fetch_corpus(args):
     exp_dir = args.exp
