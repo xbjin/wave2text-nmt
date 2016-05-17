@@ -172,7 +172,7 @@ if __name__ == '__main__':
     parser.add_argument('corpus_type', help='parallel or mono', choices=['parallel', 'mono', 'trilingual'])
     parser.add_argument('ext', nargs='+', help='list of extensions (target is last)')
     parser.add_argument('output_dir', help='destination directory')
-    parser.add_argument('--tmp', help='directory where the files will be downloaded', default='experiments')
+    parser.add_argument('--tmp', help='directory where the files will be downloaded', default='tmp')
     parser.add_argument('--reset', help='overwrite previous files', action='store_true')
 
     args = parser.parse_args()
