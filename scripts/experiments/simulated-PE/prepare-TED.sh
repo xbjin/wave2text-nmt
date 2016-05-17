@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # details
-corpus=EMEA
+corpus=TED
 corpus_type=parallel
 src=fr
 trg=en
@@ -11,8 +11,8 @@ script_dir=${cur_dir}/scripts
 
 mkdir -p ${data_dir}
 
-# fetch EMEA
 ${script_dir}/fetch-corpus.py ${corpus} ${corpus_type} fr en ${data_dir}
+
 
 # pre-process
 ${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --output-prefix ${corpus} --suffix tok \
@@ -23,6 +23,7 @@ ${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --
   --normalize-moses \
   --remove-duplicates \
   --min 1 --max 0
+
 
 # split
 mkdir -p ${data_dir}/splits

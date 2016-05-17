@@ -10,6 +10,8 @@ from shutil import copyfile
 import tarfile
 import subprocess
 import shutil
+import zipfile
+
 
 help_msg = ""
 
@@ -19,7 +21,8 @@ news_parallel = "http://www.statmt.org/wmt15/training-parallel-nc-v10.tgz"
 news_mono = "http://www.statmt.org/wmt15/training-monolingual-nc-v10.tgz"
 wmt14 = "http://www-lium.univ-lemans.fr/~schwenk/cslm_joint_paper/data/bitexts.tgz"
 dev_v2 = "http://www.statmt.org/wmt15/dev-v2.tgz"
-
+ted_fren = 'http://opus.lingfil.uu.se/download.php?f=TED2013/en-fr.txt.zip'
+emea_fren = 'http://opus.lingfil.uu.se/download.php?f=EMEA/en-fr.txt.zip'
 
 file_formats = {
     'europarl': ('europarl-v7.{src}-{trg}', europarl_parallel),
@@ -28,7 +31,9 @@ file_formats = {
     'news-mono': ('news-commentary-v10', news_mono),
     'news': ('news-commentary-v10.{src}-{trg}', news_parallel),
     'news-test': (['newstest2011', 'newstest2012'], dev_v2),
-    'news-dev': ('newstest2013', dev_v2)
+    'news-dev': ('newstest2013', dev_v2),
+    'TED' : ('TED2013.{trg}-{src}', ted_fren),
+    'EMEA': ('EMEA.{trg}-{src}',emea_fren)
 }
 
 
@@ -51,9 +56,13 @@ def concat_files_(args, unzip_folder_path):
 
 def gzip_(gz_path, new_path):
   print("Unpacking %s to %s" % (gz_path, new_path))  
+  os.makedirs(new_path)  
   if tarfile.is_tarfile(gz_path) :
       with tarfile.open(gz_path, "r:gz") as corpus_tar:
-          corpus_tar.extractall(new_path)
+          corpus_tar.extractall(new_path)          
+  elif (os.path.splitext(gz_path)[1] == ".zip"):
+      with zipfile.ZipFile(gz_path, "r") as z:
+          z.extractall(new_path)      
   else:
       with gzip.open(gz_path, 'rb') as infile:
         filename = os.path.splitext(gz_path.split('/')[-1])[0]
@@ -88,7 +97,8 @@ def maybe_download(exp_dir, args):
             statinfo = os.stat(filepath)
             print("Succesfully downloaded", filepath, statinfo.st_size, "bytes")      
 
-        gunzip_file(filepath, unzip_folder_path, args)        
+        gunzip_file(filepath, unzip_folder_path, args) 
+        args.path_to_archive = filepath
     return unzip_folder_path
 
 
@@ -161,8 +171,8 @@ def fetch_corpus(args):
     for f in args.corpus_lang:
         copyfile(f, os.path.join(args.output_dir, args.corpus + os.path.splitext(os.path.basename(f))[1]))
     
-    # shutil.rmtree(unzip_folder_path)
-
+    shutil.rmtree(unzip_folder_path)
+    os.remove(args.path_to_archive)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,

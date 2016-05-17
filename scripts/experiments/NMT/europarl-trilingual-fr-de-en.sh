@@ -16,7 +16,7 @@ gpu_id=1
 
 echo ">>>>>>>>> calling fetch_corpus"
 
-./scripts/fetch-corpus.py ${corpus} ${corpus_type} fr de ${data_dir}
+./scripts/fetch-corpus.py ${corpus} ${corpus_type} fr de en ${data_dir}
 ./scripts/fetch-corpus.py ${corpus_test} mono fr de en ${data_dir}
 ./scripts/fetch-corpus.py ${corpus_dev}  mono fr de en ${data_dir}
 
