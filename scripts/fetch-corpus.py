@@ -25,15 +25,15 @@ ted_fren = 'http://opus.lingfil.uu.se/download.php?f=TED2013/en-fr.txt.zip'
 emea_fren = 'http://opus.lingfil.uu.se/download.php?f=EMEA/en-fr.txt.zip'
 
 file_formats = {
-    'europarl': ('europarl-v7.{src}-{trg}', europarl_parallel),
-    'europarl-mono': ('europarl-v7', europarl_mono),
-    'wmt14': (['ep7_pc45', 'nc9', 'ccb2_pc30', 'un2000_pc34', 'dev08_11', 'crawl'], wmt14),
-    'news-mono': ('news-commentary-v10', news_mono),
-    'news': ('news-commentary-v10.{src}-{trg}', news_parallel),
-    'news-test': (['newstest2011', 'newstest2012'], dev_v2),
-    'news-dev': ('newstest2013', dev_v2),
-    'TED' : ('TED2013.{trg}-{src}', ted_fren),
-    'EMEA': ('EMEA.{trg}-{src}',emea_fren)
+    'europarl': ('europarl-v7.{src}-{trg}', europarl_parallel, 0),
+    'europarl-mono': ('europarl-v7', europarl_mono, 0),
+    'wmt14': (['ep7_pc45', 'nc9', 'ccb2_pc30', 'un2000_pc34', 'dev08_11', 'crawl'], wmt14, 0),
+    'news-mono': ('news-commentary-v10', news_mono, 0),
+    'news': ('news-commentary-v10.{src}-{trg}', news_parallel, 0),
+    'news-test': (['newstest2011', 'newstest2012'], dev_v2, 0),
+    'news-dev': ('newstest2013', dev_v2, 0),
+    'TED' : ('TED2013.{trg}-{src}', ted_fren, 1),
+    'EMEA': ('EMEA.{trg}-{src}',emea_fren, 1)
 }
 
 
@@ -107,6 +107,7 @@ def call_build_trilingual_corpus(args):
     langs = args.ext
     args.corpus_lang.sort(key=lambda (x): langs.index(os.path.splitext(x)[-1][1:]))    
     
+    print(args.corpus_lang)
     file_without_ext = [os.path.splitext(f)[0] for f in args.corpus_lang]
     basename_ = os.path.basename(os.path.splitext(file_without_ext[0])[0] + '.' + '-'.join(langs))
 
@@ -172,7 +173,9 @@ def fetch_corpus(args):
         copyfile(f, os.path.join(args.output_dir, args.corpus + os.path.splitext(os.path.basename(f))[1]))
     
     shutil.rmtree(unzip_folder_path)
-    os.remove(args.path_to_archive)
+    #del archive ?
+    if(file_formats[args.corpus][2]):
+        os.remove(args.path_to_archive)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
