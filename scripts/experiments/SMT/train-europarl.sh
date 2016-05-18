@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 
 # train baseline SMT system on Europarl fr->en
 

@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 
 # train baseline SMT system on Europarl fr->en
 
@@ -17,6 +17,7 @@ data_dir=${cur_dir}/data/SMT/${corpus}_${src}-${trg}
 train_dir=${cur_dir}/model/SMT/${corpus}_${src}-${trg}
 script_dir=${cur_dir}/scripts
 log_file=${train_dir}/log.txt
+corpus_path=${data_dir}/${corpus}
 
 
 rm -rf ${data_dir}
@@ -32,27 +33,27 @@ ${script_dir}/fetch-corpus.py ${corpus_dev} mono ${src} ${trg} ${data_dir} >> ${
 
 echo "### pre-processing data"
 
-${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --mode prepare \
-                                                                              --verbose \
-                                                                              --normalize-digits \
-                                                                              --normalize-punk \
-                                                                              --normalize-moses \
-                                                                              --dev-corpus  ${data_dir}/${corpus_dev} \
-                                                                              --test-corpus ${data_dir}/${corpus_test} \
-                                                                              --output-prefix ${corpus} \
-                                                                              --max 100 \
-                                                                              >> ${log_file} 2>&1
+${script_dir}/prepare-data.py ${corpus_path} ${src} ${trg} ${data_dir} --mode prepare \
+                                                                       --verbose \
+                                                                       --normalize-digits \
+                                                                       --normalize-punk \
+                                                                       --normalize-moses \
+                                                                       --dev-corpus  ${data_dir}/${corpus_dev} \
+                                                                       --test-corpus ${data_dir}/${corpus_test} \
+                                                                       --output-prefix ${corpus} \
+                                                                       --max 100 \
+                                                                       >> ${log_file} 2>&1
 
 # news-test and news-dev are too big
-head -n1000 ${corpus}.dev.${src} > ${corpus}.dev.sample.${src}
-head -n1000 ${corpus}.dev.${trg} > ${corpus}.dev.sample.${trg}
-mv ${corpus}.dev.sample.${src} ${corpus}.dev.${src}
-mv ${corpus}.dev.sample.${trg} ${corpus}.dev.${trg}
+head -n1000 ${corpus_path}.dev.${src} > ${corpus_path}.dev.sample.${src}
+head -n1000 ${corpus_path}.dev.${trg} > ${corpus_path}.dev.sample.${trg}
+mv ${corpus_path}.dev.sample.${src} ${corpus_path}.dev.${src}
+mv ${corpus_path}.dev.sample.${trg} ${corpus_path}.dev.${trg}
 
-head -n1000 ${corpus}.test.${src} > ${corpus}.test.sample.${src}
-head -n1000 ${corpus}.test.${trg} > ${corpus}.test.sample.${trg}
-mv ${corpus}.test.sample.${src} ${corpus}.test.${src}
-mv ${corpus}.test.sample.${trg} ${corpus}.test.${trg}
+head -n1000 ${corpus_path}.test.${src} > ${corpus_path}.test.sample.${src}
+head -n1000 ${corpus_path}.test.${trg} > ${corpus_path}.test.sample.${trg}
+mv ${corpus_path}.test.sample.${src} ${corpus_path}.test.${src}
+mv ${corpus_path}.test.sample.${trg} ${corpus_path}.test.${trg}
 
 echo "### building language model"
 
