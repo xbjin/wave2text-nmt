@@ -15,3 +15,6 @@ ssh -nf bach2 "cd ${root_dir}; ${script_dir}/SMT/moses-parallel.py ${moses_confi
 ssh -nf bach3 "cd ${root_dir}; ${script_dir}/SMT/moses-parallel.py ${moses_config} ${data_dir}/splits 80 16"
 ssh -nf bach4 "cd ${root_dir}; ${script_dir}/SMT/moses-parallel.py ${moses_config} ${data_dir}/splits 96 16"
 ssh -nf bach4 "cd ${root_dir}; ${script_dir}/SMT/moses-parallel.py ${moses_config} ${data_dir}/splits 112 16"
+
+
+cat ${data_dir}/splits/*.out > ${data_dir}/EMEA.mt

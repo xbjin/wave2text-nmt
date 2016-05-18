@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# prepare data for EMEA simulated PE corpus:
+# use existing translation model to translate source side of EMEA
+# produces triples (EMEA.fr, EMEA.mt, EMEA.en). The translation reference
+# EMEA.en is used as post-editing reference (hence the 'simulated' PE).
+
 # details
 corpus=EMEA
 corpus_type=parallel

@@ -14,7 +14,7 @@ commands = """\
 $MOSES_DIR/scripts/training/mert-moses.pl {corpus}.{src_ext} {corpus}.{trg_ext} \
 $MOSES_DIR/bin/moses {config} --mertdir $MOSES_DIR/bin/ \
 --no-filter-phrase-table --decoder-flags="-threads {threads}" &> {log_file}
-mv mert-work/moses.ini {config}
+mv mert-work/moses.ini {config}.tuned
 rm -rf mert-work
 """
 

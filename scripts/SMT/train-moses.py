@@ -19,7 +19,7 @@ $MOSES_DIR/scripts/training/train-model.perl -root-dir "{output_dir}" \
 -mgiza-cpus {threads} -cores {threads} --parallel
 mkdir {output_dir}/binarized
 $MOSES_DIR/bin/processPhraseTableMin -in {output_dir}/model/phrase-table.gz -out {output_dir}/binarized/phrase-table -nscores 4 -threads {threads}
-$MOSES_DIR/bin/processLexicalTableMin -in {output_dir}/model/reordering-table.gz -out {output_dir}/binarized/reordering-table -threads {threads}
+$MOSES_DIR/bin/processLexicalTableMin -in {output_dir}/model/reordering-table.wbe-msd-bidirectional-fe.gz -out {output_dir}/binarized/reordering-table -threads {threads}
 cat {output_dir}/model/moses.ini | sed s@PhraseDictionaryMemory@PhraseDictionaryCompact@ | \
 sed -r s@path=\(.*\)model/phrase-table.gz@path=\\\\1binarized/phrase-table@ | \
 sed -r s@path=\(.*\)model/reordering-table.wbe-msd-bidirectional-fe.gz@path=\\\\1binarized/reordering-table@ > {output_dir}/binarized/moses.ini
