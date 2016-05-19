@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-data_dir=data/simulated-PE/TED
+data_dir=data/simulated-PE/news
 moses_config=model/europarl_SMT_fr-en/model/moses.ini
 
 script_dir=scripts
