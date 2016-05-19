@@ -60,18 +60,19 @@ ${script_dir}/SMT/tune-moses.py ${train_dir}/binarized/moses.ini ${data_dir}/${c
 
 
 
-moses_config=${train_dir}/binarized/moses.ini
+moses_config=${train_dir}/binarized/moses.ini.tuned
 
 cd ${cur_dir}
-${script_dir}/SMT/moses-parallel.py ${moses_config} ${data_dir} EMEA.test.mt 1
 
-mv ${data_dir}/EMEA.test.mt.out ${data_dir}/EMEA.test.ape
+$MOSES_DIR/bin/moses -f ${moses_config} -threads 1 < ${data_dir}/EMEA.test.mt > ${data_dir}/EMEA.test.ape 2> /dev/null
 
 ${script_dir}/multi-bleu.perl ${data_dir}/EMEA.test.en < ${data_dir}/EMEA.test.ape
+
 
 ######################
 #	part3        #
 ######################
+
 
 src=fr
 trg=en
@@ -96,11 +97,10 @@ ${script_dir}/SMT/tune-moses.py ${train_dir}/binarized/moses.ini ${data_dir}/${c
     ${src} ${trg} tuning.log.txt --threads ${threads} >> ${log_file} 2>&1
 
 
-moses_config=${train_dir}/binarized/moses.ini
+moses_config=${train_dir}/binarized/moses.ini.tuned
 
 cd ${cur_dir}
-${script_dir}/SMT/moses-parallel.py ${moses_config} ${data_dir} EMEA.test.fr 1
 
-mv ${data_dir}/EMEA.test.fr.out ${data_dir}/EMEA.test.mt2
+$MOSES_DIR/bin/moses -f ${moses_config} -threads 1 < ${data_dir}/EMEA.test.fr > ${data_dir}/EMEA.test.mt2 2> /dev/null
 
 ${script_dir}/multi-bleu.perl ${data_dir}/EMEA.test.en < ${data_dir}/EMEA.test.mt2
