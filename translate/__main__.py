@@ -40,6 +40,7 @@ parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', 
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
 parser.add_argument('--multi-task', help='train each encoder as a separate task', action='store_true')
+parser.add_argument('--task-ratio', type=float, nargs='+', help='ratio of each task')
 parser.add_argument('data_dir', default='data', help='data directory')
 parser.add_argument('train_dir', default='model', help='training directory')
 parser.add_argument('--decode', help='translate this corpus')
@@ -64,8 +65,9 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
                     action='store_true')
 parser.add_argument('--align', help='output aligned source words when decoding (for testing purposes)',
                     action='store_true')
+parser.add_argument('--no-attention', help='disable attention mechanism', action='store_true')
+parser.add_argument('--tie-embeddings', nargs='+', help='list of extensions for which to share the embeddings')
 # TODO: fixed encoder/decoder
-
 
 def main():
   args = parser.parse_args()
@@ -88,6 +90,10 @@ def main():
     '--src-vocab-size takes {} parameter(s)'.format(len(args.src_ext)))
   assert len(args.trg_ext) == len(args.trg_vocab_size), (
     '--trg-vocab-size takes {} parameter(s)'.format(len(args.trg_ext)))
+  assert args.task_ratio is None or len(args.task_ratio) == len(args.src_ext), (
+    '--task-ratio takes {} parameter(s)'.format(len(args.src_ext)))
+  assert len(set(args.src_ext + args.trg_ext)) == len(args.src_ext + args.trg_ext), (
+    'all extensions need to be unique')
 
   filenames = utils.get_filenames(**vars(args))
   utils.debug('filenames')
@@ -107,7 +113,7 @@ def main():
 
   # NMT model parameters
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
-                                         'src_vocab_size', 'trg_vocab_size'])
+                                         'src_vocab_size', 'trg_vocab_size', 'no_attention'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
@@ -128,7 +134,8 @@ def main():
   
   with tf.device(device):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
-                             args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task)
+                             args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
+                             task_ratio=args.task_ratio)
 
   utils.log('model parameters')
   for var in tf.all_variables():
