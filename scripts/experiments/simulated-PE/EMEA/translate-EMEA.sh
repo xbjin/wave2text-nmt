@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 data_dir=data/simulated-PE/EMEA
-moses_config=model/europarl_SMT_fr-en/binarized/moses.ini.tuned
+moses_config=model/SMT/europarl_fr-en/binarized/moses.ini.tuned
 
 script_dir=scripts
 root_dir=seq2seq

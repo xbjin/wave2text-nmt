@@ -38,7 +38,7 @@ ${script_dir}/multi-bleu.perl ${data_dir}/EMEA.test.en < ${data_dir}/EMEA.test.m
 
 src=mt
 trg=en
-train_dir=${cur_dir}/model/SPE/EMEA.${src}-${trg}
+train_dir=${cur_dir}/model/SPE/EMEA_${src}-${trg}
 
 echo "### building language model EN"
 mkdir -p ${train_dir}
@@ -76,7 +76,7 @@ ${script_dir}/multi-bleu.perl ${data_dir}/EMEA.test.en < ${data_dir}/EMEA.test.a
 
 src=fr
 trg=en
-train_dir=${cur_dir}/model/SPE/EMEA.${src}-${trg}
+train_dir=${cur_dir}/model/SPE/EMEA_${src}-${trg}
 
 echo "### building language model EN"
 mkdir -p ${train_dir}
