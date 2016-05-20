@@ -20,8 +20,7 @@ threads=16
 lm_order=3
 cur_dir=`pwd`
 data_dir=${cur_dir}/data/simulated-PE/news
-script_dir=${cur_dir}/scripts 
-log_file=${train_dir}/log.txt
+script_dir=${cur_dir}/scripts  
 
 
 ######################
@@ -39,6 +38,7 @@ ${script_dir}/multi-bleu.perl ${data_dir}/news.test.en < ${data_dir}/news.test.m
 src=mt
 trg=en
 train_dir=${cur_dir}/model/SPE/news_${src}-${trg}
+log_file=${train_dir}/log.txt
 
 echo "### building language model EN"
 mkdir -p ${train_dir}
@@ -77,6 +77,7 @@ ${script_dir}/multi-bleu.perl ${data_dir}/news.test.en < ${data_dir}/news.test.a
 src=fr
 trg=en
 train_dir=${cur_dir}/model/SPE/news_${src}-${trg}
+log_file=${train_dir}/log.txt
 
 echo "### building language model EN"
 mkdir -p ${train_dir}
