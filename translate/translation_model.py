@@ -14,7 +14,7 @@ from translate import seq2seq_model, utils
 
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False):
+               learning_rate_decay_factor, multi_task=False, task_ratio=None):
     self.buckets = [(10, 5), (15, 10), (25, 20), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
     self.multi_task = multi_task
@@ -31,12 +31,16 @@ class TranslationModel(object):
     self.models = []
     
     if multi_task:  # multi-task
+      task_ratio = task_ratio or [1.0] * len(src_ext)
+      self.task_ratio = [x / sum(task_ratio) for x in task_ratio]  # sum must be 1
+
       for ext, vocab_size in zip(src_ext, parameters.src_vocab_size):
         params = {k: v for k, v in vars(parameters).items() if k != 'src_vocab_size'}  # FIXME: ugly
         partial_model = seq2seq_model.Seq2SeqModel([ext], trg_ext, self.buckets, self.learning_rate, self.global_step,
                                                    embeddings, src_vocab_size=[vocab_size], reuse=True, **params)
         self.models.append(partial_model)
     else:  # multi-source
+      self.task_ratio = [1.0]
       self.models.append(self.model)
 
     self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
@@ -88,7 +92,8 @@ class TranslationModel(object):
     
     utils.log('starting training')
     while True:
-      i = np.random.randint(len(self.models))
+      # pick random task according to task ratios
+      i = np.random.choice(range(len(self.models)), p=self.task_ratio)
       model = self.models[i]
 
       start_time = time.time()
