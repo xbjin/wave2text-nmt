@@ -89,8 +89,7 @@ ${script_dir}/SMT/moses.py ${train_dir} \
 
 moses_config=${train_dir}/moses.ini.tuned
 
-$MOSES_DIR/bin/moses -f ${moses_config} -threads 1 < ${data_dir}/${corpus}.test.fr > ${data_dir}/${corpus}.test.mt2 \
-    2> /dev/null
+$MOSES_DIR/bin/moses -f ${moses_config} -threads 1 < ${data_dir}/${corpus}.test.fr > ${data_dir}/${corpus}.test.mt2 2> /dev/null
 
 echo "BLEU (MT2, EN)" >> ${log_bleu}
 ${script_dir}/multi-bleu.perl ${data_dir}/${corpus}.test.en < ${data_dir}/${corpus}.test.mt2 \
