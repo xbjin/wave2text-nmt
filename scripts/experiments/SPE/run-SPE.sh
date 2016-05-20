@@ -26,14 +26,11 @@ lm_order=3
 cur_dir=`pwd`
 data_dir=${cur_dir}/data/simulated-PE/${corpus}
 script_dir=${cur_dir}/scripts  
-log_bleu=${cur_dir}/model/SPE/${corpus}/bleu-score.txt
+log_bleu=${cur_dir}/model/SPE/${corpus}.bleu-score.txt
 
 ######################
 #	    part1        #
 ######################
-
-train_dir=${cur_dir}/model/SPE/${corpus}/baseline
-mkdir -p ${train_dir}
 
 echo "BLEU (MT, EN)" >> ${log_bleu}
 ${script_dir}/multi-bleu.perl ${data_dir}/${corpus}.test.en < ${data_dir}/${corpus}.test.mt >> ${log_bleu} 2> /dev/null
