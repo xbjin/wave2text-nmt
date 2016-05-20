@@ -26,10 +26,11 @@ sed -r s@path=\(.*\)model/phrase-table.gz@path=\\\\1phrase-table@ | \
 sed -r s@path=\(.*\)model/reordering-table.wbe-msd-bidirectional-fe.gz@path=\\\\1reordering-table@ > {output_dir}/moses.ini
 $MOSES_DIR/scripts/training/mert-moses.pl {dev_corpus}.{src_ext} {dev_corpus}.{trg_ext} \
 $MOSES_DIR/bin/moses {output_dir}/moses.ini --mertdir $MOSES_DIR/bin/ \
---no-filter-phrase-table --decoder-flags="-threads {threads}" &> {output_dir}/tuning.log
-mv mert-work/moses.ini {output_dir}/moses.ini.tuned
-rm -rf mert-work
-rm -rf model corpus giza.{src_ext}-{trg_ext} giza.{trg_ext}-{src_ext}
+--no-filter-phrase-table --decoder-flags="-threads {threads}" &> {output_dir}/tuning.log \
+--working-dir={output_dir}/mert-work
+mv {output_dir}/mert-work/moses.ini {output_dir}/moses.ini.tuned
+rm -rf {output_dir}/model {output_dir}/corpus {output_dir}/mert-work\
+{output_dir}/giza.{src_ext}-{trg_ext} {output_dir}/giza.{trg_ext}-{src_ext}
 """
 
 if __name__ == '__main__':
