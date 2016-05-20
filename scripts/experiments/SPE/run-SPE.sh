@@ -56,8 +56,8 @@ ${script_dir}/SMT/moses.py ${train_dir} \
 			   --corpus     ${data_dir}/${corpus}.train \
 			   --src-ext    ${src} \
 			   --trg-ext    ${trg} \
-               		   --dev-corpus ${data_dir}/${corpus}.dev \
-               		   >> ${log_file} 2>&1
+               --dev-corpus ${data_dir}/${corpus}.dev \
+               >> ${log_file} 2>&1
 
 moses_config=${train_dir}/moses.ini.tuned
 
