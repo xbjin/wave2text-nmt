@@ -53,7 +53,7 @@ echo "### Running moses to create model model MT-EN"
 
 ${script_dir}/SMT/moses.py ${train_dir} \
 			   --lm-corpus  ${data_dir}/${corpus}.train \
-			   --order      ${lm_order} \
+			   --lm-order   ${lm_order} \
 			   --corpus     ${data_dir}/${corpus}.train \
 			   --src-ext    ${src} \
 			   --trg-ext    ${trg} \
@@ -86,7 +86,7 @@ echo "### Running moses to create model model FR-EN"
 
 ${script_dir}/SMT/moses.py ${train_dir} \
 			   --lm-corpus  ${data_dir}/${corpus}.train \
-			   --order      ${lm_order} \
+			   --lm-order   ${lm_order} \
 			   --corpus     ${data_dir}/${corpus}.train \
 			   --src-ext    ${src} \
 			   --trg-ext    ${trg} \
