@@ -14,6 +14,7 @@ src=fr
 trg=en
 cur_dir=`pwd`
 data_dir=${cur_dir}/data/SMT/${corpus}_${src}-${trg}
+corpus_path=${data_dir}/${corpus}
 train_dir=${cur_dir}/model/SMT/${corpus}_${src}-${trg}
 script_dir=${cur_dir}/scripts
 log_file=${train_dir}/log.txt
@@ -32,36 +33,25 @@ ${script_dir}/fetch-corpus.py ${corpus_dev} mono ${src} ${trg} ${data_dir} >> ${
 
 echo "### pre-processing data"
 
-${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --mode prepare \
-                                                                              --verbose \
-                                                                              --normalize-digits \
-                                                                              --normalize-punk \
-                                                                              --normalize-moses \
-                                                                              --dev-corpus  ${data_dir}/${corpus_dev} \
-                                                                              --test-corpus ${data_dir}/${corpus_test} \
-                                                                              --output-prefix ${corpus} \
-                                                                              --max 100 \
-                                                                              >> ${log_file} 2>&1
+${script_dir}/prepare-data.py ${corpus_path} ${src} ${trg} ${data_dir} --mode prepare \
+                                                                       --verbose \
+                                                                       --normalize-digits \
+                                                                       --normalize-punk \
+                                                                       --normalize-moses \
+                                                                       --dev-corpus  ${data_dir}/${corpus_dev} \
+                                                                       --test-corpus ${data_dir}/${corpus_test} \
+                                                                       --output-prefix ${corpus} \
+                                                                       --max 100 \
+                                                                       >> ${log_file} 2>&1
 
-echo "### building language model"
 
-# train language model
-${script_dir}/SMT/train-lm.py ${data_dir}/${corpus}.train ${trg} --order ${lm_order} \
-    --output ${train_dir}/${corpus}.train >> ${log_file} 2>&1
+# news-dev is too big
+head -n1000 ${corpus_path}.dev.${src} > ${corpus_path}.dev.sample.${src}
+head -n1000 ${corpus_path}.dev.${trg} > ${corpus_path}.dev.sample.${trg}
+mv ${corpus_path}.dev.sample.${src} ${corpus_path}.dev.${src}
+mv ${corpus_path}.dev.sample.${trg} ${corpus_path}.dev.${trg}
 
-echo "### building translation model"
+echo "### building model"
 
-# train translation model
-${script_dir}/SMT/train-moses.py ${train_dir} ${data_dir}/${corpus}.train ${train_dir}/${corpus}.train \
-    ${src} ${trg} --threads ${threads} >> ${log_file} 2>&1
-
-echo "### tuning translation model"
-
-cd ${train_dir}
-
-${script_dir}/SMT/tune-moses.py ${train_dir}/binarized/moses.ini ${data_dir}/${corpus}.dev \
-    ${src} ${trg} tuning.log.txt --threads ${threads} >> ${log_file} 2>&1
-
-cd ${cur_dir}
-
-# use ${train_dir}/binarized/moses.ini for decoding
+${script_dir}/SMT/moses.py ${train_dir} --corpus ${corpus_path}.train --dev-corpus ${corpus_path}.dev \
+    --src-ext ${src} --trg-ext ${trg} --threads ${threads} >> ${log_file} 2>&1

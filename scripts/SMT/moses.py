@@ -29,7 +29,7 @@ $MOSES_DIR/bin/moses {output_dir}/moses.ini --mertdir $MOSES_DIR/bin/ \
 --no-filter-phrase-table --decoder-flags="-threads {threads}" &> {output_dir}/tuning.log \
 --working-dir={output_dir}/mert-work
 mv {output_dir}/mert-work/moses.ini {output_dir}/moses.ini.tuned
-rm -rf {output_dir}/model {output_dir}/corpus {output_dir}/mert-work\
+rm -rf {output_dir}/model {output_dir}/corpus {output_dir}/mert-work \
 {output_dir}/giza.{src_ext}-{trg_ext} {output_dir}/giza.{trg_ext}-{src_ext}
 """
 
