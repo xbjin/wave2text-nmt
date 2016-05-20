@@ -62,4 +62,6 @@ if __name__ == '__main__':
 
     for cmd in commands.split('\n'):
         logging.info(cmd)
-        os.system(cmd)
+        ret_code = os.system(cmd)
+        if ret_code != 0:
+            sys.exit('Command failed')
