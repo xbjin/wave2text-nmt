@@ -11,6 +11,7 @@ logging.basicConfig(format='[%(asctime)s] %(message)s', level=logging.INFO)
 help_msg = """Train a translation model using Moses (full pipeline)."""
 
 commands = """\
+mkdir -p {output_dir}
 $MOSES_DIR/bin/lmplz -o {lm_order} < {lm_corpus}.{trg_ext} > {output_dir}/{lm_corpus_name}.arpa.{trg_ext}
 $MOSES_DIR/bin/build_binary {output_dir}/{lm_corpus_name}.arpa.{trg_ext} {output_dir}/{lm_corpus_name}.blm.{trg_ext}\
 $MOSES_DIR/scripts/training/train-model.perl -root-dir "{output_dir}" \
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('--corpus', required=True)
     parser.add_argument('--src-ext', required=True)
     parser.add_argument('--trg-ext', required=True)
-    parser.add_argument('--dev_corpus', required=True)
+    parser.add_argument('--dev-corpus', required=True)
     parser.add_argument('--lm-corpus')
     parser.add_argument('--lm-order', type=int, default=3)
     parser.add_argument('--threads', type=int, default=16)
