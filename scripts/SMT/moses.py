@@ -13,7 +13,7 @@ help_msg = """Train a translation model using Moses (full pipeline)."""
 commands = """\
 mkdir -p {output_dir}
 $MOSES_DIR/bin/lmplz -o {lm_order} < {lm_corpus}.{trg_ext} > {output_dir}/{lm_corpus_name}.arpa.{trg_ext}
-$MOSES_DIR/bin/build_binary {output_dir}/{lm_corpus_name}.arpa.{trg_ext} {output_dir}/{lm_corpus_name}.blm.{trg_ext}\
+$MOSES_DIR/bin/build_binary {output_dir}/{lm_corpus_name}.arpa.{trg_ext} {output_dir}/{lm_corpus_name}.blm.{trg_ext}
 $MOSES_DIR/scripts/training/train-model.perl -root-dir "{output_dir}" \
 -corpus {corpus} -f {src_ext} -e {trg_ext} -alignment grow-diag-final-and \
 -reordering msd-bidirectional-fe -lm 0:3:{output_dir}/{lm_corpus_name}.blm.{trg_ext}:8 \
