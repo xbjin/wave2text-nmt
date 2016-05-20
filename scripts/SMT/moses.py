@@ -52,6 +52,11 @@ if __name__ == '__main__':
     args.lm_corpus = args.lm_corpus or args.corpus
     args.lm_corpus_name = os.path.basename(args.lm_corpus)
 
+    args.output_dir = os.path.abspath(args.output_dir)
+    args.corpus = os.path.abspath(args.corpus)
+    args.lm_corpus = os.path.abspath(args.lm_corpus)
+    args.dev_corpus = os.path.abspath(args.dev_corpus)
+
     commands = commands.strip().format(**vars(args))
 
     for cmd in commands.split('\n'):
