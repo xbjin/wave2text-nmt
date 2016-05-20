@@ -11,7 +11,7 @@
 
 cur_dir=`pwd`
 script_dir=${cur_dir}/scripts  
-data_dir=data/mono
+data_dir=data/mono/news-crawl
 corpus=news-crawl
 src=fr
 trg=en
@@ -27,7 +27,7 @@ trg=en
 
 
 # pre-process
-${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --output-prefix ${corpus} --suffix tok \
+${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --output-prefix ${corpus} --suffix train \
   --mode prepare \
   --verbose \
   --normalize-digits \
@@ -44,4 +44,9 @@ ${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --
 ######################
 
 
-#${script_dir}/multivec-mono --train  data/SMT/news_fr-en/news.train.en --dimension 128 --iter 1 --verbose --save-vectors vectors.en
+${script_dir}/multivec-mono --train  ${data_dir}/${corpus}.train.${src} \
+			    --dimension 1024 \
+			    --iter 1 \
+			    --verbose \
+			    --save-vectors ${corpus}.vectors.en
+		     	    --save ${corpus}.en.bin
