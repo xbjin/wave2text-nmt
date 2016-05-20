@@ -275,7 +275,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
                                 feed_previous=False, dtype=dtypes.float32,
                                 scope=None, initial_state_attention=False,
                                 embedding_initializer=None, embedding_trainable=True,
-                                no_attention=False):
+                                no_attention=False, embedding=None):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -326,11 +326,12 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
 
   with variable_scope.variable_scope(scope or "embedding_attention_decoder"):
-    with ops.device("/cpu:0"):
-      embedding_shape = [num_symbols, embedding_size] if embedding_initializer is None else None
-      embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
-                                              initializer=embedding_initializer,
-                                              trainable=embedding_trainable)
+    if embedding is None:
+      with ops.device("/cpu:0"):
+        embedding_shape = [num_symbols, embedding_size] if embedding_initializer is None else None
+        embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
+                                                initializer=embedding_initializer,
+                                                trainable=embedding_trainable)
 
     def extract_argmax_and_embed(prev, _):
       """Loop_function that extracts the symbol from prev and embeds it."""
@@ -353,7 +354,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
                          num_encoder_symbols, num_decoder_symbols, embedding_size, embeddings=None,
                          num_heads=1, output_projection=None, feed_previous=False,
                          dtype=dtypes.float32, scope=None, initial_state_attention=False,
-                         no_attention=False):
+                         no_attention=False, shared_embeddings=None):
   """
   Args:
     embeddings: dictionary of (encoder/decoder name, embedding matrix) used for initializing the
@@ -370,16 +371,37 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
 
   encoder_states = []
   encoder_outputs = []
+
+  shared_embedding = None  # shared embedding tensor
+  if shared_embeddings is None:
+    shared_embeddings = []   # list of encoder/decoder names that share embeddings
+
   with variable_scope.variable_scope(scope or 'many2one_rnn_seq2seq'):
     for encoder_name, encoder_inputs_, num_encoder_symbols_ in zip(encoder_names, encoder_inputs,
                                                                    num_encoder_symbols):
-      with variable_scope.variable_scope('encoder_{}'.format(encoder_name)):
-        initializer, trainable = embeddings.get(encoder_name, (None, True))
-        # TODO: create embedding by hand and pass to decoders that share this embedding
-        encoder_cell = rnn_cell.EmbeddingWrapper(cell, embedding_classes=num_encoder_symbols_,
-                                                 embedding_size=embedding_size,
-                                                 initializer=initializer, trainable=trainable)
-        
+      encoder_scope = 'encoder_{}'.format(encoder_name)
+      embedding_scope = 'shared_embeddings' if encoder_name in shared_embeddings else encoder_scope
+
+      if encoder_name not in shared_embeddings or shared_embedding is None:
+        with variable_scope.variable_scope(embedding_scope):
+          initializer, trainable = embeddings.get(encoder_name, (None, True))
+          # TODO: create embedding by hand and pass to decoder that share this embedding
+          # encoder_cell = rnn_cell.EmbeddingWrapper(cell, embedding_classes=num_encoder_symbols_,
+          #                                          embedding_size=embedding_size,
+          #                                          initializer=initializer, trainable=trainable)
+          with ops.device("/cpu:0"):
+            embedding_shape = [num_encoder_symbols_, embedding_size] if initializer is None else None
+            embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
+                                                    initializer=initializer,
+                                                    trainable=trainable)
+      else:
+        embedding = shared_embedding
+
+      if encoder_name in shared_embeddings and shared_embedding is None:
+        shared_embedding = embedding
+
+      with variable_scope.variable_scope(encoder_scope):
+        encoder_cell = rnn_cell.EmbeddingWrapperBis(cell, embedding)
         encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell, encoder_inputs_, dtype=dtype)
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
@@ -401,6 +423,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
     decoder_scope = 'decoder_{}'.format(decoder_name)
 
     embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
+    embedding = shared_embedding if decoder_name in shared_embeddings else None
 
     if isinstance(feed_previous, bool):
       return embedding_attention_decoder(
@@ -409,7 +432,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
           output_projection=output_projection, feed_previous=feed_previous, scope=decoder_scope,
           initial_state_attention=initial_state_attention,
           embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable,
-          no_attention=no_attention)
+          no_attention=no_attention, embedding=embedding)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
@@ -422,7 +445,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
             output_projection=output_projection, feed_previous=feed_previous_bool,
             scope=decoder_scope, initial_state_attention=initial_state_attention,
             embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable,
-            no_attention=no_attention)
+            no_attention=no_attention, embedding=embedding)
 
         return outputs + [tensor for attn_weights in attentions for tensor in attn_weights]  + [state]
 

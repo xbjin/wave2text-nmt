@@ -66,7 +66,7 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
 parser.add_argument('--align', help='output aligned source words when decoding (for testing purposes)',
                     action='store_true')
 parser.add_argument('--no-attention', help='disable attention mechanism', action='store_true')
-parser.add_argument('--tie-embeddings', nargs='+', help='list of extensions for which to share the embeddings')
+parser.add_argument('--shared-embeddings', nargs='+', help='list of extensions for which to share the embeddings')
 # TODO: fixed encoder/decoder
 
 def main():
@@ -113,7 +113,7 @@ def main():
 
   # NMT model parameters
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
-                                         'src_vocab_size', 'trg_vocab_size', 'no_attention'])
+                                         'src_vocab_size', 'trg_vocab_size', 'no_attention', 'shared_embeddings'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or

@@ -748,6 +748,28 @@ class EmbeddingWrapper(RNNCell):
     return self._cell(embedded, state)
 
 
+class EmbeddingWrapperBis(RNNCell):
+  """
+  Contrary to EmbeddingWrapper, this wrapper takes an existing embedding variable as input.
+  """
+
+  def __init__(self, cell, embedding):
+    if not isinstance(cell, RNNCell):
+      raise TypeError("The parameter cell is not RNNCell.")
+    self._cell = cell
+    self._embedding = embedding
+
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  def __call__(self, inputs, state, scope=None):
+    with ops.device("/cpu:0"):
+      embedded = embedding_ops.embedding_lookup(
+          self._embedding, array_ops.reshape(inputs, [-1]))
+    return self._cell(embedded, state)
+
+
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells."""
 
