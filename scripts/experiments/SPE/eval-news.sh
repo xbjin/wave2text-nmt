@@ -20,7 +20,7 @@ threads=16
 lm_order=3
 cur_dir=`pwd`
 data_dir=${cur_dir}/data/simulated-PE/news
-script_dir=${cur_dir}/scripts
+script_dir=${cur_dir}/scripts 
 log_file=${train_dir}/log.txt
 
 
