@@ -45,11 +45,15 @@ parser.add_argument('data_dir', default='data', help='data directory')
 parser.add_argument('train_dir', default='model', help='training directory')
 parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
+parser.add_argument('--train', help='train an NMT model', action='store_true')
 parser.add_argument('--output', help='output file for decoding')
+parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings')
 parser.add_argument('--train-prefix', default='train', help='name of the training corpus')
 parser.add_argument('--dev-prefix', default='dev', help='name of the development corpus')
-parser.add_argument('--embedding-prefix', help='prefix of the embedding files to use as initialization (won\'t be used '
-                                                'if the parameters are loaded from a checkpoint)')
+parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the embedding files to use as '
+                                                                  'initialization (won\'t be used if the parameters '
+                                                                  'are loaded from a checkpoint)')
+parser.add_argument('--load-embeddings', nargs='+', help='list of extensions for which to load the embeddings')
 parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --load-checkpoints and --reset are '
                                                 'not specified, will try to load earlier versions of this checkpoint')
 parser.add_argument('--load-checkpoints', nargs='+', help='list of checkpoints to load (in loading order)')
@@ -94,6 +98,8 @@ def main():
     '--task-ratio takes {} parameter(s)'.format(len(args.src_ext)))
   assert len(set(args.src_ext + args.trg_ext)) == len(args.src_ext + args.trg_ext), (
     'all extensions need to be unique')
+  assert args.decode or args.eval or args.export_embeddings or args.train, (
+    'you need to specify at least one action (decode, eval, export-embeddings or train)')
 
   filenames = utils.get_filenames(**vars(args))
   utils.debug('filenames')
@@ -106,7 +112,8 @@ def main():
   all_filenames.append(args.bleu_script)
   # check that those files exist
   for filename in all_filenames:
-    assert os.path.exists(filename), 'file {} does not exist'.format(filename)
+    if not os.path.exists(filename):
+      utils.warn('warning: file {} does not exist'.format(filename))
 
   embeddings = utils.read_embeddings(filenames, **vars(args))
   utils.debug('embeddings {}'.format(embeddings))
@@ -149,7 +156,10 @@ def main():
       model.decode(sess, filenames, output=args.output, align=args.align)
     elif args.eval:
       model.evaluate(sess, filenames, bleu_script=args.bleu_script, output=args.output)
-    else:
+    elif args.export_embeddings:
+      model.export_embeddings(sess, filenames, extensions=args.export_embeddings,
+                              output_prefix=os.path.join(args.train_dir, args.embedding_prefix))
+    elif args.train:
       try:
         model.train(sess, filenames, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
                     args.max_train_size, eval_output)

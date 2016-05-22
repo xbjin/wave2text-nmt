@@ -128,6 +128,7 @@ class Seq2SeqModel(object):
     self.encoder_names = list(src_ext)
     self.decoder_name = trg_ext
     self.embedding_size = size
+    self.shared_embeddings = shared_embeddings
 
     # last bucket is the largest one
     src_bucket_size, trg_bucket_size = buckets[-1]
@@ -349,3 +350,22 @@ class Seq2SeqModel(object):
     # the size if i-th training bucket, as used later.
     self.train_bucket_scales = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                                 for i in xrange(len(train_bucket_sizes))]
+
+  def get_embeddings(self, sess):
+    """
+    Returns a dict of embedding matrices for each extension
+    """
+
+    with variable_scope.variable_scope('many2one_rnn_seq2seq',
+                                       reuse=True):
+      shared_embeddings = self.shared_embeddings or []
+      embeddings = {}
+      names = self.encoder_names + [self.decoder_name]
+
+      for name in names:
+        part = 'decoder' if name == self.decoder_name else 'encoder'
+        scope = 'shared_embeddings' if name in shared_embeddings else '{}_{}'.format(part, name)
+        variable = tf.get_variable('{}/embedding'.format(scope))
+        embeddings[name] = variable.eval(session=sess)
+
+      return embeddings

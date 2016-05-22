@@ -31,3 +31,4 @@ ${script_dir}/prepare-data.py ${data_dir}/${corpus}.tok mt en fr  ${data_dir} --
                                                                               --dev-size 1000 \
                                                                               --test-size 2000 \
                                                                               --output-prefix ${corpus}
+# FIXME max parameter

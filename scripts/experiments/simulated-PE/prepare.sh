@@ -35,7 +35,7 @@ ${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --
   --normalize-digits \
   --normalize-punk \
   --normalize-moses \
-  --remove-duplicates \
+  --remove-duplicate-lines \  # TODO: remove-duplicate or remove-duplicate lines?
   --min 1 --max 0
 
 # split

@@ -15,6 +15,8 @@ from translate import seq2seq_model, utils
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
                learning_rate_decay_factor, multi_task=False, task_ratio=None):
+    self.src_ext = src_ext
+    self.trg_ext = trg_ext[0]
     self.buckets = [(10, 5), (15, 10), (25, 20), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
     self.multi_task = multi_task
@@ -247,6 +249,24 @@ class TranslationModel(object):
 
   def save(self, sess):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
+
+  def export_embeddings(self, sess, filenames, extensions, output_prefix):
+    utils.debug('exporting embeddings')
+    vocab_filenames = dict(zip(self.src_ext + [self.trg_ext], filenames.src_vocab + [filenames.trg_vocab]))
+    embeddings = self.model.get_embeddings(sess)
+
+    for ext in extensions:
+      vocab = utils.initialize_vocabulary(vocab_filenames[ext])
+      #import pdb; pdb.set_trace()
+      embedding = embeddings[ext]
+      output_filename = '{}.{}'.format(output_prefix, ext)
+
+      with open(output_filename, 'w') as output_file:
+        output_file.write('{} {}\n'.format(*embedding.shape))
+        for i, vec in enumerate(embedding):
+          word = vocab.reverse[i]
+          vec_str = ' '.join(map(str, vec))
+          output_file.write('{} {}\n'.format(word, vec_str))
 
 
 def load_checkpoint(sess, checkpoint_dir, blacklist=()):

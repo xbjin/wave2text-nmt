@@ -194,7 +194,15 @@ def process_corpus(filenames, args):
                      all(min_ <= len(line.split()) <= max_ for line, min_, max_
                          in zip(lines, args.min, args.max)))
 
-        if args.remove_duplicates:
+        if args.remove_duplicate_lines:
+            seen_lines = [set() for _ in filenames]
+            lines = []
+            for line_tuple in all_lines:
+                if not any(line in seen_lines_ for line, seen_lines_ in
+                           zip(line_tuple, seen_lines)):
+                    lines.append(lines_)
+            all_lines = lines
+        elif args.remove_duplicates:
             all_lines = list(set(all_lines))
 
         if args.shuffle:
@@ -333,6 +341,9 @@ if __name__ == '__main__':
                         '(used as delimiters by moses)', action='store_true')
     parser.add_argument('--remove-duplicates', help='remove duplicate pairs',
                         action='store_true')
+    parser.add_argument('--remove-duplicate-lines', help='more restrictive '
+                        'than --remove-duplicates, remove any pair of lines '
+                        'whose source or target side was already seen.')
     parser.add_argument('-v', '--verbose', help='verbose mode',
                         action='store_true')
 
