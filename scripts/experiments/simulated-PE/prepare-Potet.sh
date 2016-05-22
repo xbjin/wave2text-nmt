@@ -16,9 +16,9 @@ cp ${data_dir}/PEofMT-10881.mt ${corpus}.mt
 cp ${data_dir}/PEofMT-10881.fr ${corpus}.fr
 
 # notice the "-test" (output will be ".test")
-cp ${data_dir}/PEofREF-1500.pe-mt ${corpus}-test.en
-cp ${data_dir}/PEofREF-1500.mt ${corpus}-test.mt
-cp ${data_dir}/PEofREF-1500.fr ${corpus}-test.fr
+cp ${data_dir}/PEofREF-1500.pe-mt ${data_dir}/${corpus}-test.en
+cp ${data_dir}/PEofREF-1500.mt ${data_dir}/${corpus}-test.mt
+cp ${data_dir}/PEofREF-1500.fr ${data_dir}/${corpus}-test.fr
 
 # pre-process
 ${script_dir}/prepare-data.py ${data_dir}/${corpus} fr mt en ${data_dir} --output-prefix ${corpus} \
