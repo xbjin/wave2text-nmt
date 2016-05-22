@@ -26,7 +26,13 @@ mkdir -p ${data_dir}
 # fetch EMEA
 ${script_dir}/fetch-corpus.py ${corpus} ${corpus_type} ${src} ${trg} ${data_dir}
 
-# TODO: for EMEA, special pre-processing to remove whitespaces before punctuation
+if [ ${corpus} -eq EMEA ]
+then
+    cat ${data_dir}/${corpus}.${src} | sed "s/’ /'/g" > ${data_dir}/${corpus}.fixed.${src}  # fix this stupid whitespace
+    cat ${data_dir}/${corpus}.${trg} | sed "s/’ /'/g" > ${data_dir}/${corpus}.fixed.${trg}
+    mv ${data_dir}/${corpus}.fixed.${src} ${data_dir}/${corpus}.${src}
+    mv ${data_dir}/${corpus}.fixed.${trg} ${data_dir}/${corpus}.${trg}
+fi
 
 # pre-process
 ${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --output-prefix ${corpus} --suffix tok \
