@@ -15,6 +15,7 @@ cp ${data_dir}/PEofMT-10881.pe ${corpus}.en
 cp ${data_dir}/PEofMT-10881.mt ${corpus}.mt
 cp ${data_dir}/PEofMT-10881.fr ${corpus}.fr
 
+# notice the "-test" (output will be ".test")
 cp ${data_dir}/PEofREF-1500.pe-mt ${corpus}-test.en
 cp ${data_dir}/PEofREF-1500.mt ${corpus}-test.mt
 cp ${data_dir}/PEofREF-1500.fr ${corpus}-test.fr
@@ -23,7 +24,7 @@ cp ${data_dir}/PEofREF-1500.fr ${corpus}-test.fr
 ${script_dir}/prepare-data.py ${data_dir}/${corpus} fr mt en ${data_dir} --output-prefix ${corpus} \
   --mode prepare \
   --verbose \
-  --test-corpus ${corpus}-test \  # notice the "-test" (output will be ".test")
+  --test-corpus ${corpus}-test \
   --dev-size 800 \
   --normalize-digits \
   --normalize-punk \
