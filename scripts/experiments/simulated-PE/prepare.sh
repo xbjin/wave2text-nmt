@@ -41,8 +41,9 @@ ${script_dir}/prepare-data.py ${data_dir}/${corpus} ${src} ${trg} ${data_dir} --
   --normalize-digits \
   --normalize-punk \
   --normalize-moses \
-  --remove-duplicate-lines \  # TODO: remove-duplicate or remove-duplicate lines?
+  --remove-duplicate-lines \
   --min 1 --max 0
+# TODO: remove-duplicate or remove-duplicate lines?
 
 # split
 mkdir -p ${data_dir}/splits
