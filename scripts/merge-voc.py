@@ -42,8 +42,7 @@ def process_line(line, args):
         line = line.strip()
         added=do_add(args.ouput_voc_set,line)
         if(added):
-            args.output_voc_list+=line                
-
+            args.output_voc_list+=[line]               
             
 def merge_voc(args):
     if len(args.vocs) > 2:
