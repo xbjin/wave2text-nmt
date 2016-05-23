@@ -1,9 +1,5 @@
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
-"""
-Created on Fri May 20 17:58:10 2016
-
-@author: delbrouck
-"""
 
 import argparse
 import sys
@@ -11,7 +7,13 @@ from itertools import izip_longest
 from contextlib import contextmanager
 import os
 
-help_msg = "get lost !"
+help_msg = "merging works this way: \
+taking first entry of voc1 \
+taking first entry of voc2 \
+taking second entry of voc1 \
+taking second entry of voc2 \
+... \
+Until size args is reached"
 
 
 
