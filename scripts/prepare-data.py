@@ -107,7 +107,8 @@ def create_vocabulary(filename, output_filename, size, unk_align=False):
     return dict(map(reversed, enumerate(vocab_list)))
 
 def append_unk_vocab(vocab, vocab_file):
-    with open(vocab_file, 'w') as output_file:    
+    with open(vocab_file, 'w') as output_file:  
+        print(vocab)
         vocab_list=_START_VOCAB_UNK+vocab[4:]    
         if 0 < size < len(vocab_list):
                 vocab_list = vocab_list[:size]
