@@ -517,7 +517,7 @@ if __name__ == '__main__':
                 vocabs.append(vocab)
         else:
             vocabs = None
-
+        print("vocabs",vocabs)
         ## align and create ids
         if create_ids_:
             if args.unk_align:
