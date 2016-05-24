@@ -117,9 +117,10 @@ def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embeddin
   src_vocab = [os.path.join(data_dir, "vocab.{}".format(ext)) for ext in src_ext]
   trg_vocab = os.path.join(data_dir, "vocab.{}".format(trg_ext))
 
-  print(kwargs)
-  test_path = kwargs.get('decode', kwargs.get('eval'))  # `decode` or `eval` or None
-    
+  
+  test_path = kwargs.get('decode')  # `decode` or `eval` or None
+  test_path = test_path if test_path is not None else kwargs.get('eval')
+
   src_test = ["{}.{}".format(test_path, ext) for ext in src_ext] if test_path is not None else None
   trg_test = "{}.{}".format(test_path, trg_ext) if test_path is not None else None
   lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
