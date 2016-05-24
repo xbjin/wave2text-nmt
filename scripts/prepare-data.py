@@ -106,6 +106,13 @@ def create_vocabulary(filename, output_filename, size, unk_align=False):
 
     return dict(map(reversed, enumerate(vocab_list)))
 
+def append_unk_vocab(vocab, vocab_file):
+    with open(vocab_file, 'w') as output_file:    
+        vocab_list=_START_VOCAB_UNK+vocab[4:]    
+        if 0 < size < len(vocab_list):
+                vocab_list = vocab_list[:size]
+    
+        output_file.writelines(w + '\n' for w in vocab_list)    
 
 def create_ids(filename, output_filename, vocab):
     with open(filename) as input_file, \
@@ -543,8 +550,8 @@ if __name__ == '__main__':
                     if (args.unk_align and ext == args.extensions[-1] and
                         output_corpus == output_corpora[-1]):
                         #if external vocab is given we append special unk tokens after removing old special tokens
-                        if args.vocab_path is not None:                            
-                            vocab=_START_VOCAB_UNK+vocab[4:]
+                        if args.vocab_path is not None:  
+                            append_unk_vocab(vocab, args.vocab_path[-1])
                         create_ids_with_align(filename, output_filename, vocab, align_filename)
                     else:
                         create_ids(filename, output_filename, vocab)
