@@ -542,6 +542,9 @@ if __name__ == '__main__':
                     # special UNK symbols for target train file
                     if (args.unk_align and ext == args.extensions[-1] and
                         output_corpus == output_corpora[-1]):
+                        #if external vocab is given we append special unk tokens after removing old special tokens
+                        if args.vocab_path is not None:                            
+                            vocab=_START_VOCAB_UNK+vocab[4:]
                         create_ids_with_align(filename, output_filename, vocab, align_filename)
                     else:
                         create_ids(filename, output_filename, vocab)
