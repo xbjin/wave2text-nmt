@@ -107,13 +107,20 @@ def create_vocabulary(filename, output_filename, size, unk_align=False):
     return dict(map(reversed, enumerate(vocab_list)))
 
 def append_unk_vocab(vocab, vocab_file):
-    with open(vocab_file, 'w') as output_file:  
-        print(vocab)
-        vocab_list=_START_VOCAB_UNK+vocab[4:]    
-        if 0 < size < len(vocab_list):
-                vocab_list = vocab_list[:size]
     
-        output_file.writelines(w + '\n' for w in vocab_list)    
+    with open(vocab_file, 'r') as input_file:
+        vocab_list = [line.strip() for line in input_file]
+        
+    size = len(vocab_list)    
+    vocab_list = _START_VOCAB_UNK+vocab_list[4:] 
+        
+    if 0 < size < len(vocab_list):
+        vocab_list = vocab_list[:size]
+                
+    with open(vocab_file, 'w') as output_file:    
+        output_file.writelines(w + '\n' for w in vocab_list) 
+
+    return dict(map(reversed, enumerate(vocab_list)))    
 
 def create_ids(filename, output_filename, vocab):
     with open(filename) as input_file, \
@@ -494,14 +501,11 @@ if __name__ == '__main__':
 
         if args.vocab_path is not None:
             logging.info('reading vocabulary files')
-            print("args.vocab_path",args.vocab_path)
             vocabs = [read_vocabulary(filename) for filename in args.vocab_path]
-            print("vocabs",vocabs)
             if create_vocab_:
                 # copy vocabularies if necessary
                 for vocab_filename, output_filename in zip(args.vocab_path,
                                                            vocab_output_filenames):
-                                            
                     if vocab_filename != output_filename:
                         shutil.copy(vocab_filename, output_filename)
         elif create_vocab_:
@@ -519,7 +523,7 @@ if __name__ == '__main__':
                 vocabs.append(vocab)
         else:
             vocabs = None
-        print("vocabs",vocabs)
+
         ## align and create ids
         if create_ids_:
             if args.unk_align:
@@ -554,7 +558,7 @@ if __name__ == '__main__':
                         output_corpus == output_corpora[-1]):
                         #if external vocab is given we append special unk tokens after removing old special tokens
                         if args.vocab_path is not None:  
-                            append_unk_vocab(vocab, args.vocab_path[-1])
+                            vocab = append_unk_vocab(vocab, args.vocab_path[-1])
                         create_ids_with_align(filename, output_filename, vocab, align_filename)
                     else:
                         create_ids(filename, output_filename, vocab)
