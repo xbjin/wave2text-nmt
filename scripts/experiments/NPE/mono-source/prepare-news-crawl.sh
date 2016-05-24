@@ -102,32 +102,39 @@ ${script_dir}/multivec-mono --train  ${data_dir_crawl}/${corpus_crawl}.train.${t
 ######################
 
 
-mv ${data_dir_crawl}/with-OMPI/vocab-merged.en ${data_dir_crawl}/with-OMPI/vocab.en \
+mv ${data_dir_crawl}/with-OMPI/vocab-merged.en ${data_dir_crawl}/with-OMPI/vocab.en 
+
+cp ${data_dir_crawl}/${corpus_crawl}.dev.en ${data_dir_crawl}/with-OMPI/${corpus_crawl}.dev.en
+cp ${data_dir_crawl}/${corpus_crawl}.test.en ${data_dir_crawl}/with-OMPI/${corpus_crawl}.test.en
+cp ${data_dir_crawl}/${corpus_crawl}.train.en ${data_dir_crawl}/with-OMPI/${corpus_crawl}.train.en
 
 #we do en to en but model need different extension, lets create fake mt
-ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/vocab.en ~/seq2seq/${data_dir_crawl}/with-OMPI/vocab.mt \
-ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/vectors.en ~/seq2seq/${data_dir_crawl}/with-OMPI/vectors.mt \
-ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.train.ids.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.train.ids.mt \
-ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.test.ids.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.test.ids.mt \
-ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.dev.ids.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.dev.ids.mt \
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/vocab.en ~/seq2seq/${data_dir_crawl}/with-OMPI/vocab.mt 
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/vectors.en ~/seq2seq/${data_dir_crawl}/with-OMPI/vectors.mt 
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.train.ids.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.train.ids.mt 
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.test.ids.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.test.ids.mt 
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.dev.ids.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.dev.ids.mt 
 
-python2 -m ${data_dir_crawl}/with-OMPI/ model/NMT/mono/crawl-OMPI  \
---train-prefix news-crawl.train.ids \
---dev-prefix news-crawl.dev.ids \
---decode ${data_dir_crawl}/with-OMPI/news-crawl.test.ids  \
---eval ${data_dir_crawl}/with-OMPI/news-crawl.dev.ids  \
---size 1024  \
---gpu-id 1 \
---verbose \
---dropout-rate 0.2 \
---log-file model/NMT/mono/crawl-OMPI/log.txt \
---src-ext mt \
---trg-ext en \
---load-embeddings en en \
---steps-per-checkpoint 1000 \
---steps-per-eval 4000 \
---learning-rate-decay-factor 0.95 \
---src-vocab-size 60000 \
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.dev.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.dev.mt  
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.train.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.train.mt  
+ln -s ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.test.en ~/seq2seq/${data_dir_crawl}/with-OMPI/news-crawl.test.mt  
+
+python2 -m translate ${data_dir_crawl}/with-OMPI/ model/NMT/mono/crawl-OMPI  \ 
+--train  \
+--train-prefix news-crawl.train  \
+--dev-prefix news-crawl.dev  \
+--size 1024   \
+--gpu-id 0  \
+--verbose  \
+--dropout-rate 0.2  \
+--log-file model/NMT/mono/crawl-OMPI/log.txt  \
+--src-ext mt  \
+--trg-ext en  \
+--load-embeddings mt en  \
+--steps-per-checkpoint 1000  \
+--steps-per-eval 4000  \
+--learning-rate-decay-factor 0.95  \
+--src-vocab-size 60000  \
 --trg-vocab-size 60000 \
 
 
