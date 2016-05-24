@@ -494,12 +494,14 @@ if __name__ == '__main__':
 
         if args.vocab_path is not None:
             logging.info('reading vocabulary files')
+            print("args.vocab_path",args.vocab_path)
             vocabs = [read_vocabulary(filename) for filename in args.vocab_path]
-
+            print("vocabs",vocabs)
             if create_vocab_:
                 # copy vocabularies if necessary
                 for vocab_filename, output_filename in zip(args.vocab_path,
                                                            vocab_output_filenames):
+                                            
                     if vocab_filename != output_filename:
                         shutil.copy(vocab_filename, output_filename)
         elif create_vocab_:
