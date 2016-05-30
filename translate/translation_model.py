@@ -288,9 +288,9 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
     utils.log('reading model parameters from {}'.format(ckpt.model_checkpoint_path))
     tf.train.Saver(variables).restore(sess, ckpt.model_checkpoint_path)  
 
-  utils.debug('retrieved parameters')
-  for var in variables:
-    utils.debug('  {} {}'.format(var.name, var.get_shape()))
+    utils.debug('retrieved parameters')
+    for var in variables:
+      utils.debug('  {} {}'.format(var.name, var.get_shape()))
 
 
 def save_checkpoint(sess, saver, checkpoint_dir, step=None, name=None):
