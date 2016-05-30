@@ -251,13 +251,16 @@ def split_corpus(filenames, sizes):
 
 
 def create_align(filenames, args):
+    logging.info("creating temp file")
     with open_temp_files(num=1) as output_file, open_files(filenames) as files:
         output_file, = output_file
         for src_line, trg_line in izip(*files):
             output_file.write("{} ||| {}\n".format(src_line.strip(),
                                                    trg_line.strip()))
         tmp_filename = output_file.name
-
+    logging.info("done creating temp file")
+    
+    logging.info("computing alignement")
     with open_temp_files(num=1) as align_file:
         align_file, = align_file
 
