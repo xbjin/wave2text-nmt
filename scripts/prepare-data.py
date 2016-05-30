@@ -265,7 +265,7 @@ def create_align(filenames, args):
         args_ = [fast_align_bin, '-i', tmp_filename, '-d', '-o', '-v',
                  '-I', str(args.fast_align_iter)]
 
-        subprocess.call(args_, stdout=align_file, stderr=subprocess.PIPE)
+        subprocess.call(args_, stdout=align_file, stderr=sys.stdout)
         return align_file.name
                 
 
