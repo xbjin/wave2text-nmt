@@ -149,7 +149,7 @@ class TranslationModel(object):
   
     # get a batch and make a training step
     encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.train_set, bucket_id)
-    _, step_loss, _, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
+    _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
     return step_loss
 
   def _eval_step(self, sess, model):
@@ -160,13 +160,13 @@ class TranslationModel(object):
         continue
 
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.dev_set, bucket_id)
-      _, eval_loss, _, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
+      _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
                                       forward_only=True, decode=False)
 
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
-  def _decode_sentence(self, sess, src_sentences, align=None):
+  def _decode_sentence(self, sess, src_sentences):
     tokens = [sentence.split() for sentence in src_sentences]
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  for vocab, sentence in zip(self.src_vocabs, src_sentences)]
@@ -183,9 +183,8 @@ class TranslationModel(object):
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
     
-    _, _, output_logits, output_attentions = self.model.step(sess, encoder_inputs, decoder_inputs,
-                                                             target_weights, bucket_id,
-                                                             forward_only=True, decode=True)
+    _, _, output_logits = self.model.step(sess, encoder_inputs, decoder_inputs,
+                                          target_weights, bucket_id, forward_only=True, decode=True)
 
     # TODO: beam-search
     trg_token_ids = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # greedy decoder
@@ -199,19 +198,9 @@ class TranslationModel(object):
     if self.lookup_dict is not None:
       trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
 
-    if align:
-      src_align_tokens = [
-        [(tokens_ + [utils._EOS])[::-1][min(weights_.argmax(), len(tokens_))]
-         for weights_, tokens_ in zip(weights, tokens)]  # for each encoder
-        for weights in output_attentions  # for each output
-      ]
-
-      src_align_tokens = zip(*src_align_tokens)  # transpose (encoder count x output len)
-      trg_tokens = ['/'.join(tokens_) for tokens_ in zip(trg_tokens, *src_align_tokens)]
-
     return ' '.join(trg_tokens)
 
-  def decode(self, sess, filenames, output=None, align=None):
+  def decode(self, sess, filenames, output=None):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
       
@@ -221,7 +210,7 @@ class TranslationModel(object):
         output_file = sys.stdout if output is None else open(output, 'w')
         
         for src_sentences in zip(*files):
-          trg_sentence = self._decode_sentence(sess, src_sentences, align)
+          trg_sentence = self._decode_sentence(sess, src_sentences)
           output_file.write(trg_sentence + '\n')
           output_file.flush()
           

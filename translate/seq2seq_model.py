@@ -48,8 +48,7 @@ class Seq2SeqModel(object):
 
   def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
                src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size, use_lstm=True,
-               num_samples=512, reuse=None, dropout_rate=0.0, no_attention=None, shared_embeddings=None,
-               **kwargs):
+               num_samples=512, reuse=None, dropout_rate=0.0, **kwargs):
     """Create the model.
 
     Args:
@@ -128,7 +127,6 @@ class Seq2SeqModel(object):
     self.encoder_names = list(src_ext)
     self.decoder_name = trg_ext
     self.embedding_size = size
-    self.shared_embeddings = shared_embeddings
 
     # last bucket is the largest one
     src_bucket_size, trg_bucket_size = buckets[-1]
@@ -151,11 +149,10 @@ class Seq2SeqModel(object):
     def seq2seq_function(encoder_inputs, decoder_inputs):
       return seq2seq.many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, self.encoder_names, self.decoder_name,
                                           cell, src_vocab_size, self.trg_vocab_size, self.embedding_size, embeddings,
-                                          output_projection=output_projection, feed_previous=self.feed_previous,
-                                          no_attention=no_attention, shared_embeddings=shared_embeddings)
+                                          output_projection=output_projection, feed_previous=self.feed_previous)
 
     # training outputs and losses
-    self.outputs, self.losses, self.attentions = seq2seq.model_with_buckets(
+    self.outputs, self.losses = seq2seq.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
       self.target_weights, buckets, seq2seq_function,
       softmax_loss_function=softmax_loss_function, reuse=reuse)
@@ -249,21 +246,13 @@ class Seq2SeqModel(object):
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
         output_feed.append(outputs_[bucket_id][l])
-      for l in xrange(decoder_size):
-        output_feed.extend(self.attentions[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
 
     if not forward_only:
-      return outputs[1], outputs[2], None, None  # Gradient norm, loss, no outputs, no attentions.
+      return outputs[1], outputs[2], None  # Gradient norm, loss, no outputs.
     else:
-      loss_ = outputs[0]
-      output_logits = outputs[1:1 + decoder_size]
-
-      output_attentions = [outputs[i:i + self.encoder_count]
-        for i in range(1 + decoder_size, len(outputs), self.encoder_count)]
-
-      return None, loss_, output_logits, output_attentions  # No gradient norm, loss, outputs, attentions.
+      return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
 
   def get_batch(self, data, bucket_id, batch_size=None):
     """Get a random batch of data from the specified bucket, prepare for step.

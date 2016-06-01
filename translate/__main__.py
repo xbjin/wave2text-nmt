@@ -23,7 +23,7 @@ from translate.translation_model import TranslationModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
-parser.add_argument('--learning-rate-decay-factor', type=float, default=0.99, help='learning rate decay factor')
+parser.add_argument('--learning-rate-decay-factor', type=float, default=0.95, help='learning rate decay factor')
 parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
@@ -32,8 +32,8 @@ parser.add_argument('--num-layers', type=int, default=1, help='number of layers 
 parser.add_argument('--src-vocab-size', type=int, nargs='+', default=[30000,], help='source vocabulary size(s)')
 parser.add_argument('--trg-vocab-size', type=int, nargs='+', default=[30000,], help='target vocabulary size(s)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
-parser.add_argument('--steps-per-checkpoint', type=int, default=50, help='number of updates per checkpoint')
-parser.add_argument('--steps-per-eval', type=int, default=1000, help='number of updates per BLEU evaluation')
+parser.add_argument('--steps-per-checkpoint', type=int, default=1000, help='number of updates per checkpoint')
+parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
@@ -67,10 +67,6 @@ parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions fo
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
-parser.add_argument('--align', help='output aligned source words when decoding (for testing purposes)',
-                    action='store_true')
-parser.add_argument('--no-attention', help='disable attention mechanism', action='store_true')
-parser.add_argument('--shared-embeddings', nargs='+', help='list of extensions for which to share the embeddings')
 # TODO: fixed encoder/decoder
 
 def main():
@@ -120,7 +116,7 @@ def main():
 
   # NMT model parameters
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
-                                         'src_vocab_size', 'trg_vocab_size', 'no_attention', 'shared_embeddings'])
+                                         'src_vocab_size', 'trg_vocab_size'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
@@ -134,7 +130,7 @@ def main():
   if args.no_gpu:
     device = '/cpu:0'
   elif args.gpu_id is not None:
-    device = '/gpu:{}'.format(args.gpu_id)  
+    device = '/gpu:{}'.format(args.gpu_id)
   
   utils.log('creating model')
   utils.log('using device: {}'.format(device))
@@ -153,7 +149,7 @@ def main():
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
     
     if args.decode:
-      model.decode(sess, filenames, output=args.output, align=args.align)
+      model.decode(sess, filenames, output=args.output)
     elif args.eval:
       model.evaluate(sess, filenames, bleu_script=args.bleu_script, output=args.output)
     elif args.export_embeddings:

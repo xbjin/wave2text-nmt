@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-corpus=WMT14
+corpus=wmt14
 corpus_test=news-test
 corpus_dev=news-dev
 

@@ -104,7 +104,7 @@ def sequence_loss(logits, targets, weights,
 def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_states, cell,
                       output_size=None, num_heads=1, loop_function=None,
                       dtype=dtypes.float32, scope=None,
-                      initial_state_attention=False, no_attention=False):
+                      initial_state_attention=False):
   """RNN decoder with attention for the sequence-to-sequence model.
 
   In this context "attention" means that, during decoding, the RNN can look up
@@ -120,6 +120,7 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
     attention_states: 3D Tensor [batch_size x attn_length x attn_size].
     cell: rnn_cell.RNNCell defining the cell function and size.
     output_size: Size of the output vectors; if None, we use cell.output_size.
+    num_heads: Number of attention heads that read from attention_states.
     loop_function: If not None, this function will be applied to i-th output
       in order to generate i+1-th input, and decoder_inputs will be ignored,
       except for the first element ("GO" symbol). This can be used for decoding,
@@ -134,9 +135,6 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
       If True, initialize the attentions from the initial state and attention
       states -- useful when we wish to resume decoding from a previously
       stored decoder state and attention states.
-    no_attention: disable attention. To stay compatible with an attention model,
-      the last output of the encoder is appended to the decoder inputs (like an
-      attention model with weights 0 everywhere and 1 for the last output).
 
   Returns:
     A tuple of the form (outputs, state), where:
@@ -181,33 +179,30 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
       for states in attention_states
     ]
 
-    state = initial_state
-
     hidden_features = [[] for _ in attention_states]
     v = [[] for _ in attention_states]
 
-    if no_attention:
-      pass
-    else:
-      attention_vec_size = attn_size  # Size of query vectors for attention.
+    attention_vec_size = attn_size  # Size of query vectors for attention.
+    for a in xrange(num_heads):
+      for encoder_name, features_, hidden_, v_ in zip(encoder_names, hidden_features, hidden, v):
+        k = variable_scope.get_variable('AttnW_{}_{}'.format(encoder_name, a),
+                                        [1, 1, attn_size, attention_vec_size])
+        features_.append(nn_ops.conv2d(hidden_, k, [1, 1, 1, 1], "SAME"))
+        v_.append(variable_scope.get_variable('AttnV_{}_{}'.format(encoder_name, a),
+                                              [attention_vec_size]))
+
+    state = initial_state
+
+    def attention(query):
+      """Put attention masks on hidden using hidden_features and query."""
+
+      ds = []  # Results of attention reads will be stored here.
       for a in xrange(num_heads):
-        for encoder_name, features_, hidden_, v_ in zip(encoder_names, hidden_features, hidden, v):
-          k = variable_scope.get_variable('AttnW_{}_{}'.format(encoder_name, a),
-                                          [1, 1, attn_size, attention_vec_size])
-          features_.append(nn_ops.conv2d(hidden_, k, [1, 1, 1, 1], "SAME"))
-          v_.append(variable_scope.get_variable('AttnV_{}_{}'.format(encoder_name, a),
-                                                [attention_vec_size]))
-
-      def attention(query):
-        """Put attention masks on hidden using hidden_features and query."""
-
-        attn_output = []  # Results of attention reads will be stored here.
-        attn_weights = []  # store the attention weights
-
         with variable_scope.variable_scope('Attention_{}'.format(a)):
           y = rnn_cell.linear(query, attention_vec_size, True)
           y = array_ops.reshape(y, [-1, 1, 1, attention_vec_size])
 
+          ds_ = []
           for i, values in enumerate(zip(hidden_features, hidden, v), 1):
             features_, hidden_, v_ = values
             # Attention mask is a softmax of v^T * tanh(...).
@@ -218,22 +213,21 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
             d_ = math_ops.reduce_sum(
               array_ops.reshape(a_, [-1, attn_length, 1, 1]) * hidden_,
               [1, 2])
-            attn_output.append(d_)
-            attn_weights.append(a_)
+            ds_.append(d_)
 
-        attn_output = array_ops.reshape(math_ops.add_n(attn_output),
-                                        [-1, attn_size])
-        return attn_output, attn_weights
+          d = math_ops.add_n(ds_)
+          ds.append(array_ops.reshape(d, [-1, attn_size]))
+      return ds
 
     outputs = []
-    attentions = []
     prev = None
     batch_attn_size = array_ops.pack([batch_size, attn_size])
-    attns = array_ops.zeros(batch_attn_size, dtype=dtype)
-    attns.set_shape([None, attn_size])  # Ensure the second shape of attention vectors is set.
-
+    attns = [array_ops.zeros(batch_attn_size, dtype=dtype)
+             for _ in xrange(num_heads)]
+    for a in attns:  # Ensure the second shape of attention vectors is set.
+      a.set_shape([None, attn_size])
     if initial_state_attention:
-      attns, attn_weights = attention(initial_state)
+      attns = attention(initial_state)
     for i, inp in enumerate(decoder_inputs):
       if i > 0:
         variable_scope.get_variable_scope().reuse_variables()
@@ -245,28 +239,25 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
       input_size = inp.get_shape().with_rank(2)[1]
       if input_size.value is None:
         raise ValueError("Could not infer input size from input: %s" % inp.name)
-      x = rnn_cell.linear([inp, attns], input_size, True)
+      x = rnn_cell.linear([inp] + attns, input_size, True)
       # Run the RNN.
       cell_output, state = cell(x, state)
-
       # Run the attention mechanism.
       if i == 0 and initial_state_attention:
         with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                            reuse=True):
-          attns, attn_weights = attention(state)
+          attns = attention(state)
       else:
-        attns, attn_weights = attention(state)
+        attns = attention(state)
 
       with variable_scope.variable_scope("AttnOutputProjection"):
-        output = rnn_cell.linear([cell_output, attns], output_size, True)  # TODO: why attns here?
+        output = rnn_cell.linear([cell_output] + attns, output_size, True)
       if loop_function is not None:
         # We do not propagate gradients over the loop function.
         prev = array_ops.stop_gradient(output)
-
       outputs.append(output)
-      attentions.append(attn_weights)  # TODO: this attention or previous?
 
-  return outputs, state, attentions
+  return outputs, state
 
 
 def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, attention_states,
@@ -274,8 +265,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
                                 output_size=None, output_projection=None,
                                 feed_previous=False, dtype=dtypes.float32,
                                 scope=None, initial_state_attention=False,
-                                embedding_initializer=None, embedding_trainable=True,
-                                no_attention=False, embedding=None):
+                                embedding_initializer=None, embedding_trainable=True):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -326,12 +316,11 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
     proj_biases.get_shape().assert_is_compatible_with([num_symbols])
 
   with variable_scope.variable_scope(scope or "embedding_attention_decoder"):
-    if embedding is None:
-      with ops.device("/cpu:0"):
-        embedding_shape = [num_symbols, embedding_size] if embedding_initializer is None else None
-        embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
-                                                initializer=embedding_initializer,
-                                                trainable=embedding_trainable)
+    with ops.device("/cpu:0"):
+      embedding_shape = [num_symbols, embedding_size] if embedding_initializer is None else None
+      embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
+                                              initializer=embedding_initializer,
+                                              trainable=embedding_trainable)
 
     def extract_argmax_and_embed(prev, _):
       """Loop_function that extracts the symbol from prev and embeds it."""
@@ -347,14 +336,13 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
     return attention_decoder(
         emb_inp, initial_state, encoder_names, attention_states, cell, output_size=output_size,
         num_heads=num_heads, loop_function=loop_function,
-        initial_state_attention=initial_state_attention, no_attention=no_attention)
+        initial_state_attention=initial_state_attention)
 
 
 def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_name, cell,
                          num_encoder_symbols, num_decoder_symbols, embedding_size, embeddings=None,
                          num_heads=1, output_projection=None, feed_previous=False,
-                         dtype=dtypes.float32, scope=None, initial_state_attention=False,
-                         no_attention=False, shared_embeddings=None):
+                         dtype=dtypes.float32, scope=None, initial_state_attention=False):
   """
   Args:
     embeddings: dictionary of (encoder/decoder name, embedding matrix) used for initializing the
@@ -371,37 +359,15 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
 
   encoder_states = []
   encoder_outputs = []
-
-  shared_embedding = None  # shared embedding tensor
-  if shared_embeddings is None:
-    shared_embeddings = []   # list of encoder/decoder names that share embeddings
-
   with variable_scope.variable_scope(scope or 'many2one_rnn_seq2seq'):
     for encoder_name, encoder_inputs_, num_encoder_symbols_ in zip(encoder_names, encoder_inputs,
                                                                    num_encoder_symbols):
-      encoder_scope = 'encoder_{}'.format(encoder_name)
-      embedding_scope = 'shared_embeddings' if encoder_name in shared_embeddings else encoder_scope
+      with variable_scope.variable_scope('encoder_{}'.format(encoder_name)):
+        initializer, trainable = embeddings.get(encoder_name, (None, True))
+        encoder_cell = rnn_cell.EmbeddingWrapper(cell, embedding_classes=num_encoder_symbols_,
+                                                 embedding_size=embedding_size,
+                                                 initializer=initializer, trainable=trainable)
 
-      if encoder_name not in shared_embeddings or shared_embedding is None:
-        with variable_scope.variable_scope(embedding_scope):
-          initializer, trainable = embeddings.get(encoder_name, (None, True))
-          # TODO: create embedding by hand and pass to decoder that share this embedding
-          # encoder_cell = rnn_cell.EmbeddingWrapper(cell, embedding_classes=num_encoder_symbols_,
-          #                                          embedding_size=embedding_size,
-          #                                          initializer=initializer, trainable=trainable)
-          with ops.device("/cpu:0"):
-            embedding_shape = [num_encoder_symbols_, embedding_size] if initializer is None else None
-            embedding = variable_scope.get_variable("embedding", shape=embedding_shape,
-                                                    initializer=initializer,
-                                                    trainable=trainable)
-      else:
-        embedding = shared_embedding
-
-      if encoder_name in shared_embeddings and shared_embedding is None:
-        shared_embedding = embedding
-
-      with variable_scope.variable_scope(encoder_scope):
-        encoder_cell = rnn_cell.EmbeddingWrapperBis(cell, embedding)
         encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell, encoder_inputs_, dtype=dtype)
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
@@ -423,7 +389,6 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
     decoder_scope = 'decoder_{}'.format(decoder_name)
 
     embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
-    embedding = shared_embedding if decoder_name in shared_embeddings else None
 
     if isinstance(feed_previous, bool):
       return embedding_attention_decoder(
@@ -431,41 +396,25 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
           num_decoder_symbols, embedding_size, num_heads=num_heads, output_size=output_size,
           output_projection=output_projection, feed_previous=feed_previous, scope=decoder_scope,
           initial_state_attention=initial_state_attention,
-          embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable,
-          no_attention=no_attention, embedding=embedding)
+          embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
       reuse = None if feed_previous_bool else True
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          reuse=reuse):
-        outputs, state, attentions = embedding_attention_decoder(
+        outputs, state = embedding_attention_decoder(
             decoder_inputs, encoder_state_sum, encoder_names, attention_states, cell,
             num_decoder_symbols, embedding_size, num_heads=num_heads, output_size=output_size,
             output_projection=output_projection, feed_previous=feed_previous_bool,
             scope=decoder_scope, initial_state_attention=initial_state_attention,
-            embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable,
-            no_attention=no_attention, embedding=embedding)
-
-        return outputs + [tensor for attn_weights in attentions for tensor in attn_weights]  + [state]
+            embedding_initializer=embedding_initializer, embedding_trainable=embedding_trainable)
+        return outputs + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-
-    output_len = len(decoder_inputs)
-
-    state = outputs_and_state[-1]
-    # list of [batch size x num_decoder_symbols] tensors for each output
-    outputs = outputs_and_state[:output_len]
-    attentions = outputs_and_state[output_len:-1]
-
-    encoder_count = len(encoder_inputs)
-    # list of (encoder_count x [batch size x input size]) tensor tuples for each output
-    attentions = [attentions[i:i + encoder_count]
-                  for i in range(0, len(attentions) // encoder_count, encoder_count)]
-
-    return outputs, state, attentions
+    return outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
@@ -498,9 +447,6 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         of 2D Tensors of shape [batch_size x num_decoder_symbols] (jth outputs).
       losses: List of scalar Tensors, representing losses for each bucket, or,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
-      attentions: The attention weights for each bucket: 1st dimension is bucket
-        id, 2nd dimension is output size, 3rd dimension is encoder count.
-        4th and 5th dimensions are batch_size and input_size.
 
   Raises:
     ValueError: If length of encoder_inputsut, targets, or weights is smaller
@@ -522,7 +468,6 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
 
   losses = []
   outputs = []
-  attentions = []
 
   with ops.op_scope(all_inputs, name, "model_with_buckets"):
     for j, bucket in enumerate(buckets):
@@ -533,11 +478,9 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         encoder_size, decoder_size = bucket
 
         trunc_encoder_inputs = [v[:encoder_size] for v in encoder_inputs]
-        bucket_outputs, _, bucket_attentions = seq2seq(trunc_encoder_inputs,
-                                                       decoder_inputs[:decoder_size])
+        bucket_outputs, _ = seq2seq(trunc_encoder_inputs,
+                                    decoder_inputs[:decoder_size])
         outputs.append(bucket_outputs)
-        attentions.append(bucket_attentions)
-
         if per_example_loss:
           losses.append(sequence_loss_by_example(
               bucket_outputs, targets[:decoder_size], weights[:decoder_size],
@@ -547,4 +490,4 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
               bucket_outputs, targets[:decoder_size], weights[:decoder_size],
               softmax_loss_function=softmax_loss_function))
 
-  return outputs, losses, attentions
+  return outputs, losses
