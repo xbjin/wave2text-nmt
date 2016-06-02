@@ -149,9 +149,10 @@ def fetch_corpus(args):
         for ext in args.ext:
             #cas1
             corpus_wanted += [f + '.' + ext for f in args.corp_filenames]
+   
             #cas2
-            corpus_wanted += [f.format(exts=ext) for f in args.corp_filenames]
-            
+            corpus_wanted += [f.format(exts=ext) for f in args.corp_filenames if '{' in f]
+  
     elif args.corpus_type == 'parallel':
         src_ext, trg_ext = args.ext[:-1], args.ext[-1]
         for ext in src_ext:
@@ -163,10 +164,10 @@ def fetch_corpus(args):
         for ext in src_ext:
             corpus_wanted += [f.format(src=ext, trg=trg_ext) + '.' + ext for f in args.corp_filenames]
 
-    print(corpus_wanted)
+
     # extracting corpus we want from all corpus
     args.corpus_lang = [c for c in all_corpus_lang if any(w in c for w in corpus_wanted)]
-
+    print(args.corpus_lang)
     if type(files) is list:
         args.corpus_lang = concat_files_(args, unzip_folder_path)
       
