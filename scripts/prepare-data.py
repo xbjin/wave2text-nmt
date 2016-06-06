@@ -11,6 +11,7 @@ import os
 import logging
 import sys
 import shutil
+import shlex
 
 
 help_msg = """\
@@ -172,6 +173,8 @@ def process_file(filename, lang, args):
         if args.normalize_punk:
             processes.append([path_to('normalize-punctuation.perl'), '-l',
                               lang])
+            # replace html entities
+            processes.append(shlex.split("perl -MHTML::Entities -pe 'decode_entities($_);'"))
         if args.normalize_moses:
             processes.append(['sed', 's/|//g'])
 

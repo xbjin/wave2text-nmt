@@ -13,6 +13,7 @@ import os
 import sys
 import logging
 import argparse
+import subprocess
 
 import tensorflow as tf
 
@@ -69,8 +70,8 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
                     action='store_true')
 # TODO: fixed encoder/decoder
 
-def main():
-  args = parser.parse_args()
+def main(args=None):
+  args = parser.parse_args(args)
 
   if not os.path.exists(args.train_dir):
     os.makedirs(args.train_dir)
@@ -80,6 +81,8 @@ def main():
   logger.setLevel(logging_level)
 
   utils.log(' '.join(sys.argv))
+  commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+  utils.log('commit hash {}'.format(commit_hash))
 
   utils.log('program arguments')
   for k, v in vars(args).items():
@@ -139,6 +142,8 @@ def main():
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio)
+
+  # return model
 
   utils.log('model parameters')
   for var in tf.all_variables():
