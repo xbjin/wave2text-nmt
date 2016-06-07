@@ -23,8 +23,6 @@ import math
 # pylint: disable=redefined-builtin,unused-import
 from six.moves import xrange
 # pylint: enable=redefined-builtin,unused-import
-import sys
-from translate import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
