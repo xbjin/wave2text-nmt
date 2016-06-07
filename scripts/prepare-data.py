@@ -441,11 +441,6 @@ if __name__ == '__main__':
         for suffix in (args.dev_suffix, args.test_suffix, args.suffix)
     ]
 
-    # corpora names must be non-empty and unique
-    if (not all(output_corpora_names) or
-        len(set(output_corpora_names)) != len(output_corpora_names)):
-        sys.exit('invalid output names')
-
     # full paths to dev, test and train corpora
     output_corpora = [
         os.path.join(args.output_dir, name)
