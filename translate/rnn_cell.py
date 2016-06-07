@@ -23,7 +23,6 @@ import math
 # pylint: disable=redefined-builtin,unused-import
 from six.moves import xrange
 # pylint: enable=redefined-builtin,unused-import
-from translate import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -722,7 +721,6 @@ class EmbeddingWrapper(RNNCell):
     """Run the cell on embedded inputs."""
     with vs.variable_scope(scope or type(self).__name__):  # "EmbeddingWrapper"
       with ops.device("/cpu:0"):
-        utils.log("init self type " + type(self._initializer))
         if self._initializer:
           initializer = self._initializer
         elif vs.get_variable_scope().initializer:
