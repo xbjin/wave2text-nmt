@@ -722,6 +722,10 @@ class EmbeddingWrapper(RNNCell):
     """Run the cell on embedded inputs."""
     with vs.variable_scope(scope or type(self).__name__):  # "EmbeddingWrapper"
       with ops.device("/cpu:0"):
+        print("initilaizer", initializer)
+        print("init type", type(initializer))
+        print("init self", self._initializer)
+        print("init self type", type(self._initializer))
         if self._initializer:
           initializer = self._initializer
         elif vs.get_variable_scope().initializer:
