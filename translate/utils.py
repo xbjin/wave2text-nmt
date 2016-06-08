@@ -184,10 +184,9 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
         embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
     
     embedding_type = namedtuple('embedding', 'value trainable')
-    log(norm_embeddings)
-    if norm_embeddings is not None:
+    if norm_embeddings:
       embedding = embedding / np.linalg.norm(embedding)
-      log('embedding normalized')
+      log('embedding of lang ' + ext + 'normalized')
     embeddings[ext] = embedding_type(embedding, not fixed)
 
   return embeddings
