@@ -14,12 +14,12 @@ import sys
 import logging
 import argparse
 import subprocess
-
 import tensorflow as tf
 
 from translate import utils
 from collections import namedtuple
 from translate.translation_model import TranslationModel
+from numpy import linalg
 
 
 parser = argparse.ArgumentParser()
@@ -68,6 +68,8 @@ parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions fo
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
+parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
+
 # TODO: fixed encoder/decoder
 
 def main(args=None):
@@ -115,6 +117,12 @@ def main(args=None):
       utils.warn('warning: file {} does not exist'.format(filename))
 
   embeddings = utils.read_embeddings(filenames, **vars(args))
+  if args.norm_embeddings:
+      embeddings = embeddings / linalg.norm(embeddings)
+      utils.log('embedding normalized')
+
+  
+  
   utils.debug('embeddings {}'.format(embeddings))
 
   # NMT model parameters
