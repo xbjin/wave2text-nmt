@@ -186,7 +186,7 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
     embedding_type = namedtuple('embedding', 'value trainable')
     log(norm_embeddings)
     if norm_embeddings is not None:
-      embeddings = embeddings / np.linalg.norm(embeddings)
+      embedding = embedding / np.linalg.norm(embedding)
       log('embedding normalized')
     embeddings[ext] = embedding_type(embedding, not fixed)
 
