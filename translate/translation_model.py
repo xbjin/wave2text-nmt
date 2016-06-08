@@ -14,7 +14,9 @@ from translate import seq2seq_model, utils
 
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False):
+               learning_rate_decay_factor, multi_task=False, task_ratio=None):
+    self.src_ext = src_ext
+    self.trg_ext = trg_ext[0]
     self.buckets = [(10, 5), (15, 10), (25, 20), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
     self.multi_task = multi_task
@@ -31,12 +33,16 @@ class TranslationModel(object):
     self.models = []
     
     if multi_task:  # multi-task
+      task_ratio = task_ratio or [1.0] * len(src_ext)
+      self.task_ratio = [x / sum(task_ratio) for x in task_ratio]  # sum must be 1
+
       for ext, vocab_size in zip(src_ext, parameters.src_vocab_size):
         params = {k: v for k, v in vars(parameters).items() if k != 'src_vocab_size'}  # FIXME: ugly
         partial_model = seq2seq_model.Seq2SeqModel([ext], trg_ext, self.buckets, self.learning_rate, self.global_step,
                                                    embeddings, src_vocab_size=[vocab_size], reuse=True, **params)
         self.models.append(partial_model)
     else:  # multi-source
+      self.task_ratio = [1.0]
       self.models.append(self.model)
 
     self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
@@ -88,7 +94,8 @@ class TranslationModel(object):
     
     utils.log('starting training')
     while True:
-      i = np.random.randint(len(self.models))
+      # pick random task according to task ratios
+      i = np.random.choice(range(len(self.models)), p=self.task_ratio)
       model = self.models[i]
 
       start_time = time.time()
@@ -154,10 +161,15 @@ class TranslationModel(object):
 
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.dev_set, bucket_id)
       _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
-                                   forward_only=True, decode=False)
+                                      forward_only=True, decode=False)
 
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
+
+  def _decode_sentence_beam_search(self, sess, src_sentences, beam_search=5):
+    # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
+    # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
+    raise NotImplementedError
 
   def _decode_sentence(self, sess, src_sentences):
     tokens = [sentence.split() for sentence in src_sentences]
@@ -176,9 +188,9 @@ class TranslationModel(object):
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
     
-    _, _, output_logits = self.model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
-                                          forward_only=True, decode=True)
-    
+    _, _, output_logits = self.model.step(sess, encoder_inputs, decoder_inputs,
+                                          target_weights, bucket_id, forward_only=True, decode=True)
+
     # TODO: beam-search
     trg_token_ids = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # greedy decoder
     
@@ -190,8 +202,8 @@ class TranslationModel(object):
     
     if self.lookup_dict is not None:
       trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
-    
-    return ' '.join(trg_tokens)
+
+    return ' '.join(trg_tokens).replace('@@ ', '')   # merge subword units
 
   def decode(self, sess, filenames, output=None):
     self._read_vocab(filenames)
@@ -232,6 +244,24 @@ class TranslationModel(object):
   def save(self, sess):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
 
+  def export_embeddings(self, sess, filenames, extensions, output_prefix):
+    utils.debug('exporting embeddings')
+    vocab_filenames = dict(zip(self.src_ext + [self.trg_ext], filenames.src_vocab + [filenames.trg_vocab]))
+    embeddings = self.model.get_embeddings(sess)
+
+    for ext in extensions:
+      vocab = utils.initialize_vocabulary(vocab_filenames[ext])
+      #import pdb; pdb.set_trace()
+      embedding = embeddings[ext]
+      output_filename = '{}.{}'.format(output_prefix, ext)
+
+      with open(output_filename, 'w') as output_file:
+        output_file.write('{} {}\n'.format(*embedding.shape))
+        for i, vec in enumerate(embedding):
+          word = vocab.reverse[i]
+          vec_str = ' '.join(map(str, vec))
+          output_file.write('{} {}\n'.format(word, vec_str))
+
 
 def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   """ `checkpoint_dir` should be unique to this model """
@@ -246,15 +276,15 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   
   # remove variables from blacklist
   variables = [var for var in variables if not any(var.name.startswith(prefix) for prefix in blacklist)]
-  
+
   ckpt = tf.train.get_checkpoint_state(checkpoint_dir)  # loads last checkpoint
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     utils.log('reading model parameters from {}'.format(ckpt.model_checkpoint_path))
     tf.train.Saver(variables).restore(sess, ckpt.model_checkpoint_path)  
 
-  utils.debug('retrieved parameters')
-  for var in variables:
-    utils.debug('  {} {}'.format(var.name, var.get_shape()))
+    utils.debug('retrieved parameters')
+    for var in variables:
+      utils.debug('  {} {}'.format(var.name, var.get_shape()))
 
 
 def save_checkpoint(sess, saver, checkpoint_dir, step=None, name=None):

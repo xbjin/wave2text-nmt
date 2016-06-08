@@ -195,7 +195,7 @@ def attention_decoder(decoder_inputs, initial_state, encoder_names, attention_st
 
     def attention(query):
       """Put attention masks on hidden using hidden_features and query."""
-      
+
       ds = []  # Results of attention reads will be stored here.
       for a in xrange(num_heads):
         with variable_scope.variable_scope('Attention_{}'.format(a)):
@@ -359,7 +359,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
 
   encoder_states = []
   encoder_outputs = []
-  with variable_scope.variable_scope(scope or 'many2one'):
+  with variable_scope.variable_scope(scope or 'many2one_rnn_seq2seq'):
     for encoder_name, encoder_inputs_, num_encoder_symbols_ in zip(encoder_names, encoder_inputs,
                                                                    num_encoder_symbols):
       with variable_scope.variable_scope('encoder_{}'.format(encoder_name)):
@@ -367,7 +367,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
         encoder_cell = rnn_cell.EmbeddingWrapper(cell, embedding_classes=num_encoder_symbols_,
                                                  embedding_size=embedding_size,
                                                  initializer=initializer, trainable=trainable)
-        
+
         encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell, encoder_inputs_, dtype=dtype)
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
@@ -414,7 +414,7 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-    return outputs_and_state[:-1], outputs_and_state[-1]                          
+    return outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,

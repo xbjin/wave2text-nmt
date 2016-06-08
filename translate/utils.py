@@ -92,8 +92,8 @@ def sentence_to_token_ids(sentence, vocabulary):
   return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
 
 
-def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix=None,
-                  multi_task=False, replace_unk=False, **kwargs):
+def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix,
+                  load_embeddings, multi_task=False, replace_unk=False, **kwargs):
   trg_ext = trg_ext[0]    # FIXME: for now
   
   train_path = os.path.join(data_dir, train_prefix)
@@ -117,17 +117,15 @@ def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embeddin
   src_vocab = [os.path.join(data_dir, "vocab.{}".format(ext)) for ext in src_ext]
   trg_vocab = os.path.join(data_dir, "vocab.{}".format(trg_ext))
 
-  test_path = kwargs.get('decode', kwargs.get('eval'))  # `decode` or `eval` or None
-    
+  test_path = kwargs.get('decode')  # `decode` or `eval` or None
+  test_path = test_path if test_path is not None else kwargs.get('eval')
+
   src_test = ["{}.{}".format(test_path, ext) for ext in src_ext] if test_path is not None else None
   trg_test = "{}.{}".format(test_path, trg_ext) if test_path is not None else None
   lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
 
-  if embedding_prefix is not None:
-    embedding_path = os.path.join(data_dir, embedding_prefix)
-    embeddings = ['{}.{}'.format(embedding_path, ext) for ext in src_ext + (trg_ext,)]
-  else:
-    embeddings = None
+  embedding_path = os.path.join(data_dir, embedding_prefix)
+  embeddings = ['{}.{}'.format(embedding_path, ext) for ext in src_ext + [trg_ext]]
 
   filenames = namedtuple('filenames', ['src_train', 'trg_train', 'src_dev', 'trg_dev', 'src_vocab', 'trg_vocab',
                                        'src_train_ids', 'trg_train_ids', 'src_dev_ids', 'trg_dev_ids',
@@ -153,20 +151,18 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size, size,
-                    fixed_embeddings=None, **kwargs):
+                    load_embeddings=None, fixed_embeddings=None, norm_embeddings=None, **kwargs):
   extensions = src_ext + trg_ext
   vocab_sizes = src_vocab_size + trg_vocab_size
   vocab_paths = filenames.src_vocab + [filenames.trg_vocab]
-  embedding_filenames = filenames.embeddings or (None,) * len(extensions)
 
   embeddings = {}  
 
-  for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes, vocab_paths, embedding_filenames):
+  for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes, vocab_paths, filenames.embeddings):
     embedding_type = namedtuple('embedding', 'value trainable')
     fixed = fixed_embeddings is not None and ext in fixed_embeddings
-    
-    # if embedding file is not given for this language, skip
-    if filename is None or not os.path.isfile(filename):
+
+    if load_embeddings is None or ext not in load_embeddings:
       if fixed:
         embeddings[ext] = embedding_type(value=None, trainable=False)
       continue
@@ -188,6 +184,9 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
         embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
     
     embedding_type = namedtuple('embedding', 'value trainable')
+    if norm_embeddings:
+      embedding = embedding / np.linalg.norm(embedding)
+      log('embedding of lang ' + ext + 'normalized')
     embeddings[ext] = embedding_type(embedding, not fixed)
 
   return embeddings

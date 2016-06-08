@@ -8,22 +8,22 @@ import argparse
 
 logging.basicConfig(format='[%(asctime)s] %(message)s', level=logging.INFO)
 
-help_msg = """Tune a given translation model trained with Moses."""
+help_msg = """Tune a translation model trained with Moses."""
 
 commands = """\
-$MOSES_DIR/scripts/training/mert-moses.pl {corpus}.{src_ext} {corpus}.{trg_ext}\
+$MOSES_DIR/scripts/training/mert-moses.pl {corpus}.{src_ext} {corpus}.{trg_ext} \
 $MOSES_DIR/bin/moses {config} --mertdir $MOSES_DIR/bin/ \
---decoder-flags="-threads {threads}" &> {log_file}
+--no-filter-phrase-table --decoder-flags="-threads {threads}" &> {log_file}
 mv mert-work/moses.ini {config}.tuned
-rm -rf mert-work\
+rm -rf mert-work
 """
 
 if __name__ == '__main__':
-    if any(var not in os.environ for var in ('MOSES_DIR',)):
+    if 'MOSES_DIR' not in os.environ:
         sys.exit('Environment variable not defined')
 
     parser = argparse.ArgumentParser(description=help_msg,
-            formatter_class=argparse.RawDescriptionHelpFormatter))
+            formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('config')
     parser.add_argument('corpus')
     parser.add_argument('src_ext')

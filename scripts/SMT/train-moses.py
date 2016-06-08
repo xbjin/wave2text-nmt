@@ -12,20 +12,25 @@ help_msg = """Train a translation model using Moses.
 Use `train-lm.py` to train a language model beforehand."""
 
 commands = """\
-rm -rf "{output_dir}"
 $MOSES_DIR/scripts/training/train-model.perl -root-dir "{output_dir}" \
 -corpus {corpus} -f {src_ext} -e {trg_ext} -alignment grow-diag-final-and \
 -reordering msd-bidirectional-fe -lm 0:3:{lm_corpus}.blm.{trg_ext}:8 \
--external-bin-dir $GIZA_DIR -mgiza \
--mgiza-cpus {threads} -cores {threads} --parallel\
+-mgiza -external-bin-dir $GIZA_DIR \
+-mgiza-cpus {threads} -cores {threads} --parallel
+mkdir {output_dir}/binarized
+$MOSES_DIR/bin/processPhraseTableMin -in {output_dir}/model/phrase-table.gz -out {output_dir}/binarized/phrase-table -nscores 4 -threads {threads}
+$MOSES_DIR/bin/processLexicalTableMin -in {output_dir}/model/reordering-table.wbe-msd-bidirectional-fe.gz -out {output_dir}/binarized/reordering-table -threads {threads}
+cat {output_dir}/model/moses.ini | sed s@PhraseDictionaryMemory@PhraseDictionaryCompact@ | \
+sed -r s@path=\(.*\)model/phrase-table.gz@path=\\\\1binarized/phrase-table@ | \
+sed -r s@path=\(.*\)model/reordering-table.wbe-msd-bidirectional-fe.gz@path=\\\\1binarized/reordering-table@ > {output_dir}/binarized/moses.ini
 """
 
 if __name__ == '__main__':
-    if any(var not in os.environ for var in ('GIZA_DIR', 'MOSES_DIR')):
+    if 'MOSES_DIR' not in os.environ or 'GIZA_DIR' not in os.environ:
         sys.exit('Environment variable not defined')
 
     parser = argparse.ArgumentParser(description=help_msg,
-            formatter_class=argparse.RawDescriptionHelpFormatter))
+            formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('output_dir')
     parser.add_argument('corpus')
     parser.add_argument('lm_corpus')

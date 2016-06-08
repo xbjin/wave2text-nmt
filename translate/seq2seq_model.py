@@ -245,7 +245,6 @@ class Seq2SeqModel(object):
       # variable
       output_feed = [self.losses[bucket_id]]  # Loss for this batch.
       for l in xrange(decoder_size):  # Output logits.
-        # output_feed.append(self.outputs[bucket_id][l])
         output_feed.append(outputs_[bucket_id][l])
 
     outputs = session.run(output_feed, input_feed)
@@ -340,3 +339,22 @@ class Seq2SeqModel(object):
     # the size if i-th training bucket, as used later.
     self.train_bucket_scales = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                                 for i in xrange(len(train_bucket_sizes))]
+
+  def get_embeddings(self, sess):
+    """
+    Returns a dict of embedding matrices for each extension
+    """
+
+    with variable_scope.variable_scope('many2one_rnn_seq2seq',
+                                       reuse=True):
+      shared_embeddings = self.shared_embeddings or []
+      embeddings = {}
+      names = self.encoder_names + [self.decoder_name]
+
+      for name in names:
+        part = 'decoder' if name == self.decoder_name else 'encoder'
+        scope = 'shared_embeddings' if name in shared_embeddings else '{}_{}'.format(part, name)
+        variable = tf.get_variable('{}/embedding'.format(scope))
+        embeddings[name] = variable.eval(session=sess)
+
+      return embeddings

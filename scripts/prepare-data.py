@@ -4,6 +4,7 @@ from __future__ import division
 from itertools import izip, islice
 from random import shuffle
 from contextlib import contextmanager
+import itertools
 import argparse
 import subprocess
 import tempfile
@@ -26,12 +27,12 @@ The corpus can be shuffled, and too long or too short sentences removed.
 
 Usage example:
     scripts/prepare-data.py data/news fr en output --dev-corpus data/news-dev\
-    --max 0 --lowercase --shuffle
+    --test-size 6000 --max 0 --lowercase --shuffle
 
 This example will create 6 files in `output/`: train.fr, train.en, test.fr,\
  test.en, dev.fr and dev.en. These files will be tokenized and lowercased and\
- empty lines will be filtered out. `test` files will contain 6000 (default)\
- lines from input corpus `data/news`, and `train` will contain the remaining\
+ empty lines will be filtered out. `test` files will contain 6000 lines\
+ from input corpus `data/news`, and `train` will contain the remaining\
  lines. `dev` files will contain the (processed) lines read from\
  `data/news-dev`. These three output corpora will be shuffled.
 """
@@ -95,7 +96,7 @@ def create_vocabulary(filename, output_filename, size, unk_align=False):
     vocab = {}
     with open(filename) as input_file, \
          open(output_filename, 'w') as output_file:
-        for i, line in enumerate(input_file, 1):
+        for line in input_file:
             for w in line.split():
                 vocab[w] = vocab.get(w, 0) + 1
 
@@ -108,20 +109,33 @@ def create_vocabulary(filename, output_filename, size, unk_align=False):
     return dict(map(reversed, enumerate(vocab_list)))
 
 
-def create_ids(filename, output_filename, vocab, align_filename=None):
-    if align_filename is not None:
-        create_ids_with_align(filename, output_filename, align_filename, vocab)
-        return
+def append_unk_vocab(vocab, vocab_file):
+    
+    with open(vocab_file, 'r') as input_file:
+        vocab_list = [line.strip() for line in input_file]
+        
+    size = len(vocab_list)    
+    vocab_list = _START_VOCAB_UNK+vocab_list[4:] 
+        
+    if 0 < size < len(vocab_list):
+        vocab_list = vocab_list[:size]
+                
+    with open(vocab_file, 'w') as output_file:    
+        output_file.writelines(w + '\n' for w in vocab_list) 
 
-    with open(filename) as input_file,\
-            open(output_filename, 'w') as output_file:
+    return dict(map(reversed, enumerate(vocab_list)))    
+
+
+def create_ids(filename, output_filename, vocab):
+    with open(filename) as input_file, \
+         open(output_filename, 'w') as output_file:
         for line in input_file:
             ids = [str(vocab.get(w, UNK_ID)) for w in line.split()]
             output_file.write(' '.join(ids) + '\n')
 
 
-def create_ids_with_align(filename, output_filename, align_filename, vocab):
-    with open_files([filename, align_filename]) as files,\
+def create_ids_with_align(filename, output_filename, vocab, align_filename):
+    with open_files([filename, align_filename]) as files, \
          open(output_filename, 'w') as output_file:
         for line, align_line in zip(*files):
             # reverse the alignment
@@ -145,23 +159,30 @@ def create_ids_with_align(filename, output_filename, align_filename, vocab):
             output_file.write(' '.join(ids) + '\n')
 
 
-def process_file(filename, id_, args):
+def process_file(filename, lang, args):
     logging.info('processing ' + filename)
-    lang = args.lang[id_]
 
     with open_temp_files(num=1) as output_, open(filename) as input_:
-        output_ = output_[0]
+        output_, = output_
 
         def path_to(script_name):
             if args.scripts is None:
-                return script_name
+                return script_name   # assume script is in PATH
             else:
                 return os.path.join(args.scripts, script_name)
 
         processes = [['cat']]   # just copy file if there is no other operation
+
         if args.normalize_punk:
             processes.append([path_to('normalize-punctuation.perl'), '-l',
                               lang])
+            # replace html entities: FIXME
+            # processes.append(shlex.split("perl -MHTML::Entities -pe 'decode_entities($_);'"))
+        if args.normalize_moses:
+            processes.append(['sed', 's/|//g'])
+        if args.subwords:
+            processes.append(['sed', 's/@\\+/@/g'])  # @@ is used as delimiter for subwords
+
         if args.tokenize:
             processes.append([path_to('tokenizer.perl'), '-l', lang, '-threads',
                               str(args.threads)])
@@ -169,6 +190,7 @@ def process_file(filename, id_, args):
             processes.append([path_to('lowercase.perl')])
         if args.normalize_digits:
             processes.append(['sed', 's/[[:digit:]]/0/g'])
+
 
         ps = None
 
@@ -184,8 +206,8 @@ def process_file(filename, id_, args):
 
 
 def process_corpus(filenames, args):
-    filenames = [process_file(filename, id_, args)
-                 for id_, filename in enumerate(filenames)]
+    filenames = [process_file(filename, lang, args)
+                 for lang, filename in zip(args.lang, filenames)]
 
     with open_files(filenames) as input_files, \
          open_temp_files(len(filenames)) as output_files:
@@ -195,10 +217,20 @@ def process_corpus(filenames, args):
                      all(min_ <= len(line.split()) <= max_ for line, min_, max_
                          in zip(lines, args.min, args.max)))
 
+        if args.remove_duplicate_lines:
+            seen_lines = [set() for _ in filenames]
+            lines = []
+            for line_tuple in all_lines:
+                if not any(line in seen_lines_ for line, seen_lines_ in
+                           zip(line_tuple, seen_lines)):
+                    lines.append(line_tuple)
+            all_lines = lines
+        elif args.remove_duplicates:
+            all_lines = list(set(all_lines))
+
         if args.shuffle:
             all_lines = list(all_lines)  # not lazy anymore
             shuffle(all_lines)
-
 
         for lines in all_lines:  # keeps it lazy if no shuffle
             for line, output_file in zip(lines, output_files):
@@ -218,8 +250,8 @@ def split_corpus(filenames, sizes):
 
             with open_temp_files(num=len(filenames)) as output_files:
                 for input_file, output_file in zip(input_files, output_files):
-                    # If size is None, this will read the whole file.
-                    # That's why we put train last.
+                    # if size is None, this will read the whole file,
+                    # that's why we put train last
                     output_file.writelines(islice(input_file, size))
                 output_filenames.append([f.name for f in output_files])
 
@@ -227,26 +259,28 @@ def split_corpus(filenames, sizes):
 
 
 def create_align(filenames, args):
+    logging.info("creating temp file")
     with open_temp_files(num=1) as output_file, open_files(filenames) as files:
         output_file, = output_file
         for src_line, trg_line in izip(*files):
             output_file.write("{} ||| {}\n".format(src_line.strip(),
                                                    trg_line.strip()))
         tmp_filename = output_file.name
+    logging.info("done creating temp file")
+    
+    logging.info("computing alignement")
+    with open_temp_files(num=1) as align_file:
+        align_file, = align_file
 
-    align_filename = os.path.join(args.output_dir, 'train.align')
-
-    with open(align_filename, 'w') as align_file:
         fast_align_bin = os.path.join(args.scripts, args.fast_align_bin)
         args_ = [fast_align_bin, '-i', tmp_filename, '-d', '-o', '-v',
                  '-I', str(args.fast_align_iter)]
 
-        subprocess.call(args_, stdout=align_file, stderr=subprocess.PIPE)
-
-    return align_filename
+        subprocess.call(args_, stdout=align_file, stderr=sys.stdout)
+        return align_file.name
                 
 
-def create_lookup_dictionary(filenames, align_filename, args):
+def create_lookup_dictionary(filenames, align_filename, output_filename, args):
     counts = {}  # word pair counts
     with open_files(list(filenames) + [align_filename]) as files:
        for src_line, trg_line, alignment_line in izip(*files):
@@ -269,23 +303,35 @@ def create_lookup_dictionary(filenames, align_filename, args):
     for src_word, trg_word in sorted(frequent_pairs, key=frequent_pairs.get,
                                      reverse=True):
         dictionary.setdefault(src_word, trg_word)
-
-    output_dict = os.path.join(args.output_dir, 'lookup_dict')
     
     # write dict to file
-    with open(output_dict, 'w') as output_file:
+    with open(output_filename, 'w') as output_file:
         for key, value in dictionary.iteritems():
             output_file.write(key + ' ' + value + '\n')
 
-            
+
+def create_subwords(filename, output_filename, size):
+    cmd = ['scripts/learn_bpe.py', '--input', filename, '-s', str(size), '--output', output_filename]
+    subprocess.call(cmd)
+
+
+def apply_subwords(filename, bpe_filename):
+    with open_temp_files(num=1) as output_:
+        output_, = output_
+        cmd = ['scripts/apply_bpe.py', '--input', filename, '--codes', bpe_filename]
+        subprocess.call(cmd, stdout=output_)
+
+        return output_.name
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
             formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('corpus', help='training corpus')
-    parser.add_argument('extensions', nargs='+', help='list of extensions. '
-                        'First extension is the main source. '
-                        'Last extension is the target.')
+    parser.add_argument('extensions', nargs='+', help='list of extensions '
+                        '(first extension is the main source, '
+                        'last extension is the target)')
 
     parser.add_argument('output_dir',
                         help='directory where the files will be copied')
@@ -308,15 +354,14 @@ if __name__ == '__main__':
     parser.add_argument('--dev-corpus', help='development corpus')
     parser.add_argument('--test-corpus', help='test corpus')
 
-    parser.add_argument('--scripts', help='path to script directory '
-                        '(None if in $PATH)', default='scripts')
+    parser.add_argument('--scripts', help='path to script directory', default='scripts')
 
     parser.add_argument('--dev-size', type=int,
                         help='size of development corpus', default=0)
     parser.add_argument('--test-size', type=int,
                         help='size of test corpus', default=0)
     parser.add_argument('--train-size', type=int,
-                        help='size of training corpus (defaults to maximum)')
+                        help='size of training corpus (default: maximum)')
 
     parser.add_argument('--lang', nargs='+', help='optional list of language '
                                                   'codes (when different '\
@@ -332,7 +377,13 @@ if __name__ == '__main__':
                         action='store_true')
     parser.add_argument('--no-tokenize', dest='tokenize',
                         help='no tokenization', action='store_false')
-
+    parser.add_argument('--normalize-moses', help='remove | symbols '
+                        '(used as delimiters by moses)', action='store_true')
+    parser.add_argument('--remove-duplicates', help='remove duplicate pairs',
+                        action='store_true')
+    parser.add_argument('--remove-duplicate-lines', help='more restrictive '
+                        'than --remove-duplicates, remove any pair of lines '
+                        'whose source or target side was already seen.')
     parser.add_argument('-v', '--verbose', help='verbose mode',
                         action='store_true')
 
@@ -341,14 +392,15 @@ if __name__ == '__main__':
     parser.add_argument('--max', nargs='+', type=int, default=50,
                         help='max number of tokens per line (0 for no limit)')
 
+    parser.add_argument('--subwords', action='store_true')
+    parser.add_argument('--bpe-path', help='path to existing subword units (corpus prefix)')
+
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
-                        'the vocabularies (0 for no limit, '
-                        'default: no vocabulary)', default=30000)
-    parser.add_argument('--vocab-path', nargs='+', help='path to existing '
-                        'vocabularies (no vocabulary creation)')
+                        'the vocabularies', default=30000)
+    parser.add_argument('--vocab-path', help='path to existing vocabularies (corpus prefix)')
     parser.add_argument('--threads', type=int, default=16)
     parser.add_argument('--unk-align', help='align target unknown words with the '
-                        'source using special UNK IDs', action='store_true')
+                        'source using special UNK symbols', action='store_true')
     parser.add_argument('--dict-threshold', help='min count of a word pair '
                         'in the dictionary', type=int, default=100)
     parser.add_argument('--fast-align-bin', help='name of the fast_align '
@@ -382,8 +434,10 @@ if __name__ == '__main__':
         args.lang = args.extensions
     elif len(args.lang) != n:
         sys.exit('wrong number of values for parameter --lang')
-    if args.vocab_path is not None and len(args.vocab_path) != n:
-        sys.exit('wrong number of values for parameter --vocab_path')
+    if args.vocab_path is not None:
+        args.vocab_path = ['{}.{}'.format(args.vocab_path, ext) for ext in args.extensions]
+    if args.bpe_path is not None and len(args.bpe_path) != n:
+        args.bpe_path = ['{}.{}'.format(args.bpe_path, ext) for ext in args.extensions]
 
     if args.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -410,11 +464,6 @@ if __name__ == '__main__':
         for suffix in (args.dev_suffix, args.test_suffix, args.suffix)
     ]
 
-    # corpora names must be non-empty and unique
-    if (not all(output_corpora_names) or
-        len(set(output_corpora_names)) != len(output_corpora_names)):
-        sys.exit('invalid output names')
-
     # full paths to dev, test and train corpora
     output_corpora = [
         os.path.join(args.output_dir, name)
@@ -422,10 +471,12 @@ if __name__ == '__main__':
     ]
 
     try:
-        # list of corpora, where a corpus is a list of filenames
+        # list of temporary files for each corpus (dev, test, train)
+        # a value of None (default for dev and test) means that no
+        # corpus is provided
         corpora = [
             (None if corpus is None else
-            ['{}.{}'.format(corpus, args.extensions[id_]) for id_ in range(len(args.extensions))])
+            ['{}.{}'.format(corpus, ext) for ext in args.extensions])
             for corpus in input_corpora
         ]
 
@@ -437,9 +488,6 @@ if __name__ == '__main__':
 
         ## process corpora and copy them to their destination
         if create_corpus_:
-            # list of temporary files for each corpus (dev, test, train)
-            # a value of None (default for dev and test) means that no
-            # corpus is provided (in which case, a part of train corpus is used)
             for i, corpus in enumerate(corpora):
                 if corpus is not None:
                     corpora[i] = process_corpus(corpus, args)
@@ -457,6 +505,30 @@ if __name__ == '__main__':
                     if corpus is None:
                         continue
                     corpora[i] = corpus
+
+            # create subwords and process files accordingly
+            if args.subwords:
+                if args.bpe_path:
+                    bpe_filenames = args.bpe_path
+                else:
+                    bpe_filenames = [
+                        os.path.join(args.output_dir, 'bpe.{}'.format(ext))
+                        for ext in args.extensions
+                    ]
+
+                    # create subwords
+                    train_corpus = corpora[-1]
+                    for filename, bpe_filename, size in zip(train_corpus, bpe_filenames, args.vocab_size):
+                        # assume that we initially have ~500 unique symbols (characters)
+                        create_subwords(filename, bpe_filename, size - 500)
+
+                # apply subwords to train, dev and test
+                for corpus in corpora:
+                    if corpus is None:
+                        continue
+                    for i, filename, bpe_filename in zip(itertools.count(), corpus, bpe_filenames):
+                        output_filename = apply_subwords(filename, bpe_filename)
+                        corpus[i] = output_filename
 
             # move temporary files to their destination
             for i, corpus in enumerate(corpora):
@@ -478,7 +550,6 @@ if __name__ == '__main__':
         if args.vocab_path is not None:
             logging.info('reading vocabulary files')
             vocabs = [read_vocabulary(filename) for filename in args.vocab_path]
-
             if create_vocab_:
                 # copy vocabularies if necessary
                 for vocab_filename, output_filename in zip(args.vocab_path,
@@ -487,16 +558,21 @@ if __name__ == '__main__':
                         shutil.copy(vocab_filename, output_filename)
         elif create_vocab_:
             logging.info('creating vocabulary files')
+            # training corpus is used to create vocabulary
+            train_corpus = corpora[-1]
+
             vocabs = []
-            for i, values in enumerate(zip(corpora[-1], vocab_output_filenames, args.vocab_size)):
-                filename, output_filename, size = values
-                unk_align = args.unk_align and i == len(args.extensions) - 1
+            for filename, output_filename, size, ext in zip(train_corpus,
+                                                            vocab_output_filenames,
+                                                            args.vocab_size,
+                                                            args.extensions):
+                unk_align = args.unk_align and ext == args.extensions[-1]
                 vocab = create_vocabulary(filename, output_filename, size, unk_align)
                 vocabs.append(vocab)
         else:
             vocabs = None
 
-        ## create ids
+        ## align and create ids
         if create_ids_:
             if args.unk_align:
                 logging.info('creating alignment')
@@ -512,8 +588,9 @@ if __name__ == '__main__':
                 align_filename = create_align(align_input_filenames, args)
                 # use the newly created alignment to build a dictionary
                 logging.info('creating lookup dictionary')
+                dict_filename = os.path.join(args.output_dir, 'lookup_dict')
                 create_lookup_dictionary(align_input_filenames,
-                                         align_filename, args)
+                                         align_filename, dict_filename, args)
             else:
                 align_filename = None
 
@@ -527,7 +604,10 @@ if __name__ == '__main__':
                     # special UNK symbols for target train file
                     if (args.unk_align and ext == args.extensions[-1] and
                         output_corpus == output_corpora[-1]):
-                        create_ids_with_align(filename, output_filename, align_filename, vocab)
+                        #if external vocab is given we append special unk tokens after removing old special tokens
+                        if args.vocab_path is not None:  
+                            vocab = append_unk_vocab(vocab, args.vocab_path[-1])
+                        create_ids_with_align(filename, output_filename, vocab, align_filename)
                     else:
                         create_ids(filename, output_filename, vocab)
 

@@ -23,7 +23,6 @@ import math
 # pylint: disable=redefined-builtin,unused-import
 from six.moves import xrange
 # pylint: enable=redefined-builtin,unused-import
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -722,7 +721,7 @@ class EmbeddingWrapper(RNNCell):
     """Run the cell on embedded inputs."""
     with vs.variable_scope(scope or type(self).__name__):  # "EmbeddingWrapper"
       with ops.device("/cpu:0"):
-        if self._initializer:
+        if self._initializer is not None:
           initializer = self._initializer
         elif vs.get_variable_scope().initializer:
           initializer = vs.get_variable_scope().initializer
@@ -730,20 +729,43 @@ class EmbeddingWrapper(RNNCell):
           # Default initializer for embeddings should have variance=1.
           sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
           initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-          
-        if isinstance(initializer, ops.Tensor): #If initializer is a constant, do not specify shape.
-            embedding = vs.get_variable("embedding", 
-                                    None,
-                                    initializer=initializer,
-                                    trainable=self._trainabe)
-        else:
-            embedding = vs.get_variable("embedding", 
-                                    [self._embedding_classes, self._embedding_size],
-                                    initializer=initializer,
-                                    trainable=self._trainabe)                            
+
+        with ops.device("/cpu:0"):
+          if isinstance(initializer, ops.Tensor):  # If initializer is a constant, do not specify shape.
+              embedding = vs.get_variable("embedding",
+                                      None,
+                                      initializer=initializer,
+                                      trainable=self._trainabe)
+          else:
+              embedding = vs.get_variable("embedding",
+                                      [self._embedding_classes, self._embedding_size],
+                                      initializer=initializer,
+                                      trainable=self._trainabe)
        
         embedded = embedding_ops.embedding_lookup(
             embedding, array_ops.reshape(inputs, [-1]))
+    return self._cell(embedded, state)
+
+
+class EmbeddingWrapperBis(RNNCell):
+  """
+  Contrary to EmbeddingWrapper, this wrapper takes an existing embedding variable as input.
+  """
+
+  def __init__(self, cell, embedding):
+    if not isinstance(cell, RNNCell):
+      raise TypeError("The parameter cell is not RNNCell.")
+    self._cell = cell
+    self._embedding = embedding
+
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  def __call__(self, inputs, state, scope=None):
+    with ops.device("/cpu:0"):
+      embedded = embedding_ops.embedding_lookup(
+          self._embedding, array_ops.reshape(inputs, [-1]))
     return self._cell(embedded, state)
 
 

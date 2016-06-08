@@ -12,13 +12,13 @@ help_msg = """Split a file into a number of files of equal size (in terms of lin
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
-            formatter_class=argparse.RawDescriptionHelpFormatter))
+            formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('file', help='file to split')
     parser.add_argument('output_dir', help='output directory')
     parser.add_argument('n_splits', type=int, help='number of splits')
     args = parser.parse_args()
 
-    dataset = args.dataset
+    dataset = args.file
     n_splits = args.n_splits
     output_dir = args.output_dir
 
