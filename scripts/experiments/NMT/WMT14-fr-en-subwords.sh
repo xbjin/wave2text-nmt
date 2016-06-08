@@ -9,8 +9,8 @@ then
     exit 1
 fi
 
-data_dir=data/WMT14_fr-en
-train_dir=model/WMT14_fr-en
+data_dir=data/WMT14_fr-en_subwords
+train_dir=model/WMT14_fr-en_subwords
 gpu_id=${GPU}
 embedding_size=1024
 vocab_size=60000
@@ -32,10 +32,6 @@ if test "$(ls -A "${data_dir}")"; then
 else
 echo "### downloading data"
 
-#./scripts/fetch-corpus.py ${corpus} parallel fr en ${data_dir}
-#./scripts/fetch-corpus.py ${corpus_test} mono fr en ${data_dir}
-#./scripts/fetch-corpus.py ${corpus_dev} mono fr en ${data_dir}
-
 # assume that data is in data/raw, until we fix fetch-corpus.py
 corpus_train=data/raw/WMT14.fr-en
 corpus_dev=data/raw/news-dev.fr-en
@@ -46,27 +42,29 @@ echo "### pre-processing data"
 # train corpus is already tokenized, so two step processing
 ./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
---normalize-digits \
 --normalize-punk \
 --no-tokenize \
 --max 50 \
+--subwords \
 --vocab-size ${vocab_size}
 
 ./scripts/prepare-data.py ${corpus_dev} fr en ${data_dir} --mode all \
 --suffix dev \
 --verbose \
---normalize-digits \
 --normalize-punk \
 --max 50 \
---vocab-path ${data_dir}/vocab
+--subwords \
+--vocab-path ${data_dir}/vocab \
+--bpe-path ${data_dir}/bpe
 
 ./scripts/prepare-data.py ${corpus_test} fr en ${data_dir} --mode prepare \
 --suffix test \
 --verbose \
---normalize-digits \
 --normalize-punk \
 --max 50 \
---vocab-path ${data_dir}/vocab
+--subwords \
+--vocab-path ${data_dir}/vocab \
+--bpe-path ${data_dir}/bpe
 
 head -n1000 ${data_dir}/dev.ids.en > ${data_dir}/dev.1000.ids.en
 head -n1000 ${data_dir}/dev.ids.fr > ${data_dir}/dev.1000.ids.fr
