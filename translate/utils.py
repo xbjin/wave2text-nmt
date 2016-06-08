@@ -151,7 +151,7 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size, size,
-                    load_embeddings=None, fixed_embeddings=None, **kwargs):
+                    load_embeddings=None, fixed_embeddings=None, norm_embeddings=None, **kwargs):
   extensions = src_ext + trg_ext
   vocab_sizes = src_vocab_size + trg_vocab_size
   vocab_paths = filenames.src_vocab + [filenames.trg_vocab]
@@ -184,6 +184,10 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
         embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
     
     embedding_type = namedtuple('embedding', 'value trainable')
+    log(norm_embeddings)
+    if norm_embeddings is not None:
+      embeddings = embeddings / np.linalg.norm(embeddings)
+      log('embedding normalized')
     embeddings[ext] = embedding_type(embedding, not fixed)
 
   return embeddings

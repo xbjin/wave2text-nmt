@@ -19,7 +19,7 @@ import tensorflow as tf
 from translate import utils
 from collections import namedtuple
 from translate.translation_model import TranslationModel
-from numpy import linalg
+
 
 
 parser = argparse.ArgumentParser()
@@ -117,12 +117,7 @@ def main(args=None):
       utils.warn('warning: file {} does not exist'.format(filename))
 
   embeddings = utils.read_embeddings(filenames, **vars(args))
-  if args.norm_embeddings:
-      embeddings = embeddings / linalg.norm(embeddings)
-      utils.log('embedding normalized')
-
-  
-  
+ 
   utils.debug('embeddings {}'.format(embeddings))
 
   # NMT model parameters
