@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 data_dir=data/WMT14_fr-en
-train_dir=model/NMT/WMT14_fr-en
+train_dir=model/WMT14_fr-en
 gpu_id=1
 embedding_size=512
 vocab_size=30000
@@ -48,6 +48,11 @@ echo "### pre-processing data"
 --max 50 \
 --vocab-path ${data_dir}/vocab.fr ${data_dir}/vocab.en
 
+head -n1000 ${data_dir}/dev.ids.en > ${data_dir}/dev.1000.ids.en
+head -n1000 ${data_dir}/dev.ids.fr > ${data_dir}/dev.1000.ids.fr
+
+head -n1000 ${data_dir}/dev.en > ${data_dir}/dev.1000.en
+head -n1000 ${data_dir}/dev.fr > ${data_dir}/dev.1000.fr
 
 echo "### training model"
 
@@ -61,4 +66,7 @@ python -m translate ${data_dir} ${train_dir} \
 --trg-ext en \
 --verbose \
 --log-file ${train_dir}/log.txt \
---gpu-id ${gpu_id}
+--gpu-id ${gpu_id} \
+--steps-per-checkpoint 1000 \
+--steps-per-eval 4000 \
+--dev-prefix dev.1000

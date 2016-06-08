@@ -4,6 +4,7 @@ from __future__ import division
 from itertools import izip, islice
 from random import shuffle
 from contextlib import contextmanager
+import itertools
 import argparse
 import subprocess
 import tempfile
@@ -107,6 +108,7 @@ def create_vocabulary(filename, output_filename, size, unk_align=False):
 
     return dict(map(reversed, enumerate(vocab_list)))
 
+
 def append_unk_vocab(vocab, vocab_file):
     
     with open(vocab_file, 'r') as input_file:
@@ -122,6 +124,7 @@ def append_unk_vocab(vocab, vocab_file):
         output_file.writelines(w + '\n' for w in vocab_list) 
 
     return dict(map(reversed, enumerate(vocab_list)))    
+
 
 def create_ids(filename, output_filename, vocab):
     with open(filename) as input_file, \
@@ -173,10 +176,12 @@ def process_file(filename, lang, args):
         if args.normalize_punk:
             processes.append([path_to('normalize-punctuation.perl'), '-l',
                               lang])
-            # replace html entities
-            processes.append(shlex.split("perl -MHTML::Entities -pe 'decode_entities($_);'"))
+            # replace html entities: FIXME
+            # processes.append(shlex.split("perl -MHTML::Entities -pe 'decode_entities($_);'"))
         if args.normalize_moses:
             processes.append(['sed', 's/|//g'])
+        if args.subwords:
+            processes.append(['sed', 's/@\\+/@/g'])  # @@ is used as delimiter for subwords
 
         if args.tokenize:
             processes.append([path_to('tokenizer.perl'), '-l', lang, '-threads',
@@ -218,7 +223,7 @@ def process_corpus(filenames, args):
             for line_tuple in all_lines:
                 if not any(line in seen_lines_ for line, seen_lines_ in
                            zip(line_tuple, seen_lines)):
-                    lines.append(lines_)
+                    lines.append(line_tuple)
             all_lines = lines
         elif args.remove_duplicates:
             all_lines = list(set(all_lines))
@@ -304,7 +309,21 @@ def create_lookup_dictionary(filenames, align_filename, output_filename, args):
         for key, value in dictionary.iteritems():
             output_file.write(key + ' ' + value + '\n')
 
-            
+
+def create_subwords(filename, output_filename, size):
+    cmd = ['scripts/learn_bpe.py', '--input', filename, '-s', str(size), '--output', output_filename]
+    subprocess.call(cmd)
+
+
+def apply_subwords(filename, bpe_filename):
+    with open_temp_files(num=1) as output_:
+        output_, = output_
+        cmd = ['scripts/apply_bpe.py', '--input', filename, '--codes', bpe_filename]
+        subprocess.call(cmd, stdout=output_)
+
+        return output_.name
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
             formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -373,10 +392,12 @@ if __name__ == '__main__':
     parser.add_argument('--max', nargs='+', type=int, default=50,
                         help='max number of tokens per line (0 for no limit)')
 
+    parser.add_argument('--subwords', action='store_true')
+    parser.add_argument('--bpe-path', help='path to existing subword units (corpus prefix)')
+
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
                         'the vocabularies', default=30000)
-    parser.add_argument('--vocab-path', nargs='+', help='path to existing '
-                        'vocabularies')
+    parser.add_argument('--vocab-path', help='path to existing vocabularies (corpus prefix)')
     parser.add_argument('--threads', type=int, default=16)
     parser.add_argument('--unk-align', help='align target unknown words with the '
                         'source using special UNK symbols', action='store_true')
@@ -413,8 +434,10 @@ if __name__ == '__main__':
         args.lang = args.extensions
     elif len(args.lang) != n:
         sys.exit('wrong number of values for parameter --lang')
-    if args.vocab_path is not None and len(args.vocab_path) != n:
-        sys.exit('wrong number of values for parameter --vocab_path')
+    if args.vocab_path is not None:
+        args.vocab_path = ['{}.{}'.format(args.vocab_path, ext) for ext in args.extensions]
+    if args.bpe_path is not None and len(args.bpe_path) != n:
+        args.bpe_path = ['{}.{}'.format(args.bpe_path, ext) for ext in args.extensions]
 
     if args.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -482,6 +505,30 @@ if __name__ == '__main__':
                     if corpus is None:
                         continue
                     corpora[i] = corpus
+
+            # create subwords and process files accordingly
+            if args.subwords:
+                if args.bpe_path:
+                    bpe_filenames = args.bpe_path
+                else:
+                    bpe_filenames = [
+                        os.path.join(args.output_dir, 'bpe.{}'.format(ext))
+                        for ext in args.extensions
+                    ]
+
+                    # create subwords
+                    train_corpus = corpora[-1]
+                    for filename, bpe_filename, size in zip(train_corpus, bpe_filenames, args.vocab_size):
+                        # assume that we initially have ~500 unique symbols (characters)
+                        create_subwords(filename, bpe_filename, size - 500)
+
+                # apply subwords to train, dev and test
+                for corpus in corpora:
+                    if corpus is None:
+                        continue
+                    for i, filename, bpe_filename in zip(itertools.count(), corpus, bpe_filenames):
+                        output_filename = apply_subwords(filename, bpe_filename)
+                        corpus[i] = output_filename
 
             # move temporary files to their destination
             for i, corpus in enumerate(corpora):

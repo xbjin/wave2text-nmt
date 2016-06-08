@@ -166,6 +166,11 @@ class TranslationModel(object):
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
+  def _decode_sentence_beam_search(self, sess, src_sentences, beam_search=5):
+    # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
+    # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
+    raise NotImplementedError
+
   def _decode_sentence(self, sess, src_sentences):
     tokens = [sentence.split() for sentence in src_sentences]
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
@@ -198,7 +203,7 @@ class TranslationModel(object):
     if self.lookup_dict is not None:
       trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
 
-    return ' '.join(trg_tokens)
+    return ' '.join(trg_tokens).replace('@@ ', '')   # merge subword units
 
   def decode(self, sess, filenames, output=None):
     self._read_vocab(filenames)
