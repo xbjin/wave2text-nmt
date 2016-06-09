@@ -77,7 +77,7 @@ parser.add_argument('--norm-embeddings', help='normalize embeddings', action='st
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
-parser.add_argument('--mem-fraction', type='float', help='maximum fraction of GPU memory to use', default=1.0)
+parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU memory to use', default=1.0)
 parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
                     action='store_true')
 

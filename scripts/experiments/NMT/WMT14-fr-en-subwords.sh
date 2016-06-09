@@ -75,12 +75,12 @@ fi
 
 echo "### training model"
 
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64/"
 python -m translate ${data_dir} ${train_dir} \
 --train \
 --size ${embedding_size} \
 --num-layers ${layers} \
---src-vocab-size ${vocab_size} \
---trg-vocab-size ${vocab_size} \
+--vocab-size ${vocab_size} \
 --src-ext fr \
 --trg-ext en \
 --verbose \
