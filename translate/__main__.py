@@ -23,6 +23,18 @@ from translate.translation_model import TranslationModel
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
+parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
+parser.add_argument('data_dir', default='data', help='data directory')
+parser.add_argument('train_dir', default='model', help='training directory')
+
+# Available actions (exclusive)
+parser.add_argument('--decode', help='translate this corpus')
+parser.add_argument('--eval', help='compute BLEU score on this corpus')
+parser.add_argument('--train', help='train an NMT model', action='store_true')
+parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings')
+
+# Model parameters
 parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
 parser.add_argument('--learning-rate-decay-factor', type=float, default=0.95, help='learning rate decay factor')
 parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
@@ -30,27 +42,19 @@ parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rat
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
 parser.add_argument('--size', type=int, default=1024, help='size of each layer')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
-parser.add_argument('--src-vocab-size', type=int, nargs='+', default=[30000,], help='source vocabulary size(s)')
-parser.add_argument('--trg-vocab-size', type=int, nargs='+', default=[30000,], help='target vocabulary size(s)')
+parser.add_argument('--vocab-size', type=int, default=30000)
+parser.add_argument('--src-vocab-size', type=int, nargs='+', help='source vocabulary size(s) (overrides --vocab-size)')
+parser.add_argument('--trg-vocab-size', type=int, nargs='+', help='target vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
 parser.add_argument('--steps-per-checkpoint', type=int, default=1000, help='number of updates per checkpoint')
 parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
-parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
-parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
-parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
-parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
 parser.add_argument('--multi-task', help='train each encoder as a separate task', action='store_true')
 parser.add_argument('--task-ratio', type=float, nargs='+', help='ratio of each task')
-parser.add_argument('data_dir', default='data', help='data directory')
-parser.add_argument('train_dir', default='model', help='training directory')
-parser.add_argument('--decode', help='translate this corpus')
-parser.add_argument('--eval', help='compute BLEU score on this corpus')
-parser.add_argument('--train', help='train an NMT model', action='store_true')
 parser.add_argument('--output', help='output file for decoding')
-parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings')
 parser.add_argument('--train-prefix', default='train', help='name of the training corpus')
 parser.add_argument('--dev-prefix', default='dev', help='name of the development corpus')
+
 parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the embedding files to use as '
                                                                   'initialization (won\'t be used if the parameters '
                                                                   'are loaded from a checkpoint)')
@@ -70,7 +74,13 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
                     action='store_true')
 parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
 
-# TODO: fixed encoder/decoder
+# Tensorflow configuration
+parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
+parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
+parser.add_argument('--mem-fraction', type='float', help='maximum fraction of GPU memory to use', default=1.0)
+parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
+                    action='store_true')
+
 
 def main(args=None):
   args = parser.parse_args(args)
@@ -89,7 +99,12 @@ def main(args=None):
   utils.log('program arguments')
   for k, v in vars(args).items():
     utils.log('  {:<20} {}'.format(k, v))
-  
+
+  if args.src_vocab_size is None:
+    args.src_vocab_size = [args.vocab_size for _ in args.src_ext]
+  if args.trg_vocab_size is None:
+    args.trg_vocab_size = [args.vocab_size for _ in args.trg_ext]
+
   # enforce constraints
   assert len(args.src_ext) == len(args.src_vocab_size), (
     '--src-vocab-size takes {} parameter(s)'.format(len(args.src_ext)))
@@ -153,6 +168,9 @@ def main(args=None):
     utils.log('  {} shape {}'.format(var.name, var.get_shape()))
 
   config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
+  config.gpu_options.allow_growth = args.allow_growth
+  config.gpu_options.per_process_gpu_memory_fraction = args.mem_fraction
+
   with tf.Session(config=config) as sess:
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
     
