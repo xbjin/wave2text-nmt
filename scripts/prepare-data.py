@@ -205,6 +205,18 @@ def process_file(filename, lang, args):
         return output_.name
 
 
+def filter_corpus(filenames, args):
+    with open_files(filenames) as input_files, \
+         open_temp_files(len(filenames)) as output_files:
+        for lines in izip(*input_files):
+            if all(min_ <= len(line.split()) <= max_ for line, min_, max_
+                   in zip(lines, args.min, args.max)):
+                for line, output_file in zip(lines, output_files):
+                    output_file.write(line)
+
+        return [f.name for f in output_files]
+
+
 def process_corpus(filenames, args):
     filenames = [process_file(filename, lang, args)
                  for lang, filename in zip(args.lang, filenames)]
@@ -526,9 +538,14 @@ if __name__ == '__main__':
                 for corpus in corpora:
                     if corpus is None:
                         continue
-                    for i, filename, bpe_filename in zip(itertools.count(), corpus, bpe_filenames):
-                        output_filename = apply_subwords(filename, bpe_filename)
-                        corpus[i] = output_filename
+
+                    filenames = [
+                        apply_subwords(filename, bpe_filename)
+                        for filename, bpe_filename in zip(corpus, bpe_filenames)
+                    ]
+
+                    filenames = filter_corpus(filenames, args)  # filter lines by length again...
+                    corpus[:] = filenames
 
             # move temporary files to their destination
             for i, corpus in enumerate(corpora):
