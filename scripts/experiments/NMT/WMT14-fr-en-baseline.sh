@@ -90,4 +90,5 @@ python -m translate ${data_dir} ${train_dir} \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
 --steps-per-eval 4000 \
---dev-prefix dev.1000
+--dev-prefix dev.1000 \
+--allow-growth

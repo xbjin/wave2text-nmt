@@ -66,4 +66,5 @@ python -m translate ${data_dir} ${train_dir} \
 ${gpu_opts} \
 --steps-per-checkpoint ${steps_per_checkpoint} \
 --steps-per-eval ${steps_per_eval} \
---dev-prefix dev.${dev_size}
+--dev-prefix dev.${dev_size} \
+--allow-growth
