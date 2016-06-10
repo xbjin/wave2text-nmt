@@ -48,7 +48,7 @@ class Seq2SeqModel(object):
 
   def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
                src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size, use_lstm=True,
-               num_samples=512, reuse=None, dropout_rate=0.0, **kwargs):
+               num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None, **kwargs):
     """Create the model.
 
     Args:
@@ -126,7 +126,7 @@ class Seq2SeqModel(object):
 
     self.encoder_names = list(src_ext)
     self.decoder_name = trg_ext
-    self.embedding_size = size
+    self.embedding_size = embedding_size if embedding_size is not None else size
 
     # last bucket is the largest one
     src_bucket_size, trg_bucket_size = buckets[-1]

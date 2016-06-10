@@ -41,6 +41,7 @@ parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip g
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
 parser.add_argument('--size', type=int, default=1024, help='size of each layer')
+parser.add_argument('--embedding-size', type=int, help='size of the embeddings')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
 parser.add_argument('--vocab-size', type=int, default=30000)
 parser.add_argument('--src-vocab-size', type=int, nargs='+', help='source vocabulary size(s) (overrides --vocab-size)')
@@ -80,6 +81,23 @@ parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
 parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU memory to use', default=1.0)
 parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
                     action='store_true')
+
+"""
+TODO:
+- test convolutional attention
+- copy vocab to model dir
+- beam search decoder
+- model ensembling
+- bi-directional rnn
+- AdaDelta
+- move to tensorflow 0.9
+- local attention model
+- rename scopes (will break existing models)
+- pooling between encoder layers
+- integrate external features to the decoder (e.g. language model)
+- train dir/data dir should be optional
+- use kwargs for parameters in seq2seq.py
+"""
 
 
 def main(args=None):
@@ -137,7 +155,7 @@ def main(args=None):
 
   # NMT model parameters
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
-                                         'src_vocab_size', 'trg_vocab_size'])
+                                         'src_vocab_size', 'trg_vocab_size', 'embedding_size'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
