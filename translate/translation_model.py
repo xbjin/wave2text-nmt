@@ -169,7 +169,26 @@ class TranslationModel(object):
   def _decode_sentence_beam_search(self, sess, src_sentences, beam_search=5):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
-    raise NotImplementedError
+    tokens = [sentence.split() for sentence in src_sentences]
+    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
+                 for vocab, sentence in zip(self.src_vocabs, src_sentences)]
+    
+    max_len = self.buckets[-1][0] - 1
+    
+    if any(len(ids_) > max_len for ids_ in token_ids):
+      len_ = max(map(len, token_ids))
+      utils.warn("line is too long ({} tokens), truncating".format(len_))
+      token_ids = [ids_[:max_len] for ids_ in token_ids]
+    
+    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
+    
+    data = [token_ids + [[]]]
+    encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
+    
+    xxxx = self.model.beam_step(sess, encoder_inputs, decoder_inputs,
+                                          target_weights, bucket_id, forward_only=True, decode=True, max_len)
+                                          
+
 
   def _decode_sentence(self, sess, src_sentences):
     tokens = [sentence.split() for sentence in src_sentences]

@@ -86,6 +86,12 @@ class Seq2SeqModel(object):
     self.train_op = self.feed_previous.assign(False)
     self.decode_op = self.feed_previous.assign(True)
 
+    #beam
+    self.hidden_states = []
+    self.decoder_initial_states = []
+    self.attention_states = []
+
+
     # If we use sampled softmax, we need an output projection.
     output_projection = None
     softmax_loss_function = None
@@ -152,6 +158,7 @@ class Seq2SeqModel(object):
                                           output_projection=output_projection, feed_previous=self.feed_previous)
 
     # training outputs and losses
+    self.hidden_states, self.decoder_initial_states, self.attention_states, \
     self.outputs, self.losses = seq2seq.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
       self.target_weights, buckets, seq2seq_function,
@@ -176,6 +183,140 @@ class Seq2SeqModel(object):
       self.gradient_norms.append(norm)
       self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
+  
+  def beam_step(self, session, encoder_inputs, decoder_inputs, target_weights,
+           bucket_id, forward_only=False, decode=False, max_len):
+      
+    #en premier faire juste le pas de l'encodeur 
+    for i in xrange(self.encoder_count):
+      for l in xrange(encoder_size):
+        input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]      
+      
+    # we select the last element of hidden_states to keep as it is a list of hidden_states
+    encoder_output_feed = [self.hidden_states[-1], self.decoder_initial_states, self.attention_states]
+
+    ret = session.run(encoder_output_feed, encoder_input_feed)
+
+    # here we get info to the decode step
+    attention_states = ret[2]
+    shape = ret[1][0].shape
+    # decoder_init = numpy.tile(ret[1][0].reshape(1, shape[0]), (12, 1))
+    decoder_init = ret[1][0].reshape(1, shape[0])
+    decoder_states = numpy.zeros((1, 1, 1, self.decoder_size))
+    
+    #maintenant on commencer le decoder step by step
+
+    sample = []
+    sample_score = []
+
+    live_hyp = 1
+    dead_hyp = 0
+    
+    hyp_samples = [[]] * live_hyp
+    hyp_scores = numpy.zeros(live_hyp).astype('float32')
+
+
+    # we must retrieve the last state to feed the decoder run
+    # @alex a voir a quoi ce que self.decoder_states dans  nmt_models.py, de la fonction decode(), 
+    #g pas eu le temps de la trouver
+    decoder_output_feed = [self.output, self.states, self.decoder_states]
+
+    for ii in xrange(max_len):
+
+        session.run(self.step_num.assign(ii + 2))
+
+        # we must feed decoder_initial_state and attention_states to run one decode step
+        decoder_input_feed = {self.decoder_inputs[0].name: decoder_inputs,
+                                  self.decoder_init_plcholder.name: decoder_init,
+                                  self.attn_plcholder.name: attention_states}
+        if self.decoder_attention_f:
+            # if ii == 1:
+            #     decoder_states = numpy.tile(decoder_states, (12, 1, 1, 1))
+            decoder_input_feed[self.decoder_states_holders.name] = decoder_states
+
+            # print "Step %d - States shape %s - Input shape %s" % (ii, decoder_states.shape, decoder_inputs.shape)
+
+        ret = session.run(decoder_output_feed, decoder_input_feed)
+
+        next_p = ret[0]
+        next_state = ret[1]
+        decoder_states = ret[2]
+
+        cand_scores = hyp_scores[:, None] - numpy.log(next_p)
+        cand_flat = cand_scores.flatten()
+        ranks_flat = cand_flat.argsort()[:(beam_size - dead_hyp)]
+
+        voc_size = next_p.shape[1]
+        trans_indices = ranks_flat / voc_size
+        word_indices = ranks_flat % voc_size
+        costs = cand_flat[ranks_flat]
+
+        new_hyp_samples = []
+        new_hyp_scores = numpy.zeros(beam_size - dead_hyp).astype('float32')
+        new_hyp_states = []
+        new_dec_states = []
+
+        for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
+            new_hyp_samples.append(hyp_samples[ti] + [wi])
+            new_hyp_scores[idx] = copy.copy(costs[ti])
+            new_hyp_states.append(copy.copy(next_state[ti]))
+            new_dec_states.append(copy.copy(decoder_states[ti]))
+
+            # check the finished samples
+        new_live_k = 0
+        hyp_samples = []
+        hyp_scores = []
+        hyp_states = []
+        dec_states = []
+
+        for idx in xrange(len(new_hyp_samples)):
+            if new_hyp_samples[idx][-1] == data_utils.EOS_ID:
+                sample.append(new_hyp_samples[idx])
+                sample_score.append(new_hyp_scores[idx])
+                dead_hyp += 1
+            else:
+                new_live_k += 1
+                hyp_samples.append(new_hyp_samples[idx])
+                hyp_scores.append(new_hyp_scores[idx])
+                hyp_states.append(new_hyp_states[idx])
+                dec_states.append(new_dec_states[idx])
+
+        dec_states = [d.reshape(1, d.shape[0], d.shape[1], d.shape[2]) for d in dec_states]
+        dec_states = numpy.concatenate(dec_states, axis=0)
+
+        hyp_scores = numpy.array(hyp_scores)
+        live_hyp = new_live_k
+
+        if new_live_k < 1:
+            break
+        if dead_hyp >= beam_size:
+            break
+
+        decoder_inputs = numpy.array([w[-1] for w in hyp_samples])
+        decoder_init = numpy.array(hyp_states)
+        decoder_states = dec_states
+
+        # dump every remaining one
+    if dump_remaining:
+        if live_hyp > 0:
+            for idx in xrange(live_hyp):
+                sample.append(hyp_samples[idx])
+                sample_score.append(hyp_scores[idx])
+
+        # normalize scores according to sequence lengths
+    if normalize:
+        lengths = numpy.array([len(s) for s in sample])
+        sample_score = sample_score / lengths
+
+    # sort the samples by score (it is in log-scale, therefore lower is better)
+    sidx = numpy.argsort(sample_score)
+    sample = numpy.array(sample)[sidx]
+    sample_score = numpy.array(sample_score)[sidx]
+
+    return sample.tolist(), sample_score.tolist()            
+        
+    
+        
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
            bucket_id, forward_only=False, decode=False):
     """Run a step of the model feeding the given inputs.
