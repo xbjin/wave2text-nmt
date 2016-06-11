@@ -185,7 +185,7 @@ class Seq2SeqModel(object):
 
   
   def beam_step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only=False, decode=False, max_len):
+           bucket_id, forward_only=False, decode=False, max_len, normalize=True, dump_remaining=True):
       
     #en premier faire juste le pas de l'encodeur 
     for i in xrange(self.encoder_count):
@@ -193,6 +193,7 @@ class Seq2SeqModel(object):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]      
       
     # we select the last element of hidden_states to keep as it is a list of hidden_states
+    #self variable ajoutée au modele 
     encoder_output_feed = [self.hidden_states[-1], self.decoder_initial_states, self.attention_states]
 
     ret = session.run(encoder_output_feed, encoder_input_feed)
@@ -217,7 +218,7 @@ class Seq2SeqModel(object):
 
 
     # we must retrieve the last state to feed the decoder run
-    # @alex a voir a quoi ce que self.decoder_states dans  nmt_models.py, de la fonction decode(), 
+    # @alex a voir a quoi ce que self.decoder_states dans  nmt_models.py, de la fonction decode() correspond 
     #g pas eu le temps de la trouver
     decoder_output_feed = [self.output, self.states, self.decoder_states]
 
@@ -225,11 +226,24 @@ class Seq2SeqModel(object):
 
         session.run(self.step_num.assign(ii + 2))
 
+        
+        #a voir si il est necessaire d'ajouter toutes ces variables a notre modele :
+        #self.decoder_inputs[0]
+        #self.decoder_init_plcholder
+        #self.attn_plcholder.name
+        #self.decoder_states_holders.name
+        
+        
+        
+        
+        
+        
         # we must feed decoder_initial_state and attention_states to run one decode step
         decoder_input_feed = {self.decoder_inputs[0].name: decoder_inputs,
                                   self.decoder_init_plcholder.name: decoder_init,
                                   self.attn_plcholder.name: attention_states}
-        if self.decoder_attention_f:
+                                  
+        if True: # on suppose qu'on a tjrs un mec d attention... ? self.decoder_attention_f:
             # if ii == 1:
             #     decoder_states = numpy.tile(decoder_states, (12, 1, 1, 1))
             decoder_input_feed[self.decoder_states_holders.name] = decoder_states
@@ -238,6 +252,7 @@ class Seq2SeqModel(object):
 
         ret = session.run(decoder_output_feed, decoder_input_feed)
 
+        #tout ce qui suit devrait rester inchangé
         next_p = ret[0]
         next_state = ret[1]
         decoder_states = ret[2]
