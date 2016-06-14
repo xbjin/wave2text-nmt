@@ -435,12 +435,12 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
             output_projection=output_projection, feed_previous=feed_previous_bool,
             scope=decoder_scope, embedding_initializer=embedding_initializer,
             embedding_trainable=embedding_trainable, **kwargs)
-        return encoder_params +  outputs + [state]
+        return encoder_params + outputs + [state]
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-    return encoder_params +  outputs_and_state[:-1], outputs_and_state[-1]
+    return encoder_params + outputs_and_state[:-1], outputs_and_state[-1]
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,

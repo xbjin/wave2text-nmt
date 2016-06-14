@@ -166,8 +166,7 @@ class TranslationModel(object):
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
-  """
-  def _decode_sentence_beam_search(self, sess, src_sentences, beam_search=5):
+  def _decode_sentence_beam_search(self, sess, src_sentences, beam_size=5):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
     tokens = [sentence.split() for sentence in src_sentences]
@@ -187,8 +186,8 @@ class TranslationModel(object):
     encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
     
     xxxx = self.model.beam_step(sess, encoder_inputs, decoder_inputs,
-                                          target_weights, bucket_id, forward_only=True, decode=True, max_len)
-  """
+                                target_weights, bucket_id, forward_only=True, decode=True, max_len=max_len,
+                                beam_size=beam_size)
 
 
   def _decode_sentence(self, sess, src_sentences):

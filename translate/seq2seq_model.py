@@ -183,9 +183,10 @@ class Seq2SeqModel(object):
       self.gradient_norms.append(norm)
       self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
-  """
+
   def beam_step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only=False, decode=False, max_len=None, normalize=True, dump_remaining=True):
+           bucket_id, forward_only=False, decode=False, max_len=None, normalize=True, dump_remaining=True,
+           beam_size=5):
       
     #en premier faire juste le pas de l'encodeur 
     for i in xrange(self.encoder_count):
@@ -193,7 +194,7 @@ class Seq2SeqModel(object):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]      
       
     # we select the last element of hidden_states to keep as it is a list of hidden_states
-    #self variable ajoutée au modele 
+    # self variable added to model
     encoder_output_feed = [self.hidden_states[-1], self.decoder_initial_states, self.attention_states]
 
     ret = session.run(encoder_output_feed, encoder_input_feed)
@@ -253,7 +254,7 @@ class Seq2SeqModel(object):
 
         ret = session.run(decoder_output_feed, decoder_input_feed)
 
-        #tout ce qui suit devrait rester inchangé
+        # tout ce qui suit devrait rester pareil
         next_p = ret[0]
         next_state = ret[1]
         decoder_states = ret[2]
@@ -329,8 +330,7 @@ class Seq2SeqModel(object):
     sample = np.array(sample)[sidx]
     sample_score = np.array(sample_score)[sidx]
 
-    return sample.tolist(), sample_score.tolist()            
-  """
+    return sample.tolist(), sample_score.tolist()
     
         
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
