@@ -183,9 +183,10 @@ class Seq2SeqModel(object):
       self.gradient_norms.append(norm)
       self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
-  
+  """
   def beam_step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only=False, decode=False, max_len):
+                bucket_id, beam_size=10, forward_only=False, decode=False, max_len=None,
+                normalize=True):
       
     #en premier faire juste le pas de l'encodeur 
     for i in xrange(self.encoder_count):
@@ -202,7 +203,7 @@ class Seq2SeqModel(object):
     shape = ret[1][0].shape
     # decoder_init = numpy.tile(ret[1][0].reshape(1, shape[0]), (12, 1))
     decoder_init = ret[1][0].reshape(1, shape[0])
-    decoder_states = numpy.zeros((1, 1, 1, self.decoder_size))
+    decoder_states = np.zeros((1, 1, 1, self.decoder_size))
     
     #maintenant on commencer le decoder step by step
 
@@ -213,7 +214,7 @@ class Seq2SeqModel(object):
     dead_hyp = 0
     
     hyp_samples = [[]] * live_hyp
-    hyp_scores = numpy.zeros(live_hyp).astype('float32')
+    hyp_scores = np.zeros(live_hyp).astype('float32')
 
 
     # we must retrieve the last state to feed the decoder run
@@ -223,6 +224,7 @@ class Seq2SeqModel(object):
 
     for ii in xrange(max_len):
 
+        session.run(self.step_num.assign(ii + 2))
         session.run(self.step_num.assign(ii + 2))
 
         # we must feed decoder_initial_state and attention_states to run one decode step
@@ -242,7 +244,7 @@ class Seq2SeqModel(object):
         next_state = ret[1]
         decoder_states = ret[2]
 
-        cand_scores = hyp_scores[:, None] - numpy.log(next_p)
+        cand_scores = hyp_scores[:, None] - np.log(next_p)
         cand_flat = cand_scores.flatten()
         ranks_flat = cand_flat.argsort()[:(beam_size - dead_hyp)]
 
@@ -252,7 +254,7 @@ class Seq2SeqModel(object):
         costs = cand_flat[ranks_flat]
 
         new_hyp_samples = []
-        new_hyp_scores = numpy.zeros(beam_size - dead_hyp).astype('float32')
+        new_hyp_scores = np.zeros(beam_size - dead_hyp).astype('float32')
         new_hyp_states = []
         new_dec_states = []
 
@@ -282,9 +284,9 @@ class Seq2SeqModel(object):
                 dec_states.append(new_dec_states[idx])
 
         dec_states = [d.reshape(1, d.shape[0], d.shape[1], d.shape[2]) for d in dec_states]
-        dec_states = numpy.concatenate(dec_states, axis=0)
+        dec_states = np.concatenate(dec_states, axis=0)
 
-        hyp_scores = numpy.array(hyp_scores)
+        hyp_scores = np.array(hyp_scores)
         live_hyp = new_live_k
 
         if new_live_k < 1:
@@ -292,8 +294,8 @@ class Seq2SeqModel(object):
         if dead_hyp >= beam_size:
             break
 
-        decoder_inputs = numpy.array([w[-1] for w in hyp_samples])
-        decoder_init = numpy.array(hyp_states)
+        decoder_inputs = np.array([w[-1] for w in hyp_samples])
+        decoder_init = np.array(hyp_states)
         decoder_states = dec_states
 
         # dump every remaining one
@@ -305,16 +307,16 @@ class Seq2SeqModel(object):
 
         # normalize scores according to sequence lengths
     if normalize:
-        lengths = numpy.array([len(s) for s in sample])
+        lengths = np.array([len(s) for s in sample])
         sample_score = sample_score / lengths
 
     # sort the samples by score (it is in log-scale, therefore lower is better)
-    sidx = numpy.argsort(sample_score)
-    sample = numpy.array(sample)[sidx]
-    sample_score = numpy.array(sample_score)[sidx]
+    sidx = np.argsort(sample_score)
+    sample = np.array(sample)[sidx]
+    sample_score = np.array(sample_score)[sidx]
 
     return sample.tolist(), sample_score.tolist()            
-        
+  """
     
         
   def step(self, session, encoder_inputs, decoder_inputs, target_weights,
