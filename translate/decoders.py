@@ -49,7 +49,8 @@ def multi_encoder(encoder_inputs, encoder_names, cell,
                                        perm=[1, 0, 2])
 
         # TODO: sequence length as a placeholder
-        encoder_outputs_, encoder_states_ = rnn.dynamic_rnn(cell, encoder_inputs_, dtype=tf.float32)
+        encoder_outputs_, encoder_states_ = rnn.dynamic_rnn(cell, encoder_inputs_, dtype=tf.float32,
+                                                            parallel_iterations=1)
 
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)

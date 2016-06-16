@@ -261,15 +261,17 @@ class Seq2SeqModel(object):
     return outputs[0]  # losses
 
   def beam_search_decoding(self, session, token_ids, beam_size, normalize=True):
-    # only problems for now: fixed sequence length, works with only one encoder,
-    # attention for first state is probably shit (initial_state_attention parameter)
-    # + code factoring (between decoder and one_step_decoder)
+    # TODO: variable sequence length
+    # TODO: handle multiple encoders
+    # TODO: check this initial_state_attention parameter (might cause the first word generated to be bad)
+    # TODO: check softmax vs no-softmax
+    # TODO: test with initial_state_attention=True with previous code version
 
     bucket_id = len(self.buckets) - 1
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights = self.get_batch({bucket_id: data}, bucket_id, batch_size=1)
 
-    # FIXME: target weights all zero, why?
+    # FIXME: target weights all zero
     encoder_size, decoder_size = self.buckets[bucket_id]
     input_feed = {}
     for i in xrange(self.encoder_count):
@@ -308,19 +310,19 @@ class Seq2SeqModel(object):
       # attention_weights, shape=(beam_size, max_len)
       scores_ = scores[:, None] - np.log(decoder_output)
       scores_ = scores_.flatten()
-      ranks = np.argsort(scores_)[:beam_size]
+      flat_ids = np.argsort(scores_)[:beam_size]
 
-      token_ids_ = ranks % self.trg_vocab_size
-      hyp_ids = ranks // self.trg_vocab_size
+      token_ids_ = flat_ids % self.trg_vocab_size
+      hyp_ids = flat_ids // self.trg_vocab_size
 
       new_hypotheses = []
       new_scores = []
       new_state = []
       new_input = []
 
-      for rank, hyp_id, token_id in zip(ranks, hyp_ids, token_ids_):
+      for flat_id, hyp_id, token_id in zip(flat_ids, hyp_ids, token_ids_):
         hypothesis = hypotheses[hyp_id] + [token_id]
-        score = scores_[rank]
+        score = scores_[flat_id]
 
         if token_id == utils.EOS_ID:
           beam_size -= 1

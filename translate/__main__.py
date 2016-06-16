@@ -86,9 +86,12 @@ parser.add_argument('--beam-size', type=int, default=4, help='beam size for deco
 
 """
 TODO:
+- compare memory usage/speed between rnn.rnn and rnn.dynamic_rnn: dynamic_rnn seems to be slower
+- try getting rid of buckets
+- function to rename variables (changing names of previous models)
 - test convolutional attention
 - copy vocab to model dir
-- beam search decoder
+- test beam-search decoder
 - model ensembling
 - bi-directional rnn
 - AdaDelta
@@ -98,7 +101,6 @@ TODO:
 - pooling between encoder layers
 - integrate external features to the decoder (e.g. language model)
 - train dir/data dir should be optional
-- use kwargs for parameters in seq2seq.py
 """
 
 
