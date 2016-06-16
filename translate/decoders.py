@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import tensorflow.models.rnn
 import functools
-from translate import rnn, rnn_cell
+from tensorflow.python.ops import rnn, rnn_cell
 
 
 def unsafe_get_variable(name, *args, **kwargs):

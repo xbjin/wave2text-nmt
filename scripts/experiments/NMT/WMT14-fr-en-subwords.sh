@@ -13,7 +13,7 @@ data_dir=data/WMT14_fr-en_subwords
 train_dir=model/WMT14_fr-en_subwords
 gpu_id=${GPU}
 embedding_size=1024
-vocab_size=60000
+vocab_size=30000
 layers=1
 
 mkdir -p ${train_dir}
