@@ -79,8 +79,8 @@ class TranslationModel(object):
       for checkpoint in checkpoints:
         load_checkpoint(sess, checkpoint, blacklist=('feed_previous', 'learning_rate', 'global_step'))
 
-  def train(self, sess, filenames, steps_per_checkpoint, steps_per_eval=None, bleu_script=None, max_train_size=None,
-            eval_output=None):
+  def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
+            max_train_size=None, eval_output=None):
     utils.log('reading training and development data')
     self._read_data(filenames, max_train_size)
     
@@ -141,7 +141,7 @@ class TranslationModel(object):
         utils.log('starting BLEU eval')
         # TODO: save best models under a special checkpoint
         output = '{}.{}'.format(eval_output, global_step)
-        self.evaluate(sess, filenames, bleu_script, on_dev=True, output=output)
+        self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output)
 
   def _train_step(self, sess, model):
     r = np.random.random_sample()
@@ -165,7 +165,7 @@ class TranslationModel(object):
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
-  def _decode_sentence_beam_search(self, sess, src_sentences, beam_size=4):
+  def _decode_sentence(self, sess, src_sentences, beam_size=4):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
     tokens = [sentence.split() for sentence in src_sentences]
@@ -192,39 +192,7 @@ class TranslationModel(object):
 
     return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
-  def _decode_sentence(self, sess, src_sentences):
-    tokens = [sentence.split() for sentence in src_sentences]
-    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
-                 for vocab, sentence in zip(self.src_vocabs, src_sentences)]
-    
-    max_len = self.buckets[-1][0] - 1
-    
-    if any(len(ids_) > max_len for ids_ in token_ids):
-      len_ = max(map(len, token_ids))
-      utils.warn("line is too long ({} tokens), truncating".format(len_))
-      token_ids = [ids_[:max_len] for ids_ in token_ids]
-    
-    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    
-    data = [token_ids + [[]]]
-    encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
-    
-    _, _, output_logits = self.model.step(sess, encoder_inputs, decoder_inputs,
-                                          target_weights, bucket_id, forward_only=True, decode=True)
-    trg_token_ids = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # greedy decoder
-    
-    # remove EOS symbols from output
-    if utils.EOS_ID in trg_token_ids:
-      trg_token_ids = trg_token_ids[:trg_token_ids.index(utils.EOS_ID)]
-    
-    trg_tokens = [self.trg_vocab.reverse[i] for i in trg_token_ids]
-    
-    if self.lookup_dict is not None:
-      trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
-
-    return ' '.join(trg_tokens).replace('@@ ', '')   # merge subword units
-
-  def decode(self, sess, filenames, output=None):
+  def decode(self, sess, filenames, beam_size, output=None):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
       
@@ -235,7 +203,7 @@ class TranslationModel(object):
         
         for src_sentences in zip(*files):
           # trg_sentence = self._decode_sentence(sess, src_sentences)
-          trg_sentence = self._decode_sentence_beam_search(sess, src_sentences)
+          trg_sentence = self._decode_sentence(sess, src_sentences, beam_size)
           output_file.write(trg_sentence + '\n')
           output_file.flush()
           
@@ -243,7 +211,7 @@ class TranslationModel(object):
         if output_file is not None:
           output_file.close()
 
-  def evaluate(self, sess, filenames, bleu_script, on_dev=False, output=None):
+  def evaluate(self, sess, filenames, beam_size, bleu_script, on_dev=False, output=None):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
     
@@ -251,7 +219,8 @@ class TranslationModel(object):
     trg_filename = filenames.trg_dev if on_dev else filenames.trg_test
 
     with utils.open_files(src_filenames) as src_files, open(trg_filename) as trg_file:
-      hypotheses = [self._decode_sentence(sess, src_sentences) for src_sentences in zip(*src_files)]
+      hypotheses = [self._decode_sentence(sess, src_sentences, beam_size)
+                    for src_sentences in zip(*src_files)]
       references = [line.strip().replace('@@ ', '') for line in trg_file]
       
       score = utils.bleu_score(bleu_script, hypotheses, references)

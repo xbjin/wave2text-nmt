@@ -82,6 +82,7 @@ parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
 parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU memory to use', default=1.0)
 parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
                     action='store_true')
+parser.add_argument('--beam-size', type=int, default=4, help='beam size for decoding')
 
 """
 TODO:
@@ -194,15 +195,15 @@ def main(args=None):
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
     if args.decode:
-      model.decode(sess, filenames, output=args.output)
+      model.decode(sess, filenames, args.beam_size, output=args.output)
     elif args.eval:
-      model.evaluate(sess, filenames, bleu_script=args.bleu_script, output=args.output)
+      model.evaluate(sess, filenames, args.beam_size, bleu_script=args.bleu_script, output=args.output)
     elif args.export_embeddings:
       model.export_embeddings(sess, filenames, extensions=args.export_embeddings,
                               output_prefix=os.path.join(args.train_dir, args.embedding_prefix))
     elif args.train:
       try:
-        model.train(sess, filenames, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
+        model.train(sess, filenames, args.beam_size, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
                     args.max_train_size, eval_output)
       except KeyboardInterrupt:
         utils.log('exiting...')
