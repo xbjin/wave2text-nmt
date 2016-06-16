@@ -149,8 +149,7 @@ class TranslationModel(object):
   
     # get a batch and make a training step
     encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.train_set, bucket_id)
-    _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
-    return step_loss
+    return model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
 
   def _eval_step(self, sess, model):
     # compute perplexity on dev set
@@ -160,35 +159,38 @@ class TranslationModel(object):
         continue
 
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.dev_set, bucket_id)
-      _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
-                                      forward_only=True, decode=False)
+      eval_loss = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
+                             forward_only=True)
 
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
-  def _decode_sentence_beam_search(self, sess, src_sentences, beam_size=5):
+  def _decode_sentence_beam_search(self, sess, src_sentences, beam_size=4):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
     tokens = [sentence.split() for sentence in src_sentences]
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  for vocab, sentence in zip(self.src_vocabs, src_sentences)]
-    
     max_len = self.buckets[-1][0] - 1
-    
+
     if any(len(ids_) > max_len for ids_ in token_ids):
       len_ = max(map(len, token_ids))
       utils.warn("line is too long ({} tokens), truncating".format(len_))
       token_ids = [ids_[:max_len] for ids_ in token_ids]
-    
-    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    
-    data = [token_ids + [[]]]
-    encoder_inputs, decoder_inputs, target_weights = self.model.get_batch({bucket_id: data}, bucket_id, batch_size=1)
-    
-    xxxx = self.model.beam_step(sess, encoder_inputs, decoder_inputs,
-                                target_weights, bucket_id, forward_only=True, decode=True, max_len=max_len,
-                                beam_size=beam_size)
 
+    hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size)
+    trg_token_ids = hypotheses[0]
+
+    # remove EOS symbols from output
+    if utils.EOS_ID in trg_token_ids:
+      trg_token_ids = trg_token_ids[:trg_token_ids.index(utils.EOS_ID)]
+
+    trg_tokens = [self.trg_vocab.reverse[i] for i in trg_token_ids]
+
+    if self.lookup_dict is not None:
+      trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
+
+    return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
   def _decode_sentence(self, sess, src_sentences):
     tokens = [sentence.split() for sentence in src_sentences]
@@ -209,8 +211,6 @@ class TranslationModel(object):
     
     _, _, output_logits = self.model.step(sess, encoder_inputs, decoder_inputs,
                                           target_weights, bucket_id, forward_only=True, decode=True)
-
-    # TODO: beam-search
     trg_token_ids = [int(np.argmax(logit, axis=1)) for logit in output_logits]  # greedy decoder
     
     # remove EOS symbols from output
@@ -234,7 +234,8 @@ class TranslationModel(object):
         output_file = sys.stdout if output is None else open(output, 'w')
         
         for src_sentences in zip(*files):
-          trg_sentence = self._decode_sentence(sess, src_sentences)
+          # trg_sentence = self._decode_sentence(sess, src_sentences)
+          trg_sentence = self._decode_sentence_beam_search(sess, src_sentences)
           output_file.write(trg_sentence + '\n')
           output_file.flush()
           

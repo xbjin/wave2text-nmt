@@ -21,6 +21,7 @@ from translate import rnn
 
 import tensorflow as tf
 import sys
+import pdb
 
 
 def sequence_loss_by_example(logits, targets, weights,
@@ -367,7 +368,7 @@ def embedding_attention_decoder(decoder_inputs, initial_state, encoder_names, at
 def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_name, cell,
                          num_encoder_symbols, num_decoder_symbols, embedding_size, embeddings=None,
                          output_projection=None, feed_previous=False,
-                         dtype=dtypes.float32, scope=None, **kwargs):
+                         dtype=dtypes.float32, scope=None, bidir=False, **kwargs):
   """
   Args:
     embeddings: dictionary of (encoder/decoder name, embedding matrix) used for initializing the
@@ -393,7 +394,20 @@ def many2one_rnn_seq2seq(encoder_inputs, decoder_inputs, encoder_names, decoder_
                                                  embedding_size=embedding_size,
                                                  initializer=initializer, trainable=trainable)
 
-        encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell, encoder_inputs_, dtype=dtype)
+        if bidir:  # TODO: bidirectional RNN stacking
+          proj_w = variable_scope.get_variable('output_proj', [cell.output_size * 2, cell.output_size])
+
+          encoder_outputs_, encoder_state_fw, encoder_state_bw = rnn.bidirectional_rnn(encoder_cell, encoder_cell,
+                                                                                       encoder_inputs_, dtype=dtype)
+          encoder_states_ = tf.concat(1, [encoder_state_fw, encoder_state_bw])
+          encoder_states_ = rnn_cell.linear(encoder_states_, cell.state_size, False, scope="state_proj")
+
+          # pdb.set_trace()
+          encoder_outputs_ = [tf.matmul(proj_w, x) for x in encoder_outputs_]
+
+        else:
+          encoder_outputs_, encoder_states_ = rnn.rnn(encoder_cell, encoder_inputs_, dtype=dtype)
+
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
     

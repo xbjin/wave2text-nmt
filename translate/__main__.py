@@ -33,6 +33,7 @@ parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
 parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings')
+parser.add_argument('--debug', action='store_true')
 
 # Model parameters
 parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
@@ -191,7 +192,7 @@ def main(args=None):
 
   with tf.Session(config=config) as sess:
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
-    
+
     if args.decode:
       model.decode(sess, filenames, output=args.output)
     elif args.eval:
