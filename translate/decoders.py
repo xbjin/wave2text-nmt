@@ -44,19 +44,26 @@ def multi_encoder(encoder_inputs, encoder_names, cell,
                                       trainable=trainable)
 
         encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
-        encoder_inputs_ = tf.transpose(tf.reshape(tf.concat(0, encoder_inputs_),
-                                                  [len(encoder_inputs_), -1, embedding_size]),
-                                       perm=[1, 0, 2])
+        # encoder_inputs_ = tf.transpose(tf.reshape(tf.concat(0, encoder_inputs_),
+        #                                           [len(encoder_inputs_), -1, embedding_size]),
+        #                                perm=[1, 0, 2])
 
         # TODO: sequence length as a placeholder
-        encoder_outputs_, encoder_states_ = rnn.dynamic_rnn(cell, encoder_inputs_, dtype=tf.float32,
-                                                            parallel_iterations=1)
+        # encoder_outputs_, encoder_states_ = rnn.dynamic_rnn(cell, encoder_inputs_, dtype=tf.float32,
+        #                                                     parallel_iterations=1)
+        encoder_outputs_, encoder_states_ = rnn.rnn(cell, encoder_inputs_, dtype=tf.float32)
 
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
 
+    top_states = [[tf.reshape(e, [-1, 1, cell.output_size]) for e in v]
+                  for v in encoder_outputs]
+
+    attention_states = [tf.concat(1, v) for v in top_states]
+
     encoder_state = tf.add_n(encoder_states)
-    return encoder_outputs, encoder_state
+    #return encoder_outputs, encoder_state
+    return attention_states, encoder_state
 
 
 def attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
