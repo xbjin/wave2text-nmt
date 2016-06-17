@@ -16,6 +16,7 @@ parser.add_argument('--output-names', nargs='+', required=True)
 parser.add_argument('--input-checkpoint', required=True)
 parser.add_argument('--output-checkpoint', required=True)
 parser.add_argument('--save-names', action='store_true')
+parser.add_argument('--shapes', nargs='+', required=True)
 
 
 """
@@ -50,30 +51,58 @@ multi_encoder/encoder_fr/embedding \
 multi_encoder/encoder_fr/RNN/BasicLSTMCell/Linear/Matrix \
 multi_encoder/encoder_fr/RNN/BasicLSTMCell/Linear/Bias \
 attention_decoder/embedding \
+attention_decoder/attention/W_fr \
+attention_decoder/attention/V_fr \
 attention_decoder/Linear/Matrix \
 attention_decoder/Linear/Bias \
 attention_decoder/BasicLSTMCell/Linear/Matrix \
 attention_decoder/BasicLSTMCell/Linear/Bias \
-attention_decoder/attention/W_fr \
-attention_decoder/attention/V_fr \
 attention_decoder/attention/Linear/Matrix \
 attention_decoder/attention/Linear/Bias \
 attention_decoder/attention_output_projection/Linear/Matrix \
 attention_decoder/attention_output_projection/Linear/Bias \
 --input-checkpoint model/WMT14_fr-en/checkpoints.fr_en/translate-231263 \
 --output-checkpoint model/WMT14_fr-en_new/checkpoints.fr_en/translate-231263 \
---save-names
+--save-names \
+--shapes \
+"()" \
+"()" \
+"(1024,30000)" \
+"(30000,)" \
+"(30000,1024)" \
+"(2048,4096)" \
+"(4096,)" \
+"(30000,1024)" \
+"(1,1,1024,1024)" \
+"(1024,)" \
+"(2048,1024)" \
+"(1024,)" \
+"(2048,4096)" \
+"(4096,)" \
+"(2048,1024)" \
+"(1024,)" \
+"(2048,1024)" \
+"(1024,)"
 """
 
 
-def save_variables(input_names, output_names, input_checkpoint, output_checkpoint, save_names):
+def save_variables(input_names, output_names, shapes, input_checkpoint, output_checkpoint, save_names):
   variables = []
 
   reader = tf.train.NewCheckpointReader(input_checkpoint)
 
   with tf.device('/cpu:0'):
-    for input_name, output_name in zip(input_names, output_names):
+    for input_name, output_name, shape in zip(input_names, output_names, shapes):
+      shape = shape.strip('()')
+      shape = [int(x) for x in shape.split(',') if x]
+
       value = reader.get_tensor(input_name)
+
+      print(shape)
+      print(value.shape)
+      print(input_name, output_name)
+
+      value = value.reshape(shape)
       v = tf.Variable(value, name=output_name)
       variables.append(v)
 
@@ -96,7 +125,7 @@ def save_variables(input_names, output_names, input_checkpoint, output_checkpoin
 
 if __name__ == '__main__':
   args = parser.parse_args()
-  assert len(args.input_names) == len(args.output_names)
+  assert len(args.input_names) == len(args.output_names) == len(args.shapes)
 
-  save_variables(args.input_names, args.output_names, args.input_checkpoint, args.output_checkpoint,
-                 args.save_names)
+  save_variables(args.input_names, args.output_names, args.shapes, args.input_checkpoint,
+                 args.output_checkpoint, args.save_names)
