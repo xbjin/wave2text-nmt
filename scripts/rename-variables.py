@@ -59,7 +59,9 @@ attention_decoder/attention/V_fr \
 attention_decoder/attention/Linear/Matrix \
 attention_decoder/attention/Linear/Bias \
 attention_decoder/attention_output_projection/Linear/Matrix \
-attention_decoder/attention_output_projection/Linear/Bias
+attention_decoder/attention_output_projection/Linear/Bias \
+--input-checkpoint model/comparison/WMT14_prev/checkpoints_fr-en/translate-230000 \
+--output-checkpoint model/comparison/WMT14_new/checkpoints_fr-en/translate-230000 \
 """
 
 
@@ -84,13 +86,11 @@ def save_variables(input_names, output_names, input_checkpoint, output_checkpoin
     saver.save(sess, output_checkpoint)
 
     if save_names:
-      var_file
+      var_file = os.path.join(os.path.dirname(output_checkpoint), 'vars.pkl')
 
       with open(var_file, 'wb') as f:
         var_names = [var.name for var in tf.all_variables()]
         cPickle.dump(var_names, f)
-      pass
-
 
 if __name__ == '__main__':
   args = parser.parse_args()
