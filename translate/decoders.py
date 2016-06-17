@@ -5,6 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import tensorflow.models.rnn
 import functools
+import math
 from tensorflow.python.ops import rnn, rnn_cell
 
 
@@ -37,8 +38,13 @@ def multi_encoder(encoder_inputs, encoder_names, cell,
                                                                    num_encoder_symbols):
       with tf.variable_scope('encoder_{}'.format(encoder_name)):
         initializer, trainable = embeddings.get(encoder_name, (None, True))
+        if initializer is None:
+          initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+          embedding_shape = [num_encoder_symbols_, embedding_size]
+        else:
+          embedding_shape = None
+
         with tf.device('/cpu:0'):
-          embedding_shape = [num_encoder_symbols_, embedding_size] if initializer is None else None
           embedding = tf.get_variable('embedding', shape=embedding_shape,
                                       initializer=initializer,
                                       trainable=trainable)
