@@ -21,7 +21,7 @@ parser.add_argument('--save-names', action='store_true')
 """
 Mapping from old model to new
 
-scripts/rename-variables \
+scripts/rename-variables.py \
 --input-names \
 learning_rate \
 global_step \
@@ -60,8 +60,9 @@ attention_decoder/attention/Linear/Matrix \
 attention_decoder/attention/Linear/Bias \
 attention_decoder/attention_output_projection/Linear/Matrix \
 attention_decoder/attention_output_projection/Linear/Bias \
---input-checkpoint model/comparison/WMT14_prev/checkpoints_fr-en/translate-230000 \
---output-checkpoint model/comparison/WMT14_new/checkpoints_fr-en/translate-230000 \
+--input-checkpoint model/WMT14_fr-en/checkpoints.fr_en/translate-231263 \
+--output-checkpoint model/WMT14_fr-en_new/checkpoints.fr_en/translate-231263 \
+--save-names
 """
 
 
@@ -70,10 +71,11 @@ def save_variables(input_names, output_names, input_checkpoint, output_checkpoin
 
   reader = tf.train.NewCheckpointReader(input_checkpoint)
 
-  for input_name, output_name in zip(input_names, output_names):
-    value = reader.get_tensor(input_name)
-    v = tf.Variable(value, name=output_name)
-    variables.append(v)
+  with tf.device('/cpu:0'):
+    for input_name, output_name in zip(input_names, output_names):
+      value = reader.get_tensor(input_name)
+      v = tf.Variable(value, name=output_name)
+      variables.append(v)
 
   with tf.Session() as sess:
     sess.run(tf.initialize_all_variables())
