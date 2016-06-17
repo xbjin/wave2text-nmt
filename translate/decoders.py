@@ -15,12 +15,12 @@ def unsafe_get_variable(name, *args, **kwargs):
     return tf.get_variable(name, *args, **kwargs)
   except ValueError:
     with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-      tf.get_variable(name, *args, **kwargs)
+      return tf.get_variable(name, *args, **kwargs)
 
 
 def multi_encoder(encoder_inputs, encoder_names, cell,
                   num_encoder_symbols, embedding_size,
-                  embeddings=None, reuse=False, **kwargs):
+                  embeddings=None, reuse=None, **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
@@ -73,8 +73,8 @@ def multi_encoder(encoder_inputs, encoder_names, cell,
 
 
 def attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
-              attention_filters=0, attention_filter_length=10):
-  with tf.variable_scope('attention'):
+              attention_filters=0, attention_filter_length=10, reuse=None):
+  with tf.variable_scope('attention', reuse):
     hidden_features = []
     v = []
     attn_filters = []
@@ -138,7 +138,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       attention_weights=None,
                       feed_previous=False, output_projection=None, embeddings=None,
                       initial_state_attention=False,
-                      attention_filters=0, attention_filter_length=2, reuse=False, **kwargs):
+                      attention_filters=0, attention_filter_length=2, reuse=None, **kwargs):
   embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
   if embedding_initializer is None:
     embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
@@ -233,7 +233,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       all_attention_weights.append(attention_weights)
 
       # run the attention mechanism
-      attns, attention_weights = attention_(state, attention_weights)
+      attns, attention_weights = attention_(state, attention_weights, reuse=initial_state_attention)
 
       with tf.variable_scope('attention_output_projection'):
         output = rnn_cell.linear([cell_output, attns], output_size, True)
@@ -264,9 +264,10 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         encoder_inputs_trunc = [v[:encoder_size] for v in encoder_inputs]
         decoder_inputs_trunc = decoder_inputs[:decoder_size]
 
-        attention_states, encoder_state = multi_encoder(encoder_inputs_trunc, reuse=reuse_, **kwargs)
+        attention_states, encoder_state = multi_encoder(encoder_inputs_trunc,
+                                                        **kwargs)
         bucket_outputs, _, _ = attention_decoder(decoder_inputs_trunc, encoder_state, attention_states,
-                                                 reuse=reuse_, **kwargs)
+                                                 **kwargs)
 
         outputs.append(bucket_outputs)
         losses.append(tf.models.rnn.seq2seq.sequence_loss(

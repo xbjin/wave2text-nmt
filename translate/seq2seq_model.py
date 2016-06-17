@@ -166,6 +166,7 @@ class Seq2SeqModel(object):
       self.gradient_norms.append(norm)
       self.updates.append(opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step))
 
+    # TODO: this is already computed
     self.attention_states, self.encoder_state = decoders.multi_encoder(
       self.encoder_inputs, self.encoder_names, cell,
       src_vocab_size, self.embedding_size,
