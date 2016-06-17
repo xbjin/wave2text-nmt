@@ -140,6 +140,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       initial_state_attention=False,
                       attention_filters=0, attention_filter_length=2, reuse=False, **kwargs):
   embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
+  if embedding_initializer is None:
+    embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+    embedding_shape = [num_decoder_symbols, embedding_size]
+  else:
+    embedding_shape = None
+
 
   if output_projection is None:
     cell = rnn_cell.OutputProjectionWrapper(cell, num_decoder_symbols)
@@ -158,7 +164,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       tf.get_variable_scope().reuse_variables()
 
     with tf.device('/cpu:0'):
-      embedding_shape = [num_decoder_symbols, embedding_size] if embedding_initializer is None else None
       embedding = tf.get_variable('embedding', shape=embedding_shape,
                                   initializer=embedding_initializer,
                                   trainable=embedding_trainable)

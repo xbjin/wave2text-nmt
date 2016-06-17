@@ -150,7 +150,8 @@ class Seq2SeqModel(object):
       encoder_names=self.encoder_names, decoder_name=self.decoder_name,
       cell=cell, num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
       embedding_size=self.embedding_size, embeddings=embeddings,
-      output_projection=output_projection, feed_previous=False
+      output_projection=output_projection, feed_previous=False,
+      initial_state_attention=True
     )
 
     # gradients and SGD update operation for training the model
@@ -264,7 +265,6 @@ class Seq2SeqModel(object):
     # TODO: variable sequence length
     # TODO: handle multiple encoders
     # TODO: check this initial_state_attention parameter (might cause the first word generated to be bad)
-    # TODO: check softmax vs no-softmax
     # TODO: test with initial_state_attention=True with previous code version
 
     bucket_id = len(self.buckets) - 1
