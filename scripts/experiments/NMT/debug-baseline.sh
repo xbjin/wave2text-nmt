@@ -10,7 +10,7 @@ layers=1
 steps_per_checkpoint=100
 steps_per_eval=500
 dev_size=100
-gpu_opts="--no-gpu --gpu-id 1"
+gpu_opts="--gpu-id 1"
 subwords=
 
 mkdir -p ${train_dir}
