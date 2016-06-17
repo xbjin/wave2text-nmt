@@ -264,8 +264,9 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
         encoder_inputs_trunc = [v[:encoder_size] for v in encoder_inputs]
         decoder_inputs_trunc = decoder_inputs[:decoder_size]
 
-        attention_states, encoder_state = multi_encoder(encoder_inputs_trunc, **kwargs)
-        bucket_outputs, _, _ = attention_decoder(decoder_inputs_trunc, encoder_state, attention_states, **kwargs)
+        attention_states, encoder_state = multi_encoder(encoder_inputs_trunc, reuse=reuse_, **kwargs)
+        bucket_outputs, _, _ = attention_decoder(decoder_inputs_trunc, encoder_state, attention_states,
+                                                 reuse=reuse_, **kwargs)
 
         outputs.append(bucket_outputs)
         losses.append(tf.models.rnn.seq2seq.sequence_loss(
