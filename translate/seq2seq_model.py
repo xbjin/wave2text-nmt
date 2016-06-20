@@ -306,8 +306,8 @@ class Seq2SeqModel(object):
     # TODO: handle multiple encoders
     # TODO: check this initial_state_attention parameter (might cause the first word generated to be bad)
     # TODO: test with initial_state_attention=True with previous code version
-    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    # bucket_id = len(self.buckets) - 1
+    # bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
+    bucket_id = len(self.buckets) - 1
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights = self.get_batch({bucket_id: data}, bucket_id, batch_size=1)
     encoder_size, decoder_size = self.buckets[bucket_id]
