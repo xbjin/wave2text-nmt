@@ -184,8 +184,6 @@ def main(args=None):
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio)
 
-  # return model
-
   utils.log('model parameters')
   for var in tf.all_variables():
     utils.log('  {} shape {}'.format(var.name, var.get_shape()))

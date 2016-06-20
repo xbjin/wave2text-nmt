@@ -189,21 +189,26 @@ class Seq2SeqModel(object):
 
     self.initial_state_placeholder = tf.placeholder(tf.float32, shape=[None, cell.state_size],
                                                     name='initial_state')
-    # FIXME: variable length
-    self.attention_states_placeholder = [tf.placeholder(tf.float32, shape=[None, 51, cell.output_size],
-                                         name='attention_states')]
-    self.attention_weights_placeholder = [tf.placeholder(tf.float32, shape=[None, 51], name='attention_weights')]
+    # FIXME: variable length or buckets
+    self.attention_states_placeholders = [
+      tf.placeholder(tf.float32, shape=[None, 51, cell.output_size], name='attention_states_{}'.format(name))
+      for name in self.encoder_names
+    ]
+    self.attention_weights_placeholders = [
+      tf.placeholder(tf.float32, shape=[None, 51], name='attention_weights_{}'.format(name))
+      for name in self.encoder_names
+    ]
 
     self.decoder_output, self.decoder_state, self.attention_weights = decoders.attention_decoder(
       decoder_inputs=self.decoder_inputs[:1],
       initial_state=self.initial_state_placeholder,
-      attention_states=self.attention_states_placeholder,
+      attention_states=self.attention_states_placeholders,
       encoder_names=self.encoder_names,
       decoder_name=self.decoder_name,
       cell=cell,
       num_decoder_symbols=self.trg_vocab_size,
       embedding_size=self.embedding_size,
-      attention_weights=self.attention_weights_placeholder,
+      attention_weights=self.attention_weights_placeholders,
       feed_previous=False,
       output_projection=output_projection,
       embeddings=embeddings,
@@ -302,10 +307,6 @@ class Seq2SeqModel(object):
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
   def beam_search_decoding(self, session, token_ids, beam_size, normalize=True):
-    # TODO: variable sequence length
-    # TODO: handle multiple encoders
-    # TODO: check this initial_state_attention parameter (might cause the first word generated to be bad)
-    # TODO: test with initial_state_attention=True with previous code version
     # bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
     bucket_id = len(self.buckets) - 1
     data = [token_ids + [[]]]
@@ -319,11 +320,12 @@ class Seq2SeqModel(object):
       input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
       input_feed[self.target_weights[l].name] = target_weights[l]
 
-    output_feed = [self.encoder_state, self.attention_states[0]]
-    state, attention_states = session.run(output_feed, input_feed)
+    output_feed = [self.encoder_state] + self.attention_states
+    res = session.run(output_feed, input_feed)
+    state, attention_states = res[0], res[1:]
 
     max_len = self.buckets[bucket_id][1]
-    attention_weights = np.zeros([1, encoder_size])
+    attention_weights = [np.zeros([1, encoder_size]) for _ in self.encoder_names]
     decoder_input = decoder_inputs[0]
 
     finished_hypotheses = []
@@ -334,15 +336,16 @@ class Seq2SeqModel(object):
 
     for _ in range(max_len):
       input_feed = {
-        self.attention_states_placeholder[0]: attention_states,
-        self.attention_weights_placeholder[0]: attention_weights,   # shape=(beam_size, max_len)
         self.initial_state_placeholder: state,   # shape=(beam_size, cell.state_size)
         self.decoder_inputs[0]: decoder_input    # shape=(beam_size)
       }
-      output_feed = [self.decoder_output, self.decoder_state, self.attention_weights[0]]
+      for i in range(self.encoder_count):
+        input_feed[self.attention_states_placeholders[i]] = attention_states[i]
+        input_feed[self.attention_weights_placeholders[i]] = attention_weights[i]
 
-      # FIXME: decoder_output are not probabilities
-      decoder_output, decoder_state, attention_weights = session.run(output_feed, input_feed)
+      output_feed = [self.decoder_output, self.decoder_state] + self.attention_weights
+      res = session.run(output_feed, input_feed)
+      decoder_output, decoder_state, attention_weights = res[0], res[1], res[2:]
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
