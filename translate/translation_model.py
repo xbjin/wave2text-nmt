@@ -17,7 +17,7 @@ class TranslationModel(object):
                learning_rate_decay_factor, multi_task=False, task_ratio=None):
     self.src_ext = src_ext
     self.trg_ext = trg_ext[0]
-    self.buckets = [(10, 5), (15, 10), (25, 20), (51, 51)]
+    self.buckets = [(10, 10), (15, 15), (25, 25), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
     self.multi_task = multi_task
     
@@ -178,8 +178,11 @@ class TranslationModel(object):
       utils.warn("line is too long ({} tokens), truncating".format(len_))
       token_ids = [ids_[:max_len] for ids_ in token_ids]
 
-    hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size)
-    trg_token_ids = hypotheses[0]
+    if beam_size <= 1:
+      trg_token_ids = self.model.greedy_decoding(sess, token_ids)
+    else:
+      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size)
+      trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output
     if utils.EOS_ID in trg_token_ids:

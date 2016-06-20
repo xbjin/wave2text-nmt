@@ -146,13 +146,28 @@ class Seq2SeqModel(object):
     self.outputs, self.losses = decoders.model_with_buckets(
       self.encoder_inputs, self.decoder_inputs, targets,
       self.target_weights, buckets, softmax_loss_function=softmax_loss_function,
-      reuse=reuse,
       encoder_names=self.encoder_names, decoder_name=self.decoder_name,
       cell=cell, num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
       embedding_size=self.embedding_size, embeddings=embeddings,
-      output_projection=output_projection, feed_previous=False,
-      initial_state_attention=True
+      output_projection=output_projection,
+      initial_state_attention=True, feed_previous=False, reuse=reuse
     )
+
+    # useful only for greedy decoding (beam size = 1)
+    self.greedy_outputs, _ = decoders.model_with_buckets(
+      self.encoder_inputs, self.decoder_inputs, targets,
+      self.target_weights, buckets, softmax_loss_function=softmax_loss_function,
+      encoder_names=self.encoder_names, decoder_name=self.decoder_name,
+      cell=cell, num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
+      embedding_size=self.embedding_size, embeddings=embeddings,
+      output_projection=output_projection,
+      initial_state_attention=True, feed_previous=True, reuse=True
+    )
+    if output_projection is not None:
+      self.greedy_outputs = [
+        [tf.matmul(output, output_projection[0]) + output_projection[1] for output in bucket_outputs]
+        for bucket_outputs in self.greedy_outputs
+      ]
 
     # gradients and SGD update operation for training the model
     params = tf.trainable_variables()
@@ -174,8 +189,6 @@ class Seq2SeqModel(object):
 
     self.initial_state_placeholder = tf.placeholder(tf.float32, shape=[None, cell.state_size],
                                                     name='initial_state')
-    # first dimension is batch size, second dimension is input length
-    # one for each encoder
     # FIXME: variable length
     self.attention_states_placeholder = [tf.placeholder(tf.float32, shape=[None, 51, cell.output_size],
                                          name='attention_states')]
@@ -262,17 +275,41 @@ class Seq2SeqModel(object):
     outputs = session.run(output_feed, input_feed)
     return outputs[0]  # losses
 
+  def greedy_decoding(self, session, token_ids):
+    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
+    # bucket_id = len(self.buckets) - 1
+    data = [token_ids + [[]]]
+    encoder_inputs, decoder_inputs, target_weights = self.get_batch({bucket_id: data}, bucket_id, batch_size=1)
+
+    encoder_size, decoder_size = self.buckets[bucket_id]
+
+    input_feed = {}
+    for i in xrange(self.encoder_count):
+      for l in xrange(encoder_size):
+        input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
+
+    for l in xrange(decoder_size):
+      input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
+      input_feed[self.target_weights[l].name] = target_weights[l]
+
+    # since our targets are decoder inputs shifted by one, we need one more
+    last_target = self.decoder_inputs[decoder_size].name
+    input_feed[last_target] = np.zeros_like(input_feed.values()[0])
+
+    output_feed = self.greedy_outputs[bucket_id][:decoder_size]
+
+    outputs = session.run(output_feed, input_feed)
+    return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
+
   def beam_search_decoding(self, session, token_ids, beam_size, normalize=True):
     # TODO: variable sequence length
     # TODO: handle multiple encoders
     # TODO: check this initial_state_attention parameter (might cause the first word generated to be bad)
     # TODO: test with initial_state_attention=True with previous code version
-
-    bucket_id = len(self.buckets) - 1
+    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
+    # bucket_id = len(self.buckets) - 1
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights = self.get_batch({bucket_id: data}, bucket_id, batch_size=1)
-
-    # FIXME: target weights all zero
     encoder_size, decoder_size = self.buckets[bucket_id]
     input_feed = {}
     for i in xrange(self.encoder_count):
