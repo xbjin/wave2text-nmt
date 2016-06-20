@@ -85,23 +85,31 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
 parser.add_argument('--beam-size', type=int, default=4, help='beam size for decoding')
 
 """
-TODO:
-- compare memory usage/speed between rnn.rnn and rnn.dynamic_rnn: dynamic_rnn seems to be slower
-- try getting rid of buckets
-- test convolutional attention
-- copy vocab to model dir
-- test beam-search decoder
-- model ensembling
+Features:
 - bi-directional rnn
-- AdaDelta
-- move to tensorflow 0.9
+- keep best checkpoint (in terms of BLEU score)
+- try getting rid of buckets (by using dynamic_rnn for encoder + custom dynamic rnn for decoder)
+- integrate external features into the decoder (e.g. language model)
+- audio features for speech recognition
+- model ensembling
 - local attention model
-- rename scopes (will break existing models)
 - pooling between encoder layers
-- integrate external features to the decoder (e.g. language model)
-- train dir/data dir should be optional
-- try initialization of decoder embeddings
 - use state_is_tuple=True in LSTM
+- copy vocab to model dir
+- train dir/data dir should be optional
+- AdaDelta
+- rename scopes to nicer names (+ do mapping of trained models)
+- move to tensorflow 0.9
+
+Benchmarks:
+- compare our baseline system with vanilla Tensorflow seq2seq
+- try training a state-of-the art model
+- analyze the impact of this initial_state_attention parameter (pain in the ass for beam-search decoding)
+- test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True,
+  and a single bucket (because our beam-search decoder uses these settings).
+- compare beam-search with beam_size=1 with greedy search (they should give the same results)
+- try reproducing the experiments of the WMT paper on neural post-editing
+- test convolutional attention (on speech recognition?)
 """
 
 
