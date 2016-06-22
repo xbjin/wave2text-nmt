@@ -14,11 +14,12 @@ from translate import seq2seq_model, utils
 
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False, task_ratio=None):
+               learning_rate_decay_factor, multi_task=False, task_ratio=None, num_best_checkpoints=5):
     self.src_ext = src_ext
     self.trg_ext = trg_ext[0]
     self.buckets = [(10, 10), (15, 15), (25, 25), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
+    self.num_best_checkpoints = num_best_checkpoints
     self.multi_task = multi_task
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
@@ -228,7 +229,22 @@ class TranslationModel(object):
       
       score = utils.bleu_score(bleu_script, hypotheses, references)
       utils.log(score)
-      
+
+      #saving checkpoints if good bleu
+      bb_file = os.path.join(self.checkpoint_dir,"best-bleus.txt")
+      scores = np.array([-1,-1])
+      if os.path.exists(bb_file):
+          scores = np.loadtxt(bb_file)
+      checkpoint_step = scores[:,1]      
+      #if global step alrdy in best bleu means we did --eval, we dont record entry
+      if self.global_step not in checkpoint_step:
+        newscore = np.array([[score.score,self.global_step]])
+        scores = np.concatenate((scores, newscore), axis=0)
+        scores = scores[scores[:,0].argsort()] #asc sort on bleu score
+        scores = scores[-self.num_best_checkpoints:] #taking x best scores
+        np.savetxt(bb_file,scores)     
+        
+        
       if output is not None:
         with open(output, 'w') as f:
           f.writelines(line + '\n' for line in hypotheses)
