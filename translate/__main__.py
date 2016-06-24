@@ -77,6 +77,8 @@ parser.add_argument('--log-file', help='log to this file instead of standard out
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
 parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
+parser.add_argument('--num-best-checkpoints', type=int, default=5, help='save the x best checkpoints')
+
 
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
@@ -204,7 +206,7 @@ def main(args=None):
   with tf.device(device):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
-                             task_ratio=args.task_ratio)
+                             task_ratio=args.task_ratio, num_best_checkpoints = args.num_best_checkpoints)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
