@@ -77,7 +77,7 @@ parser.add_argument('--log-file', help='log to this file instead of standard out
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
 parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
-parser.add_argument('--num-best-checkpoints', type=int, default=5, help='save the x best checkpoints')
+parser.add_argument('--keep-best', type=int, default=1, help='keep the n best models')
 
 
 # Tensorflow configuration
@@ -152,6 +152,8 @@ def main(args=None):
     args.trg_vocab_size = [args.vocab_size for _ in args.trg_ext]
 
   # enforce constraints
+  assert args.steps_per_eval % args.steps_per_checkpoint == 0, (
+    'steps-per-eval should be a multiple of steps-per-checkpoint')
   assert len(args.src_ext) == len(args.src_vocab_size), (
     '--src-vocab-size takes {} parameter(s)'.format(len(args.src_ext)))
   assert len(args.trg_ext) == len(args.trg_vocab_size), (
@@ -206,7 +208,7 @@ def main(args=None):
   with tf.device(device):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
-                             task_ratio=args.task_ratio, num_best_checkpoints = args.num_best_checkpoints)
+                             task_ratio=args.task_ratio, keep_best=args.keep_best)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():

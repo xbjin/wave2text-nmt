@@ -9,17 +9,18 @@ import time
 import sys
 import math
 import numpy as np
+import shutil
 from translate import seq2seq_model, utils
 
 
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False, task_ratio=None, num_best_checkpoints=5):
+               learning_rate_decay_factor, multi_task=False, task_ratio=None, keep_best=1):
     self.src_ext = src_ext
     self.trg_ext = trg_ext[0]
     self.buckets = [(10, 10), (15, 15), (25, 25), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
-    self.num_best_checkpoints = num_best_checkpoints
+    self.keep_best = keep_best
     self.multi_task = multi_task
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
@@ -86,7 +87,6 @@ class TranslationModel(object):
     self._read_data(filenames, max_train_size)
     
     # check read_data has been called
-    
     previous_losses = []
       
     losses = [0.0] * len(self.models)
@@ -140,17 +140,47 @@ class TranslationModel(object):
         
       if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
         utils.log('starting BLEU eval')
-        # TODO: save best models under a special checkpoint
         output = '{}.{}'.format(eval_output, global_step)
-        self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output)
+        score = self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output)
+        self._manage_best_checkpoints(global_step, score)
+
+  def _manage_best_checkpoints(self, step, score):
+    best_list_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
+    # try loading previous scores
+    try:
+      with open(best_list_filename) as f:
+        # list of pairs (score, step)
+        best_scores = [(float(line.split()[0]), line.split()[1]) for line in f]
+    except IOError:
+      best_scores = []
+
+    if all(score > score_ for score_, _ in best_scores):
+      # TODO: check that best-* files are not deleted by saver
+      shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}'.format(step)),
+                  os.path.join(self.checkpoint_dir, 'best-{}'.format(step)))
+      shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}.meta'.format(step)),
+                  os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step)))
+
+      best_scores = sorted(best_scores + [(score, step)], reverse=True)
+
+      for _, step_ in best_scores[self.keep_best:]:
+        # remove checkpoints that are not in the top anymore
+        try:
+          os.remove(os.path.join(self.checkpoint_dir, 'best-{}'.format(step_)))
+          os.remove(os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step_)))
+        except IOError:
+          pass
+
+      # save list of best scores
+      best_scores = best_scores[:self.keep_best]
+      with open(best_list_filename, 'w') as f:
+        for score_, step_ in best_scores:
+          f.write('{} {}\n'.format(score_, step_))
 
   def _train_step(self, sess, model):
     r = np.random.random_sample()
-    bucket_id = min(i for i in xrange(len(model.train_bucket_scales)) if model.train_bucket_scales[i] > r)          
-  
-    # get a batch and make a training step
-    encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.train_set, bucket_id)
-    return model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id)
+    bucket_id = min(i for i in xrange(len(model.train_bucket_scales)) if model.train_bucket_scales[i] > r)
+    return model.step(sess, model.train_set, bucket_id)
 
   def _eval_step(self, sess, model):
     # compute perplexity on dev set
@@ -159,10 +189,7 @@ class TranslationModel(object):
         utils.log("  eval: empty bucket {}".format(bucket_id))
         continue
 
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(model.dev_set, bucket_id)
-      eval_loss = model.step(sess, encoder_inputs, decoder_inputs, target_weights, bucket_id,
-                             forward_only=True)
-
+      eval_loss = model.step(sess, model.dev_set, bucket_id, forward_only=True)
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
@@ -227,27 +254,13 @@ class TranslationModel(object):
                     for src_sentences in zip(*src_files)]
       references = [line.strip().replace('@@ ', '') for line in trg_file]
       
-      score = utils.bleu_score(bleu_script, hypotheses, references)
-      utils.log(score)
-
-      #saving checkpoints if good bleu
-      bb_file = os.path.join(self.checkpoint_dir,"best-bleus.txt")
-      scores = np.array([-1,-1])
-      if os.path.exists(bb_file):
-          scores = np.loadtxt(bb_file)
-      checkpoint_step = scores[:,1]      
-      #if global step alrdy in best bleu means we did --eval, we dont record entry
-      if self.global_step not in checkpoint_step:
-        newscore = np.array([[score.score,self.global_step]])
-        scores = np.concatenate((scores, newscore), axis=0)
-        scores = scores[scores[:,0].argsort()] #asc sort on bleu score
-        scores = scores[-self.num_best_checkpoints:] #taking x best scores
-        np.savetxt(bb_file,scores)     
-        
-        
+      bleu = utils.bleu_score(bleu_script, hypotheses, references)
+      utils.log(bleu)
       if output is not None:
         with open(output, 'w') as f:
           f.writelines(line + '\n' for line in hypotheses)
+
+      return bleu.score
 
   def save(self, sess):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
