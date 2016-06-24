@@ -18,9 +18,8 @@ def unsafe_get_variable(name, *args, **kwargs):
       return tf.get_variable(name, *args, **kwargs)
 
 
-def multi_encoder(encoder_inputs, encoder_names, cell,
-                  num_encoder_symbols, embedding_size,
-                  embeddings=None, reuse=None, **kwargs):
+def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
+                  input_length=None, embeddings=None, reuse=None, **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
@@ -50,26 +49,26 @@ def multi_encoder(encoder_inputs, encoder_names, cell,
                                       trainable=trainable)
 
         encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
-        # encoder_inputs_ = tf.transpose(tf.reshape(tf.concat(0, encoder_inputs_),
-        #                                           [len(encoder_inputs_), -1, embedding_size]),
-        #                                perm=[1, 0, 2])
+        encoder_inputs_ = tf.transpose(tf.reshape(tf.concat(0, encoder_inputs_),
+                                                  [len(encoder_inputs_), -1, embedding_size]),
+                                       perm=[1, 0, 2])
 
         # TODO: sequence length as a placeholder
-        # encoder_outputs_, encoder_states_ = rnn.dynamic_rnn(cell, encoder_inputs_, dtype=tf.float32,
-        #                                                     parallel_iterations=1)
-        encoder_outputs_, encoder_states_ = rnn.rnn(cell, encoder_inputs_, dtype=tf.float32)
+        encoder_outputs_, encoder_states_ = rnn.dynamic_rnn(cell, encoder_inputs_, dtype=tf.float32,
+                                                            parallel_iterations=1)
+        # encoder_outputs_, encoder_states_ = rnn.rnn(cell, encoder_inputs_, dtype=tf.float32)
 
         encoder_states.append(encoder_states_)
         encoder_outputs.append(encoder_outputs_)
 
-    top_states = [[tf.reshape(e, [-1, 1, cell.output_size]) for e in v]
-                  for v in encoder_outputs]
-
-    attention_states = [tf.concat(1, v) for v in top_states]
+    # top_states = [[tf.reshape(e, [-1, 1, cell.output_size]) for e in v]
+    #               for v in encoder_outputs]
+    #
+    # attention_states = [tf.concat(1, v) for v in top_states]
 
     encoder_state = tf.add_n(encoder_states)
-    #return encoder_outputs, encoder_state
-    return attention_states, encoder_state
+    return encoder_outputs, encoder_state
+    #return attention_states, encoder_state
 
 
 def attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
@@ -201,6 +200,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
     outputs = []
     all_attention_weights = []
     prev = None
+    decoder_states = []
 
     if attention_weights is None:
       attention_weights = [
@@ -210,7 +210,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       for weights in attention_weights:
         weights.set_shape([None, attn_length])
 
-    if initial_state_attention:   # TODO: see if this matters
+    if initial_state_attention:
+      # for beam-search decoder (feed_dict substitution)
+      all_attention_weights.append(attention_weights)
       attns, attention_weights = attention_(initial_state, attention_weights)
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
@@ -231,6 +233,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       # run the RNN
       cell_output, state = cell(x, state)
       all_attention_weights.append(attention_weights)
+      decoder_states.append(state)
 
       # run the attention mechanism
       attns, attention_weights = attention_(state, attention_weights, reuse=initial_state_attention)
@@ -243,35 +246,80 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
         # we do not propagate gradients over the loop function
         prev = tf.stop_gradient(output)
 
-    return outputs, state, all_attention_weights
+    return outputs, decoder_states, all_attention_weights
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
                        buckets, softmax_loss_function=None, reuse=None, **kwargs):
+  attention_states, encoder_state = encoder_with_buckets(encoder_inputs, buckets, reuse, **kwargs)
+  outputs, _, _ = decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
+                                       buckets, reuse, **kwargs)
+  losses = loss_with_buckets(outputs, targets, weights, buckets,
+                             softmax_loss_function, reuse)
+  return outputs, losses
+
+
+def encoder_with_buckets(encoder_inputs, buckets, reuse=None, **kwargs):
   encoder_inputs_concat = [v for inputs in encoder_inputs for v in inputs]
-  all_inputs = encoder_inputs_concat + decoder_inputs + targets + weights
 
-  losses = []
-  outputs = []
+  attention_states = []
+  encoder_state = []
 
-  with tf.op_scope(all_inputs, 'model_with_buckets'):
+  with tf.op_scope(encoder_inputs_concat, 'model_with_buckets'):
     for j, bucket in enumerate(buckets):
       reuse_ = reuse or (True if j > 0 else None)
 
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
-        encoder_size, decoder_size = bucket
+        encoder_size, _ = bucket
 
         encoder_inputs_trunc = [v[:encoder_size] for v in encoder_inputs]
-        decoder_inputs_trunc = decoder_inputs[:decoder_size]
 
-        attention_states, encoder_state = multi_encoder(encoder_inputs_trunc,
-                                                        **kwargs)
-        bucket_outputs, _, _ = attention_decoder(decoder_inputs_trunc, encoder_state, attention_states,
-                                                 **kwargs)
+        bucket_attention_states, bucket_encoder_state = multi_encoder(
+          encoder_inputs_trunc, **kwargs)
+        attention_states.append(bucket_attention_states)
+        encoder_state.append(bucket_encoder_state)
+
+  return attention_states, encoder_state
+
+
+def decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
+                         buckets, reuse=None, **kwargs):
+  outputs = []
+  states = []
+  attention_weights = []
+
+  with tf.op_scope(decoder_inputs, 'model_with_buckets'):
+    for bucket, bucket_attention_states, bucket_encoder_state in zip(buckets,
+                                                                     attention_states,
+                                                                     encoder_state):
+      reuse_ = reuse or (True if bucket is not buckets[0] else None)
+
+      with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
+        _, decoder_size = bucket
+
+        bucket_outputs, bucket_states, bucket_attention_weights = attention_decoder(
+          decoder_inputs[:decoder_size], bucket_encoder_state,
+          bucket_attention_states, **kwargs)
 
         outputs.append(bucket_outputs)
+        states.append(bucket_states)
+        attention_weights.append(bucket_attention_weights)
+
+  return outputs, states, attention_weights
+
+def loss_with_buckets(outputs, targets, weights, buckets, softmax_loss_function=None,
+                      reuse=None):
+  losses = []
+
+  with tf.op_scope(targets + weights, 'model_with_buckets'):
+    for bucket, bucket_outputs in zip(buckets, outputs):
+      reuse_ = reuse or (True if bucket is not buckets[0] else None)
+
+      with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
+        _, decoder_size = bucket
+
         losses.append(tf.models.rnn.seq2seq.sequence_loss(
           bucket_outputs, targets[:decoder_size], weights[:decoder_size],
           softmax_loss_function=softmax_loss_function))
 
-  return outputs, losses
+  return losses

@@ -45,6 +45,8 @@ parser.add_argument('--size', type=int, default=1024, help='size of each layer')
 parser.add_argument('--embedding-size', type=int, help='size of the embeddings')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
 parser.add_argument('--vocab-size', type=int, default=30000)
+parser.add_argument('--num-samples', type=int, default=512, help='number of samples for sampled softmax (0 for '
+                                                                  'standard softmax')
 parser.add_argument('--src-vocab-size', type=int, nargs='+', help='source vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--trg-vocab-size', type=int, nargs='+', help='target vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
@@ -70,7 +72,7 @@ parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file e
                                                                   '(also used as decoder ids)')
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
 parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions for which to fix the embeddings during '
-                                                          'training')
+                                                          'training (deprecated, use --freeze-variables)')
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
@@ -83,8 +85,12 @@ parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU 
 parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=4, help='beam size for decoding')
+parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
+parser.add_argument('--bidir', action='store_true')
 
 """
+data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
+
 Features:
 - bi-directional rnn
 - keep best checkpoint (in terms of BLEU score)
@@ -103,13 +109,20 @@ Features:
 
 Benchmarks:
 - compare our baseline system with vanilla Tensorflow seq2seq
-- try training a state-of-the art model
+- try replicating Jean et al. (2015)'s results
 - analyze the impact of this initial_state_attention parameter (pain in the ass for beam-search decoding)
 - test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True,
   and a single bucket (because our beam-search decoder uses these settings).
 - compare beam-search with beam_size=1 with greedy search (they should give the same results)
 - try reproducing the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition?)
+
+
+Compare results with Jean et al.
+Data: WMT14 English->French, news-test-2014 for testing, news-test-2012+2013 for dev
+Pre-processing: max size 50, tokenization, no lowercasing, no normalization
+Settings: vocab size 30000, GRU units, bi-directional encoder, cell size 1000,
+embedding size 620, beam size 12, batch size 80, no softmax sampling, single bucket of size 51
 """
 
 
@@ -168,7 +181,8 @@ def main(args=None):
 
   # NMT model parameters
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
-                                         'src_vocab_size', 'trg_vocab_size', 'embedding_size'])
+                                         'src_vocab_size', 'trg_vocab_size', 'embedding_size',
+                                         'bidir', 'freeze_variables', 'num_samples'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
@@ -192,7 +206,7 @@ def main(args=None):
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio)
 
-  utils.log('model parameters')
+  utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
     utils.log('  {} shape {}'.format(var.name, var.get_shape()))
 
