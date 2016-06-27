@@ -191,7 +191,9 @@ class Seq2SeqModel(object):
 
     self.gradient_norms = []
     self.updates = []
-    opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+    # opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+    opt = tf.train.AdadeltaOptimizer()
+
     for bucket_loss in self.losses:
       gradients = tf.gradients(bucket_loss, params)
       clipped_gradients, norm = tf.clip_by_global_norm(gradients, max_gradient_norm)
@@ -399,10 +401,10 @@ class Seq2SeqModel(object):
       src_sentences = sentences[0:-1]
       trg_sentence = sentences[-1]
 
-      # Encoder inputs are padded and then reversed.
       for i, src_sentence in enumerate(src_sentences):
           encoder_pad = [utils.PAD_ID] * (encoder_size - len(src_sentence))
-          reversed_sentence = list(reversed(src_sentence + encoder_pad))
+          # reverse THEN pad (better for early stopping...)
+          reversed_sentence = list(reversed(src_sentence)) + encoder_pad
           encoder_inputs[i].append(reversed_sentence)
           encoder_input_length[i].append(len(src_sentence))
 
