@@ -155,9 +155,15 @@ class Seq2SeqModel(object):
       output_projection=output_projection, bidir=bidir, initial_state_attention=True
     )
 
-    self.attention_states, self.encoder_state = decoders.multi_encoder(
-      self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
+    # self.attention_states, self.encoder_state = decoders.multi_encoder(
+    #   self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
+    # )
+
+    self.attention_states, self.encoder_state = decoders.encoder_with_buckets(
+      self.encoder_inputs, buckets, reuse=reuse, encoder_input_length=self.encoder_input_length,
+      **parameters
     )
+
 
     self.outputs, self.decoder_states, self.attention_weights = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs,
@@ -205,7 +211,7 @@ class Seq2SeqModel(object):
     self.beam_search_outputs = [tf.nn.softmax(bucket_outputs[0]) for bucket_outputs in self.outputs]
 
   def step(self, session, data, bucket_id, forward_only=False):
-    encoder_size, decoder_size = self.buckets[-1][0], self.buckets[bucket_id][1]
+    encoder_size, decoder_size = self.buckets[bucket_id]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch(data,
                                                                                           bucket_id)
     # check if the sizes match
@@ -244,8 +250,7 @@ class Seq2SeqModel(object):
 
   def greedy_decoding(self, session, token_ids):
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    # bucket_id = len(self.buckets) - 1
-    encoder_size, decoder_size = self.buckets[-1][0], self.buckets[bucket_id][1]
+    encoder_size, decoder_size = self.buckets[bucket_id]
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch({bucket_id: data},
                                                                                           bucket_id, batch_size=1)
@@ -271,12 +276,11 @@ class Seq2SeqModel(object):
 
   def beam_search_decoding(self, session, token_ids, beam_size, normalize=True):
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    # bucket_id = len(self.buckets) - 1
-    encoder_size = self.buckets[-1][0]
+    encoder_size, _ = self.buckets[bucket_id]
+
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch({bucket_id: data}, bucket_id,
                                                                                           batch_size=1)
-
 
     input_feed = {}
     for i in xrange(self.encoder_count):
@@ -284,7 +288,7 @@ class Seq2SeqModel(object):
       for l in xrange(encoder_size):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
-    output_feed = [self.encoder_state] + self.attention_states
+    output_feed = [self.encoder_state[bucket_id]] + self.attention_states[bucket_id]
     res = session.run(output_feed, input_feed)
     state, attention_states = res[0], res[1:]
 
@@ -300,11 +304,11 @@ class Seq2SeqModel(object):
 
     for _ in range(max_len):
       input_feed  = {
-        self.encoder_state: state,
+        self.encoder_state[bucket_id]: state,
         self.decoder_inputs[0]: decoder_input  # in beam-search decoder, we only feed the first input
       }
       for i in range(self.encoder_count):
-        input_feed[self.attention_states[i]] = attention_states[i]
+        input_feed[self.attention_states[bucket_id][i]] = attention_states[i]
         input_feed[self.attention_weights[bucket_id][0][i]] = attention_weights[i]
 
       output_feed = [self.beam_search_outputs[bucket_id],
@@ -380,7 +384,6 @@ class Seq2SeqModel(object):
       the constructed batch that has the proper format to call step(...) later.
     """
     encoder_size, decoder_size = self.buckets[bucket_id]
-    encoder_size = self.buckets[-1][0]
     decoder_inputs = []
     batch_size = batch_size or self.batch_size
 
