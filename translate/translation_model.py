@@ -18,7 +18,7 @@ class TranslationModel(object):
                learning_rate_decay_factor, multi_task=False, task_ratio=None, keep_best=1):
     self.src_ext = src_ext
     self.trg_ext = trg_ext[0]
-    self.buckets = [(10, 10), (15, 15), (25, 25), (51, 51)]
+    self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
     self.multi_task = multi_task
@@ -145,16 +145,18 @@ class TranslationModel(object):
         self._manage_best_checkpoints(global_step, score)
 
   def _manage_best_checkpoints(self, step, score):
-    best_list_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
+    score_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
     # try loading previous scores
     try:
-      with open(best_list_filename) as f:
+      with open(score_filename) as f:
         # list of pairs (score, step)
-        best_scores = [(float(line.split()[0]), line.split()[1]) for line in f]
+        scores = [(float(line.split()[0]), int(line.split()[1])) for line in f]
     except IOError:
-      best_scores = []
+      scores = []
 
-    if all(score > score_ for score_, _ in best_scores):
+    best_scores = sorted(scores, reverse=True)[:self.keep_best]
+
+    if any(score_ < score for score_, _ in best_scores):
       # TODO: check that best-* files are not deleted by saver
       shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}'.format(step)),
                   os.path.join(self.checkpoint_dir, 'best-{}'.format(step)))
@@ -171,11 +173,12 @@ class TranslationModel(object):
         except IOError:
           pass
 
-      # save list of best scores
-      best_scores = best_scores[:self.keep_best]
-      with open(best_list_filename, 'w') as f:
-        for score_, step_ in best_scores:
-          f.write('{} {}\n'.format(score_, step_))
+    # save bleu scores
+    scores.append((score, step))
+
+    with open(score_filename, 'w') as f:
+      for score_, step_ in scores:
+        f.write('{} {}\n'.format(score_, step_))
 
   def _train_step(self, sess, model):
     r = np.random.random_sample()

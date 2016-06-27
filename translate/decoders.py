@@ -19,7 +19,7 @@ def unsafe_get_variable(name, *args, **kwargs):
 
 
 def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
-                  encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=False,
+                  encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=True,
                   **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
@@ -55,35 +55,34 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
         encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
 
         if bidir:
+          # TODO: wrong output shape, not compatible with `dynamic_rnn`
           raise NotImplementedError
           # encoder_outputs_, encoder_state_fw, encoder_state_bw = rnn.bidirectional_rnn(cell, cell, encoder_inputs_,
           #                                                                      sequence_length=encoder_input_length_,
           #                                                                      dtype=tf.float32)
           # encoder_state_ = rnn_cell.linear([encoder_state_fw, encoder_state_bw], cell.state_size, True)
-        elif not dynamic:
-          encoder_outputs_, encoder_state_ = rnn.rnn(cell, encoder_inputs_, sequence_length=encoder_input_length_,
-                                                     dtype=tf.float32)
-        else:
-          # not working
-          raise NotImplementedError
+        elif dynamic:
           encoder_inputs_ = tf.transpose(
             tf.reshape(tf.concat(0, encoder_inputs_), [len(encoder_inputs_), -1, embedding_size]),
             perm=[1, 0, 2])
           encoder_outputs_, encoder_state_ = rnn.dynamic_rnn(cell, encoder_inputs_,
                                                               sequence_length=encoder_input_length_,
                                                               dtype=tf.float32, parallel_iterations=1)
+        else:
+          encoder_outputs_, encoder_state_ = rnn.rnn(cell, encoder_inputs_, sequence_length=encoder_input_length_,
+                                                     dtype=tf.float32)
 
         encoder_states.append(encoder_state_)
         encoder_outputs.append(encoder_outputs_)
 
     encoder_state = tf.add_n(encoder_states)
 
-    if bidir or not dynamic:
+    if dynamic and not bidir:
+      attention_states = encoder_outputs
+    else:
       top_states = [[tf.reshape(e, [-1, 1, cell.output_size]) for e in v]
                     for v in encoder_outputs]
       attention_states = [tf.concat(1, v) for v in top_states]
-    else:
-      attention_states = encoder_outputs
 
     return attention_states, encoder_state
 
@@ -158,6 +157,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       feed_previous=False, output_projection=None, embeddings=None,
                       initial_state_attention=False,
                       attention_filters=0, attention_filter_length=2, reuse=None, **kwargs):
+  # TODO: dynamic RNN
   embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
   if embedding_initializer is None:
     embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))

@@ -191,8 +191,8 @@ class Seq2SeqModel(object):
 
     self.gradient_norms = []
     self.updates = []
-    # opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-    opt = tf.train.AdadeltaOptimizer()
+    opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+    # opt = tf.train.AdadeltaOptimizer(learning_rate=learning_rate)  # TODO (doesn't seem to work as well)
 
     for bucket_loss in self.losses:
       gradients = tf.gradients(bucket_loss, params)
