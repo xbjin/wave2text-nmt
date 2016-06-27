@@ -9,12 +9,13 @@ then
     exit 1
 fi
 
-data_dir=data/WMT14_fr-en_subwords
-train_dir=model/WMT14_fr-en_subwords
+data_dir=data/news-commentary_fr-en
+train_dir=model/news-commentary_fr-en
 gpu_id=${GPU}
 embedding_size=1024
-vocab_size=30000
-layers=1
+vocab_size=40000
+num_samples=512
+layers=3
 
 mkdir -p ${train_dir}
 mkdir -p ${data_dir}
@@ -30,47 +31,31 @@ fi
 if test "$(ls -A "${data_dir}")"; then
     echo "warning: data dir is not empty, skipping data preparation"
 else
-echo "### downloading data"
 
-# assume that data is in data/raw, until we fix fetch-corpus.py
-corpus_train=data/raw/WMT14.fr-en
-corpus_dev=data/raw/news-dev.fr-en
-corpus_test=data/raw/news-test.fr-en
+corpus_train=data/raw/news-commentary.fr-en
+corpus_dev=data/raw/ntst1213.fr-en
+corpus_test=data/raw/ntst14.fr-en
 
 echo "### pre-processing data"
 
-# train corpus is already tokenized, so two step processing
 ./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
---normalize-punk \
---no-tokenize \
 --max 50 \
---subwords \
 --vocab-size ${vocab_size}
 
 ./scripts/prepare-data.py ${corpus_dev} fr en ${data_dir} --mode all \
 --suffix dev \
 --verbose \
---normalize-punk \
+--no-tokenize \
 --max 50 \
---subwords \
---vocab-path ${data_dir}/vocab \
---bpe-path ${data_dir}/bpe
+--vocab-path ${data_dir}/vocab
 
 ./scripts/prepare-data.py ${corpus_test} fr en ${data_dir} --mode prepare \
 --suffix test \
 --verbose \
---normalize-punk \
+--no-tokenize \
 --max 50 \
---subwords \
---vocab-path ${data_dir}/vocab \
---bpe-path ${data_dir}/bpe
-
-head -n1000 ${data_dir}/dev.ids.en > ${data_dir}/dev.1000.ids.en
-head -n1000 ${data_dir}/dev.ids.fr > ${data_dir}/dev.1000.ids.fr
-
-head -n1000 ${data_dir}/dev.en > ${data_dir}/dev.1000.en
-head -n1000 ${data_dir}/dev.fr > ${data_dir}/dev.1000.fr
+--vocab-path ${data_dir}/vocab
 fi
 
 echo "### training model"
@@ -87,6 +72,7 @@ python -m translate ${data_dir} ${train_dir} \
 --log-file ${train_dir}/log.txt \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
---steps-per-eval 4000 \
---dev-prefix dev.1000 \
---allow-growth
+--steps-per-eval 2000 \
+--dev-prefix dev \
+--allow-growth \
+--beam-size 1   # for fast eval during training

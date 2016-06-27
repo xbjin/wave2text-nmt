@@ -105,26 +105,19 @@ Features:
 - use state_is_tuple=True in LSTM
 - copy vocab to model dir
 - train dir/data dir should be optional
-- AdaDelta
+- AdaDelta, AdaGrad
 - rename scopes to nicer names (+ do mapping of trained models)
 - move to tensorflow 0.9
 
 Benchmarks:
-- compare our baseline system with vanilla Tensorflow seq2seq
+- compare our baseline system with vanilla Tensorflow seq2seq, and GroundHog/blocks-examples
 - try replicating Jean et al. (2015)'s results
 - analyze the impact of this initial_state_attention parameter (pain in the ass for beam-search decoding)
-- test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True,
-  and a single bucket (because our beam-search decoder uses these settings).
+- test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True.
 - compare beam-search with beam_size=1 with greedy search (they should give the same results)
 - try reproducing the experiments of the WMT paper on neural post-editing
-- test convolutional attention (on speech recognition?)
+- test convolutional attention (on speech recognition)
 
-
-Compare results with Jean et al.
-Data: WMT14 English->French, news-test-2014 for testing, news-test-2012+2013 for dev
-Pre-processing: max size 50, tokenization, no lowercasing, no normalization
-Settings: vocab size 30000, GRU units, bi-directional encoder, cell size 1000,
-embedding size 620, beam size 12, batch size 80, no softmax sampling, single bucket of size 51
 """
 
 

@@ -9,8 +9,8 @@ then
     exit 1
 fi
 
-data_dir=data/WMT14_en-fr_big
-train_dir=model/WMT14_en-fr_big
+data_dir=data/WMT14_en-fr_subwords
+train_dir=model/WMT14_en-fr_subwords
 gpu_id=${GPU}
 embedding_size=1024
 vocab_size=40000
@@ -45,7 +45,8 @@ echo "### pre-processing data"
 --max 50 \
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
---vocab-size ${vocab_size}
+--vocab-size ${vocab_size} \
+--subwords
 fi
 
 echo "### training model"

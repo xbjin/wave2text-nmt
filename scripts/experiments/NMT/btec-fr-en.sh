@@ -9,8 +9,8 @@ then
     exit 1
 fi
 
-data_dir=data/WMT14_en-fr_big
-train_dir=model/WMT14_en-fr_big
+data_dir=data/btec_fr-en
+train_dir=model/btec_fr-en
 gpu_id=${GPU}
 embedding_size=1024
 vocab_size=40000
@@ -32,16 +32,14 @@ if test "$(ls -A "${data_dir}")"; then
     echo "warning: data dir is not empty, skipping data preparation"
 else
 
-corpus_train=data/raw/WMT14.fr-en
-corpus_dev=data/raw/ntst1213.fr-en
-corpus_test=data/raw/ntst14.fr-en
+corpus_train=data/raw/btec.fr-en
+corpus_dev=data/raw/btec-dev.fr-en
+corpus_test=data/raw/btec-test.fr-en
 
 echo "### pre-processing data"
 
-# no special preprocessing, and corpus is already tokenized
-./scripts/prepare-data.py ${corpus_train} en fr ${data_dir} --mode all \
+./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
---no-tokenize \
 --max 50 \
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
@@ -56,13 +54,13 @@ python -m translate ${data_dir} ${train_dir} \
 --size ${embedding_size} \
 --num-layers ${layers} \
 --vocab-size ${vocab_size} \
---src-ext en \
---trg-ext fr \
+--src-ext fr \
+--trg-ext en \
 --verbose \
 --log-file ${train_dir}/log.txt \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
---steps-per-eval 4000 \
+--steps-per-eval 2000 \
 --dev-prefix dev \
 --allow-growth \
 --beam-size 1   # for fast eval during training
