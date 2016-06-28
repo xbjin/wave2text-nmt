@@ -13,9 +13,10 @@ data_dir=data/btec_fr-en
 train_dir=model/btec_fr-en
 gpu_id=${GPU}
 embedding_size=512
-vocab_size=40000
+vocab_size=10000
 num_samples=512
-layers=2
+layers=1
+dropout_rate=0.5
 
 mkdir -p ${train_dir}
 mkdir -p ${data_dir}
@@ -41,6 +42,7 @@ echo "### pre-processing data"
 ./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
 --max 50 \
+--lowercase \
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
 --vocab-size ${vocab_size}
@@ -63,4 +65,5 @@ python -m translate ${data_dir} ${train_dir} \
 --steps-per-eval 2000 \
 --dev-prefix dev \
 --allow-growth \
+--dropout-rate ${dropout_rate}
 --beam-size 1   # for fast eval during training

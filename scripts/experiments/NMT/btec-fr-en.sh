@@ -42,6 +42,7 @@ echo "### pre-processing data"
 ./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
 --max 50 \
+--lowercase \
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
 --vocab-size ${vocab_size}
