@@ -170,7 +170,7 @@ class TranslationModel(object):
         try:
           os.remove(os.path.join(self.checkpoint_dir, 'best-{}'.format(step_)))
           os.remove(os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step_)))
-        except IOError:
+        except OSError:
           pass
 
     # save bleu scores

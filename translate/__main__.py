@@ -86,7 +86,7 @@ parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
 parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU memory to use', default=1.0)
 parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
                     action='store_true')
-parser.add_argument('--beam-size', type=int, default=4, help='beam size for decoding')
+parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
 parser.add_argument('--bidir', action='store_true')
 

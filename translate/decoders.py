@@ -19,7 +19,7 @@ def unsafe_get_variable(name, *args, **kwargs):
 
 
 def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
-                  encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=True,
+                  encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=False,
                   **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
