@@ -60,7 +60,7 @@ python -m translate ${data_dir} ${train_dir} \
 --log-file ${train_dir}/log.txt \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
---steps-per-eval 2000 \
+--steps-per-eval 4000 \
 --dev-prefix dev \
 --allow-growth \
 --beam-size 1   # for fast eval during training

@@ -9,13 +9,13 @@ then
     exit 1
 fi
 
-data_dir=data/news-commentary_fr-en
-train_dir=model/news-commentary_fr-en
+data_dir=data/btec_fr-en
+train_dir=model/btec_fr-en
 gpu_id=${GPU}
-embedding_size=1024
+embedding_size=512
 vocab_size=40000
 num_samples=512
-layers=3
+layers=2
 
 mkdir -p ${train_dir}
 mkdir -p ${data_dir}
@@ -32,35 +32,18 @@ if test "$(ls -A "${data_dir}")"; then
     echo "warning: data dir is not empty, skipping data preparation"
 else
 
-corpus_train=data/raw/news-commentary.fr-en
-corpus_dev=data/raw/ntst1213.fr-en
-corpus_test=data/raw/ntst14.fr-en
+corpus_train=data/raw/btec.fr-en
+corpus_dev=data/raw/btec-dev.fr-en
+corpus_test=data/raw/btec-test.fr-en
 
 echo "### pre-processing data"
 
 ./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
 --max 50 \
+--dev-corpus ${corpus_dev} \
+--test-corpus ${corpus_test} \
 --vocab-size ${vocab_size}
-
-./scripts/prepare-data.py ${corpus_dev} fr en ${data_dir} --mode all \
---suffix dev \
---verbose \
---no-tokenize \
---max 50 \
---vocab-path ${data_dir}/vocab
-
-./scripts/prepare-data.py ${corpus_test} fr en ${data_dir} --mode prepare \
---suffix test \
---verbose \
---no-tokenize \
---max 50 \
---vocab-path ${data_dir}/vocab
-
-head -n2000 ${data_dir}/dev.ids.en > ${data_dir}/dev.2000.ids.en
-head -n2000 ${data_dir}/dev.ids.fr > ${data_dir}/dev.2000.ids.fr
-head -n2000 ${data_dir}/dev.en > ${data_dir}/dev.2000.en
-head -n2000 ${data_dir}/dev.fr > ${data_dir}/dev.2000.fr
 fi
 
 echo "### training model"
@@ -77,7 +60,7 @@ python -m translate ${data_dir} ${train_dir} \
 --log-file ${train_dir}/log.txt \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
---steps-per-eval 4000 \
---dev-prefix dev.2000 \
+--steps-per-eval 2000 \
+--dev-prefix dev \
 --allow-growth \
 --beam-size 1   # for fast eval during training

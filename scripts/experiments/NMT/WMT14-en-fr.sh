@@ -46,6 +46,11 @@ echo "### pre-processing data"
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
 --vocab-size ${vocab_size}
+
+head -n2000 ${data_dir}/dev.ids.en > ${data_dir}/dev.2000.ids.en
+head -n2000 ${data_dir}/dev.ids.fr > ${data_dir}/dev.2000.ids.fr
+head -n2000 ${data_dir}/dev.en > ${data_dir}/dev.2000.en
+head -n2000 ${data_dir}/dev.fr > ${data_dir}/dev.2000.fr
 fi
 
 echo "### training model"
@@ -63,6 +68,6 @@ python -m translate ${data_dir} ${train_dir} \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
 --steps-per-eval 4000 \
---dev-prefix dev \
---allow-growth \
+--dev-prefix dev.2000 \
+--learning-rate-decay-factor 0.99 \
 --beam-size 1   # for fast eval during training

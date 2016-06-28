@@ -94,19 +94,16 @@ parser.add_argument('--bidir', action='store_true')
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
 Features:
+- model ensembling + language model
 - bi-directional rnn
-- keep best checkpoint (in terms of BLEU score)
 - try getting rid of buckets (by using dynamic_rnn for encoder + custom dynamic rnn for decoder)
-- integrate external features into the decoder (e.g. language model)
 - audio features for speech recognition
-- model ensembling
 - local attention model
 - pooling between encoder layers
-- use state_is_tuple=True in LSTM
 - copy vocab to model dir
 - train dir/data dir should be optional
 - AdaDelta, AdaGrad
-- rename scopes to nicer names (+ do mapping of trained models)
+- rename scopes to nicer names + do mapping of existing models
 - move to tensorflow 0.9
 
 Benchmarks:
@@ -114,10 +111,8 @@ Benchmarks:
 - try replicating Jean et al. (2015)'s results
 - analyze the impact of this initial_state_attention parameter (pain in the ass for beam-search decoding)
 - test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True.
-- compare beam-search with beam_size=1 with greedy search (they should give the same results)
 - try reproducing the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
-
 """
 
 
