@@ -74,7 +74,7 @@ class TranslationModel(object):
 
     if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
            zip(self.src_vocabs + [self.trg_vocab], self.parameters.src_vocab_size + [self.parameters.trg_vocab_size])):
-      utils.warn('inconsistent vocabulary size')
+      utils.warn('warning: inconsistent vocabulary size')
 
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
@@ -306,7 +306,7 @@ def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
     # load last checkpoint
     ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
     if ckpt is not None:
-      filename = os.path.join(checkpoint_dir, ckpt.model_checkpoint_path)
+      filename = ckpt.model_checkpoint_path
   else:
     checkpoint_dir = os.path.dirname(filename)
 
