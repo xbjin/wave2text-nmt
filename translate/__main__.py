@@ -77,8 +77,8 @@ parser.add_argument('--log-file', help='log to this file instead of standard out
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
 parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
-parser.add_argument('--keep-best', type=int, default=1, help='keep the n best models')
-
+parser.add_argument('--keep-best', type=int, default=4, help='keep the n best models')
+parser.add_argument('--remove-unk', help='remove UNK symbols from decoder output', action='store_true')
 
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
@@ -210,16 +210,17 @@ def main(args=None):
     model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
     if args.decode:
-      model.decode(sess, filenames, args.beam_size, output=args.output)
+      model.decode(sess, filenames, args.beam_size, output=args.output, remove_unk=args.remove_unk)
     elif args.eval:
-      model.evaluate(sess, filenames, args.beam_size, bleu_script=args.bleu_script, output=args.output)
+      model.evaluate(sess, filenames, args.beam_size, bleu_script=args.bleu_script, output=args.output,
+                     remove_unk=args.remove_unk)
     elif args.export_embeddings:
       model.export_embeddings(sess, filenames, extensions=args.export_embeddings,
                               output_prefix=os.path.join(args.train_dir, args.embedding_prefix))
     elif args.train:
       try:
         model.train(sess, filenames, args.beam_size, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
-                    args.max_train_size, eval_output)
+                    args.max_train_size, eval_output, remove_unk=args.remove_unk)
       except KeyboardInterrupt:
         utils.log('exiting...')
         model.save(sess)

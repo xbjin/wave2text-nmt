@@ -22,6 +22,7 @@ class TranslationModel(object):
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
     self.multi_task = multi_task
+    self.parameters = parameters
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
     self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
@@ -71,6 +72,10 @@ class TranslationModel(object):
     self.trg_vocab = utils.initialize_vocabulary(filenames.trg_vocab)
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
 
+    if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
+           zip(self.src_vocabs + [self.trg_vocab], self.parameters.src_vocab_size + [self.parameters.trg_vocab_size])):
+      utils.warn('inconsistent vocabulary size')
+
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
     if not reset:
@@ -78,11 +83,12 @@ class TranslationModel(object):
       load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
       
     if checkpoints is not None:  # load partial checkpoints
-      for checkpoint in checkpoints:
-        load_checkpoint(sess, checkpoint, blacklist=('feed_previous', 'learning_rate', 'global_step'))
+      for checkpoint in checkpoints:  # checkpoint files to load
+        load_checkpoint(sess, None, checkpoint,
+                        blacklist=('feed_previous', 'learning_rate', 'global_step'))
 
   def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
-            max_train_size=None, eval_output=None):
+            max_train_size=None, eval_output=None, remove_unk=False):
     utils.log('reading training and development data')
     self._read_data(filenames, max_train_size)
     
@@ -141,7 +147,8 @@ class TranslationModel(object):
       if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
         utils.log('starting BLEU eval')
         output = '{}.{}'.format(eval_output, global_step)
-        score = self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output)
+        score = self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output,
+                              remove_unk=remove_unk)
         self._manage_best_checkpoints(global_step, score)
 
   def _manage_best_checkpoints(self, step, score):
@@ -196,7 +203,7 @@ class TranslationModel(object):
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
-  def _decode_sentence(self, sess, src_sentences, beam_size=4):
+  def _decode_sentence(self, sess, src_sentences, beam_size=4, remove_unk=False):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
     tokens = [sentence.split() for sentence in src_sentences]
@@ -219,14 +226,18 @@ class TranslationModel(object):
     if utils.EOS_ID in trg_token_ids:
       trg_token_ids = trg_token_ids[:trg_token_ids.index(utils.EOS_ID)]
 
-    trg_tokens = [self.trg_vocab.reverse[i] for i in trg_token_ids]
+    trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
+                  for i in trg_token_ids]
+
+    if remove_unk:
+      trg_tokens = [token for token in trg_tokens if token != utils._UNK]
 
     if self.lookup_dict is not None:
       trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
 
     return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
-  def decode(self, sess, filenames, beam_size, output=None):
+  def decode(self, sess, filenames, beam_size, output=None, remove_unk=False):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
       
@@ -237,7 +248,7 @@ class TranslationModel(object):
         
         for src_sentences in zip(*files):
           # trg_sentence = self._decode_sentence(sess, src_sentences)
-          trg_sentence = self._decode_sentence(sess, src_sentences, beam_size)
+          trg_sentence = self._decode_sentence(sess, src_sentences, beam_size, remove_unk)
           output_file.write(trg_sentence + '\n')
           output_file.flush()
           
@@ -245,7 +256,7 @@ class TranslationModel(object):
         if output_file is not None:
           output_file.close()
 
-  def evaluate(self, sess, filenames, beam_size, bleu_script, on_dev=False, output=None):
+  def evaluate(self, sess, filenames, beam_size, bleu_script, on_dev=False, output=None, remove_unk=False):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
     
@@ -253,7 +264,7 @@ class TranslationModel(object):
     trg_filename = filenames.trg_dev if on_dev else filenames.trg_test
 
     with utils.open_files(src_filenames) as src_files, open(trg_filename) as trg_file:
-      hypotheses = [self._decode_sentence(sess, src_sentences, beam_size)
+      hypotheses = [self._decode_sentence(sess, src_sentences, beam_size, remove_unk)
                     for src_sentences in zip(*src_files)]
       references = [line.strip().replace('@@ ', '') for line in trg_file]
       
@@ -275,7 +286,6 @@ class TranslationModel(object):
 
     for ext in extensions:
       vocab = utils.initialize_vocabulary(vocab_filenames[ext])
-      #import pdb; pdb.set_trace()
       embedding = embeddings[ext]
       output_filename = '{}.{}'.format(output_prefix, ext)
 
@@ -287,8 +297,19 @@ class TranslationModel(object):
           output_file.write('{} {}\n'.format(word, vec_str))
 
 
-def load_checkpoint(sess, checkpoint_dir, blacklist=()):
-  """ `checkpoint_dir` should be unique to this model """
+def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
+  """ `checkpoint_dir` should be unique to this model
+  if `filename` is None, we load last checkpoint, otherwise
+    we ignore `checkpoint_dir` and load the given checkpoint file.
+  """
+  if filename is None:
+    # load last checkpoint
+    ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
+    if ckpt is not None:
+      filename = os.path.join(checkpoint_dir, ckpt.model_checkpoint_path)
+  else:
+    checkpoint_dir = os.path.dirname(filename)
+
   var_file = os.path.join(checkpoint_dir, 'vars.pkl')
   
   if os.path.exists(var_file):
@@ -301,10 +322,9 @@ def load_checkpoint(sess, checkpoint_dir, blacklist=()):
   # remove variables from blacklist
   variables = [var for var in variables if not any(var.name.startswith(prefix) for prefix in blacklist)]
 
-  ckpt = tf.train.get_checkpoint_state(checkpoint_dir)  # loads last checkpoint
-  if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-    utils.log('reading model parameters from {}'.format(ckpt.model_checkpoint_path))
-    tf.train.Saver(variables).restore(sess, ckpt.model_checkpoint_path)  
+  if filename is not None:
+    utils.log('reading model parameters from {}'.format(filename))
+    tf.train.Saver(variables).restore(sess, filename)
 
     utils.debug('retrieved parameters ({})'.format(len(variables)))
     for var in variables:

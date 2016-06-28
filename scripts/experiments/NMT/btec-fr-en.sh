@@ -13,9 +13,10 @@ data_dir=data/btec_fr-en
 train_dir=model/btec_fr-en
 gpu_id=${GPU}
 embedding_size=1024
-vocab_size=40000
+vocab_size=10000   # greater than actual size
 num_samples=512
-layers=3
+layers=1
+dropout_rate=0.5
 
 mkdir -p ${train_dir}
 mkdir -p ${data_dir}
@@ -60,7 +61,8 @@ python -m translate ${data_dir} ${train_dir} \
 --log-file ${train_dir}/log.txt \
 --gpu-id ${GPU} \
 --steps-per-checkpoint 1000 \
---steps-per-eval 4000 \
+--steps-per-eval 2000 \
 --dev-prefix dev \
 --allow-growth \
+--dropout-rate ${dropout_rate}
 --beam-size 1   # for fast eval during training
