@@ -180,8 +180,6 @@ def main(args=None):
   checkpoint_prefix = (args.checkpoint_prefix or
                        'checkpoints.{}_{}'.format('-'.join(args.src_ext), '-'.join(args.trg_ext)))
   checkpoint_dir = os.path.join(args.train_dir, checkpoint_prefix)
-  checkpoints = args.load_checkpoints and [os.path.join(args.train_dir, checkpoint)
-                                           for checkpoint in args.load_checkpoints]
   eval_output = os.path.join(args.train_dir, 'eval.out')
   
   device = None
@@ -207,7 +205,7 @@ def main(args=None):
   config.gpu_options.per_process_gpu_memory_fraction = args.mem_fraction
 
   with tf.Session(config=config) as sess:
-    model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+    model.initialize(sess, args.load_checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
     if args.decode:
       model.decode(sess, filenames, args.beam_size, output=args.output, remove_unk=args.remove_unk)
