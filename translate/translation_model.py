@@ -170,6 +170,13 @@ class TranslationModel(object):
       shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}.meta'.format(step)),
                   os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step)))
 
+      if all(score_ < score for score_, _ in best_scores):
+        # keep link to best model
+        os.symlink(os.path.join(self.checkpoint_dir, 'best-{}'.format(step)),
+                   os.path.join(self.checkpoint_dir, 'best'))
+        os.symlink(os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step)),
+                   os.path.join(self.checkpoint_dir, 'best.meta'))
+
       best_scores = sorted(best_scores + [(score, step)], reverse=True)
 
       for _, step_ in best_scores[self.keep_best:]:
