@@ -182,7 +182,7 @@ class Seq2SeqModel(object):
     if freeze_variables is None:
       freeze_variables = []
 
-    variable_names = [var.name for var in tf.all_variables()]
+    variable_names = set([var.name for var in tf.all_variables()])
     assert all(name in variable_names for name in freeze_variables), \
       'you cannot freeze a variable that doesn\'t exist'
 

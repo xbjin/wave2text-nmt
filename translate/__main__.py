@@ -113,6 +113,10 @@ Benchmarks:
 - test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True.
 - try reproducing the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
+
+Evaluation:
+scripts/scoring/score.rb --ref {ref} --hyp-detok {hyp} --print
+java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
 """
 
 
