@@ -93,7 +93,7 @@ def sentence_to_token_ids(sentence, vocabulary):
 
 
 def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix,
-                  load_embeddings, multi_task=False, replace_unk=False, **kwargs):
+                  load_embeddings, multi_task=False, replace_unk=False, use_lm=False, **kwargs):
   trg_ext = trg_ext[0]    # FIXME: for now
   
   train_path = os.path.join(data_dir, train_prefix)
@@ -123,13 +123,15 @@ def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embeddin
   src_test = ["{}.{}".format(test_path, ext) for ext in src_ext] if test_path is not None else None
   trg_test = "{}.{}".format(test_path, trg_ext) if test_path is not None else None
   lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
-
+  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(train_path,trg_ext)) if use_lm else None
+  
+  
   embedding_path = os.path.join(data_dir, embedding_prefix)
   embeddings = ['{}.{}'.format(embedding_path, ext) for ext in src_ext + [trg_ext]]
 
   filenames = namedtuple('filenames', ['src_train', 'trg_train', 'src_dev', 'trg_dev', 'src_vocab', 'trg_vocab',
                                        'src_train_ids', 'trg_train_ids', 'src_dev_ids', 'trg_dev_ids',
-                                       'src_test', 'trg_test', 'lookup_dict', 'embeddings'])
+                                       'src_test', 'trg_test', 'lookup_dict', 'lm_path', 'embeddings'])
 
   return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})
 
