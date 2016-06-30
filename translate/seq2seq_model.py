@@ -321,7 +321,7 @@ class Seq2SeqModel(object):
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
-      log_lm_score) / 2
+      log_lm_score = 0
       scores_ = scores[:, None] - (np.log(decoder_output) + log_lm_score) / 2
       scores_ = scores_.flatten()
       flat_ids = np.argsort(scores_)[:beam_size]
