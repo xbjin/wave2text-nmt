@@ -72,6 +72,7 @@ class TranslationModel(object):
     self.trg_vocab = utils.initialize_vocabulary(filenames.trg_vocab)
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
 
+    # FIXME
     if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
            zip(self.src_vocabs + [self.trg_vocab], self.parameters.src_vocab_size + [self.parameters.trg_vocab_size])):
       utils.warn('warning: inconsistent vocabulary size')
@@ -171,11 +172,15 @@ class TranslationModel(object):
                   os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step)))
 
       if all(score_ < score for score_, _ in best_scores):
-        # keep link to best model
-        os.symlink(os.path.join(self.checkpoint_dir, 'best-{}'.format(step)),
-                   os.path.join(self.checkpoint_dir, 'best'))
-        os.symlink(os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step)),
-                   os.path.join(self.checkpoint_dir, 'best.meta'))
+        path = os.path.abspath(os.path.join(self.checkpoint_dir, 'best'))
+        try:  # remove old links
+          os.remove(path)
+          os.remove('{}.meta'.format(path))
+        except OSError:
+          pass
+        # make symbolic links to best model
+        os.symlink('{}-{}'.format(path, step), path)
+        os.symlink('{}-{}.meta'.format(path, step), '{}.meta'.format(path))
 
       best_scores = sorted(best_scores + [(score, step)], reverse=True)
 
@@ -287,6 +292,7 @@ class TranslationModel(object):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
 
   def export_embeddings(self, sess, filenames, extensions, output_prefix):
+    # FIXME
     utils.debug('exporting embeddings')
     vocab_filenames = dict(zip(self.src_ext + [self.trg_ext], filenames.src_vocab + [filenames.trg_vocab]))
     embeddings = self.model.get_embeddings(sess)

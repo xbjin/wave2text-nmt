@@ -32,7 +32,7 @@ parser.add_argument('train_dir', default='model', help='training directory')
 parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
-parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings')
+parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings') # FIXME
 parser.add_argument('--debug', action='store_true')
 
 # Model parameters
@@ -71,12 +71,10 @@ parser.add_argument('--src-ext', nargs='+', default=['fr',], help='source file e
 parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file extension(s) '
                                                                   '(also used as decoder ids)')
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
-parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions for which to fix the embeddings during '
-                                                          'training (deprecated, use --freeze-variables)')
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
-parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
+parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')  # FIXME
 parser.add_argument('--keep-best', type=int, default=4, help='keep the n best models')
 parser.add_argument('--remove-unk', help='remove UNK symbols from decoder output', action='store_true')
 

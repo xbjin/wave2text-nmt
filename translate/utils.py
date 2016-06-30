@@ -153,7 +153,7 @@ def bleu_score(bleu_script, hypotheses, references):
 
 
 def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size, size,
-                    load_embeddings=None, fixed_embeddings=None, norm_embeddings=None, **kwargs):
+                    load_embeddings=None, norm_embeddings=None, **kwargs):
   extensions = src_ext + trg_ext
   vocab_sizes = src_vocab_size + trg_vocab_size
   vocab_paths = filenames.src_vocab + [filenames.trg_vocab]
@@ -161,12 +161,7 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
   embeddings = {}  
 
   for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes, vocab_paths, filenames.embeddings):
-    embedding_type = namedtuple('embedding', 'value trainable')
-    fixed = fixed_embeddings is not None and ext in fixed_embeddings
-
     if load_embeddings is None or ext not in load_embeddings:
-      if fixed:
-        embeddings[ext] = embedding_type(value=None, trainable=False)
       continue
 
     with open(filename) as file_:
@@ -184,12 +179,12 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
         embedding[index] = d[word]
       else:
         embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
-    
-    embedding_type = namedtuple('embedding', 'value trainable')
+
     if norm_embeddings:
-      embedding = embedding / np.linalg.norm(embedding)
-      log('embedding of lang ' + ext + 'normalized')
-    embeddings[ext] = embedding_type(embedding, not fixed)
+      embedding /= np.linalg.norm(embedding)
+      debug('embedding of lang ' + ext + 'normalized')
+
+    embeddings[ext] = embedding
 
   return embeddings
 
