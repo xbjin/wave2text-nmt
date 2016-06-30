@@ -244,7 +244,7 @@ def initialize_lookup_dict(lookup_dict_path):
     return dict(line.split() for line in f)
 
 
-def initialize_lm_gram(lm_path):
+def initialize_lm_gram(lm_path, lm_order):
     gram_list = []
     gram_dict = {}
     arpa_header = ["\\data\\","ngram ", "-grams:", "\\end\\"]       
@@ -260,7 +260,9 @@ def initialize_lm_gram(lm_path):
             else:
                 arr = map(str.rstrip, line.split("\t"))
                 gram = arr.pop(1)
-                gram_dict[gram] = arr   
+                gram_dict[gram] = arr 
+    if len(gram_list) != lm_order:
+        warn("lm_order arg ({}) doesnt match lm order in arpa file ({})".format(lm_order, len(gram_list)))  
     return gram_list
     #print(len(gram_list))
     #for i in range(len(gram_list)):

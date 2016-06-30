@@ -276,7 +276,7 @@ class Seq2SeqModel(object):
     outputs = session.run(output_feed, input_feed)
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
-  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True):
+  def beam_search_decoding(self, session, token_ids, beam_size, lm_gram, normalize=True):
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
     encoder_size, _ = self.buckets[bucket_id]
 
@@ -321,7 +321,8 @@ class Seq2SeqModel(object):
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
-      scores_ = scores[:, None] - np.log(decoder_output)
+      log_lm_score) / 2
+      scores_ = scores[:, None] - (np.log(decoder_output) + log_lm_score) / 2
       scores_ = scores_.flatten()
       flat_ids = np.argsort(scores_)[:beam_size]
 

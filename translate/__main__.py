@@ -200,7 +200,7 @@ def main(args=None):
   with tf.device(device):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
-                             task_ratio=args.task_ratio, keep_best=args.keep_best)
+                             task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
