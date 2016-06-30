@@ -277,7 +277,7 @@ class Seq2SeqModel(object):
     outputs = session.run(output_feed, input_feed)
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
-  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, weights=None):
+  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, ngrams=None, weights=None):
     if not isinstance(session, list):
       session = [session]
 
@@ -328,6 +328,8 @@ class Seq2SeqModel(object):
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
+      log_lm_score = 0  # TODO: score shouldn't be a scalar, but a vector of shape [vocab_size]
+
       scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output],
                                              axis=0, weights=weights)
       scores_ = scores_.flatten()

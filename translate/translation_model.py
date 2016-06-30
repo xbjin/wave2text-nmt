@@ -15,12 +15,13 @@ from translate import seq2seq_model, utils
 
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False, task_ratio=None, keep_best=1):
+               learning_rate_decay_factor, multi_task=False, task_ratio=None, keep_best=1, lm_order=3):
     self.src_ext = src_ext
     self.trg_ext = trg_ext[0]
     self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
+    self.lm_order = lm_order
     self.multi_task = multi_task
     self.parameters = parameters
     
@@ -71,7 +72,7 @@ class TranslationModel(object):
     self.src_vocabs = [utils.initialize_vocabulary(vocab_path) for vocab_path in filenames.src_vocab]
     self.trg_vocab = utils.initialize_vocabulary(filenames.trg_vocab)
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
-    self.lm_gram = filenames.lm_path and utils.read_ngrams(filenames.lm_path)
+    self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.lm_order)
 
     # FIXME
     if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
@@ -232,7 +233,7 @@ class TranslationModel(object):
     if beam_size <= 1 and not isinstance(sess, list):
       trg_token_ids = self.model.greedy_decoding(sess, token_ids)
     else:
-      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size)
+      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams)
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output
@@ -272,7 +273,8 @@ class TranslationModel(object):
   def evaluate(self, sess, filenames, beam_size, bleu_script, on_dev=False, output=None, remove_unk=False):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
-    
+    utils.debug('external language model {}'.format('OFF' if self.ngrams is None else 'ON'))
+
     src_filenames = filenames.src_dev if on_dev else filenames.src_test
     trg_filename = filenames.trg_dev if on_dev else filenames.trg_test
 

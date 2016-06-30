@@ -243,16 +243,16 @@ def initialize_lookup_dict(lookup_dict_path):
     return dict(line.split() for line in f)
 
 
-def read_ngrams(lm_path):
+def read_ngrams(lm_path, lm_order):
   gram_list = []
   gram_dict = {}
-  arpa_header = ["\\data\\", "ngram ", "-grams:", "\\end\\"]
+  arpa_header = ["\\data\\","ngram ", "-grams:", "\\end\\"]
   with open(lm_path) as f:
     for i in range(5):
       next(f)
     for line in f:
-      if any(s in line for s in arpa_header):
-       pass
+      if True in any(s in line for s in arpa_header):
+         pass
       elif line in ['\n', '\r\n']:
         gram_list.append(gram_dict)
         gram_dict = {}
@@ -260,16 +260,11 @@ def read_ngrams(lm_path):
         arr = map(str.rstrip, line.split("\t"))
         gram = arr.pop(1)
         gram_dict[gram] = arr
+  # FIXME: is the lm_order parameter necessary, since we can infer it from the arpa file?
+  if len(gram_list) != lm_order:
+    warn("lm_order arg ({}) doesn't match lm order in arpa file ({})".format(lm_order, len(gram_list)))
   return gram_list
-    #print(len(gram_list))
-    #for i in range(len(gram_list)):
-    #    print(len(gram_list[i]))
-#    103051
-#    2542775
-#    10870418
-    #ngram 1=103051
-    #ngram 2=2542775
-    #ngram 3=10870418 : OK !
+
 
 def create_logger(log_file=None):                
   formatter = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%m/%d %H:%M:%S')
