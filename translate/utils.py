@@ -249,6 +249,34 @@ def initialize_lookup_dict(lookup_dict_path):
     return dict(line.split() for line in f)
 
 
+def initialize_lm_gram(lm_path):
+    gram_list = []
+    gram_dict = {}
+    arpa_header = ["\\data\\","ngram ", "-grams:", "\\end\\"]       
+    with open(lm_path) as f:
+        for i in range(5):
+            next(f)
+        for line in f:
+            if True in any(s in line for s in arpa_header):
+                 pass
+            elif line in ['\n', '\r\n']:            
+                gram_list.append(gram_dict)
+                gram_dict = {}
+            else:
+                arr = map(str.rstrip, line.split("\t"))
+                gram = arr.pop(1)
+                gram_dict[gram] = arr   
+    return gram_list
+    #print(len(gram_list))
+    #for i in range(len(gram_list)):
+    #    print(len(gram_list[i]))
+#    103051
+#    2542775
+#    10870418
+    #ngram 1=103051
+    #ngram 2=2542775
+    #ngram 3=10870418 : OK !
+
 def create_logger(log_file=None):                
   formatter = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%m/%d %H:%M:%S')
   if log_file is not None:

@@ -79,6 +79,9 @@ parser.add_argument('--replace-unk', help='replace unk symbols in the output (re
 parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
 parser.add_argument('--keep-best', type=int, default=4, help='keep the n best models')
 parser.add_argument('--remove-unk', help='remove UNK symbols from decoder output', action='store_true')
+parser.add_argument('--use-lm', help='use language model', action='store_true')
+parser.add_argument('--lm-order', type=int, default=3, help='N-gram of language model')
+
 
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
@@ -88,7 +91,8 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-parser.add_argument('--bidir', action='store_true')
+
+
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
