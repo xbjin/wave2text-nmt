@@ -24,7 +24,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
-  embeddings = {name: (tf.convert_to_tensor(embedding.value, dtype=tf.float32), embedding.trainable)
+  embeddings = {name: (tf.convert_to_tensor(embedding, dtype=tf.float32))
                 for name, embedding in embeddings.items()}
 
   encoder_states = []
@@ -40,7 +40,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
     for encoder_name, encoder_inputs_, encoder_input_length_, num_encoder_symbols_ in zip(
         encoder_names, encoder_inputs, encoder_input_length, num_encoder_symbols):
       with tf.variable_scope('encoder_{}'.format(encoder_name)):
-        initializer, trainable = embeddings.get(encoder_name, (None, True))
+        initializer = embeddings.get(encoder_name)
         if initializer is None:
           initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
           embedding_shape = [num_encoder_symbols_, embedding_size]
@@ -49,8 +49,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
 
         with tf.device('/cpu:0'):
           embedding = tf.get_variable('embedding', shape=embedding_shape,
-                                      initializer=initializer,
-                                      trainable=trainable)
+                                      initializer=initializer)
 
         encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
 
@@ -158,7 +157,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       initial_state_attention=False,
                       attention_filters=0, attention_filter_length=2, reuse=None, **kwargs):
   # TODO: dynamic RNN
-  embedding_initializer, embedding_trainable = embeddings.get(decoder_name, (None, True))
+  embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
     embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
     embedding_shape = [num_decoder_symbols, embedding_size]
@@ -183,8 +182,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
 
     with tf.device('/cpu:0'):
       embedding = tf.get_variable('embedding', shape=embedding_shape,
-                                  initializer=embedding_initializer,
-                                  trainable=embedding_trainable)
+                                  initializer=embedding_initializer)
 
     def extract_argmax_and_embed(prev):
       """ Loop_function that extracts the symbol from prev and embeds it """

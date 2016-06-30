@@ -32,7 +32,7 @@ parser.add_argument('train_dir', default='model', help='training directory')
 parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
-parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings')
+parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings') # FIXME
 parser.add_argument('--debug', action='store_true')
 
 # Model parameters
@@ -71,12 +71,10 @@ parser.add_argument('--src-ext', nargs='+', default=['fr',], help='source file e
 parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file extension(s) '
                                                                   '(also used as decoder ids)')
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
-parser.add_argument('--fixed-embeddings', nargs='+', help='list of extensions for which to fix the embeddings during '
-                                                          'training (deprecated, use --freeze-variables)')
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
                     action='store_true')
-parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')
+parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')  # FIXME
 parser.add_argument('--keep-best', type=int, default=4, help='keep the n best models')
 parser.add_argument('--remove-unk', help='remove UNK symbols from decoder output', action='store_true')
 parser.add_argument('--use-lm', help='use language model', action='store_true')
@@ -117,6 +115,10 @@ Benchmarks:
 - test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True.
 - try reproducing the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
+
+Evaluation:
+scripts/scoring/score.rb --ref {ref} --hyp-detok {hyp} --print
+java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
 """
 
 
@@ -184,8 +186,6 @@ def main(args=None):
   checkpoint_prefix = (args.checkpoint_prefix or
                        'checkpoints.{}_{}'.format('-'.join(args.src_ext), '-'.join(args.trg_ext)))
   checkpoint_dir = os.path.join(args.train_dir, checkpoint_prefix)
-  checkpoints = args.load_checkpoints and [os.path.join(args.train_dir, checkpoint)
-                                           for checkpoint in args.load_checkpoints]
   eval_output = os.path.join(args.train_dir, 'eval.out')
   
   device = None
@@ -211,7 +211,7 @@ def main(args=None):
   config.gpu_options.per_process_gpu_memory_fraction = args.mem_fraction
 
   with tf.Session(config=config) as sess:
-    model.initialize(sess, checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+    model.initialize(sess, args.load_checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
     if args.decode:
       model.decode(sess, filenames, args.beam_size, output=args.output, remove_unk=args.remove_unk)

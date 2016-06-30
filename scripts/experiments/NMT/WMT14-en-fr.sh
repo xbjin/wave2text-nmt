@@ -15,7 +15,7 @@ gpu_id=${GPU}
 embedding_size=1024
 vocab_size=40000
 num_samples=512
-layers=3
+layers=2
 
 mkdir -p ${train_dir}
 mkdir -p ${data_dir}
@@ -70,4 +70,4 @@ python -m translate ${data_dir} ${train_dir} \
 --steps-per-eval 4000 \
 --dev-prefix dev.2000 \
 --learning-rate-decay-factor 0.99 \
---beam-size 1   # for fast eval during training
+--beam-size 1

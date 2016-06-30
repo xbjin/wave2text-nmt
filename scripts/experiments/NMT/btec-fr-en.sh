@@ -66,4 +66,21 @@ python -m translate ${data_dir} ${train_dir} \
 --dev-prefix dev \
 --allow-growth \
 --dropout-rate ${dropout_rate}
---beam-size 1   # for fast eval during training
+--beam-size 1
+
+## evaluation
+# mkdir btec-eval
+# python2 -m translate ${data_dir} ${train_dir} \
+# --decode ${data_dir}/test --output btec-eval/test.beam_1.out \
+# --reset --load-checkpoints ${train_dir}/checkpoints.fr_en/best \
+# --vocab-size ${vocab_size} --size ${embedding_size} --beam-size 1 -v \
+# scripts/multi-bleu.perl ${data_dir}/test.en < btec-eval/test.beam_1.out
+
+## finetuning
+# python2 -m translate ${data_dir} model/btec_fr-en_finetuned/ \
+# --train \
+# --load-checkpoints ${train_dir}/checkpoints.fr_en/best \
+# --vocab-size ${vocab_size} --size ${embedding_size} --beam-size 1 -v --train-prefix dev \
+# --dropout-rate ${dropout_rate} \
+# --freeze-variables multi_encoder/encoder_fr/embedding attention_decoder/embedding \
+# --allow-growth
