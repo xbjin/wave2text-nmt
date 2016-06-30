@@ -71,7 +71,7 @@ class TranslationModel(object):
     self.src_vocabs = [utils.initialize_vocabulary(vocab_path) for vocab_path in filenames.src_vocab]
     self.trg_vocab = utils.initialize_vocabulary(filenames.trg_vocab)
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
-    self.lm_gram = filenames.lm_path and utils.initialize_lm_gram(filenames.lm_path)
+    self.lm_gram = filenames.lm_path and utils.read_ngrams(filenames.lm_path)
 
     # FIXME
     if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
@@ -81,13 +81,13 @@ class TranslationModel(object):
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
     if not reset:
-      blacklist = ('feed_previous', 'learning_rate',) if reset_learning_rate else ('feed_previous',)
+      blacklist = ('learning_rate',) if reset_learning_rate else ()
       load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
-      
+
     if checkpoints is not None:  # load partial checkpoints
       for checkpoint in checkpoints:  # checkpoint files to load
         load_checkpoint(sess, None, checkpoint,
-                        blacklist=('feed_previous', 'learning_rate', 'global_step'))
+                        blacklist=('learning_rate', 'global_step'))
 
   def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
             max_train_size=None, eval_output=None, remove_unk=False):
@@ -229,7 +229,7 @@ class TranslationModel(object):
       utils.warn("line is too long ({} tokens), truncating".format(len_))
       token_ids = [ids_[:max_len] for ids_ in token_ids]
 
-    if beam_size <= 1:
+    if beam_size <= 1 and not isinstance(sess, list):
       trg_token_ids = self.model.greedy_decoding(sess, token_ids)
     else:
       hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size)

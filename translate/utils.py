@@ -123,9 +123,8 @@ def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embeddin
   src_test = ["{}.{}".format(test_path, ext) for ext in src_ext] if test_path is not None else None
   trg_test = "{}.{}".format(test_path, trg_ext) if test_path is not None else None
   lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
-  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(train_path,trg_ext)) if use_lm else None
-  
-  
+  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(train_path, trg_ext)) if use_lm else None
+
   embedding_path = os.path.join(data_dir, embedding_prefix)
   embeddings = ['{}.{}'.format(embedding_path, ext) for ext in src_ext + [trg_ext]]
 
@@ -244,24 +243,24 @@ def initialize_lookup_dict(lookup_dict_path):
     return dict(line.split() for line in f)
 
 
-def initialize_lm_gram(lm_path):
-    gram_list = []
-    gram_dict = {}
-    arpa_header = ["\\data\\","ngram ", "-grams:", "\\end\\"]       
-    with open(lm_path) as f:
-        for i in range(5):
-            next(f)
-        for line in f:
-            if True in any(s in line for s in arpa_header):
-                 pass
-            elif line in ['\n', '\r\n']:            
-                gram_list.append(gram_dict)
-                gram_dict = {}
-            else:
-                arr = map(str.rstrip, line.split("\t"))
-                gram = arr.pop(1)
-                gram_dict[gram] = arr   
-    return gram_list
+def read_ngrams(lm_path):
+  gram_list = []
+  gram_dict = {}
+  arpa_header = ["\\data\\", "ngram ", "-grams:", "\\end\\"]
+  with open(lm_path) as f:
+    for i in range(5):
+      next(f)
+    for line in f:
+      if any(s in line for s in arpa_header):
+       pass
+      elif line in ['\n', '\r\n']:
+        gram_list.append(gram_dict)
+        gram_dict = {}
+      else:
+        arr = map(str.rstrip, line.split("\t"))
+        gram = arr.pop(1)
+        gram_dict[gram] = arr
+  return gram_list
     #print(len(gram_list))
     #for i in range(len(gram_list)):
     #    print(len(gram_list[i]))

@@ -49,7 +49,8 @@ class Seq2SeqModel(object):
   def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
                src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size, use_lstm=True,
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
-               bidir=False, freeze_variables=None, **kwargs):
+               bidir=False, freeze_variables=None, attention_filters=0,
+               attention_filter_length=0, **kwargs):
     """Create the model.
 
     Args:
@@ -102,9 +103,10 @@ class Seq2SeqModel(object):
       softmax_loss_function = sampled_loss
 
     # create the internal multi-layer cell for our RNN
-    single_cell = rnn_cell.GRUCell(size)
     if use_lstm:
       single_cell = rnn_cell.BasicLSTMCell(size)
+    else:
+      single_cell = rnn_cell.GRUCell(size)
     cell = single_cell
 
     if dropout_rate > 0:   # TODO: check that this works
@@ -163,7 +165,6 @@ class Seq2SeqModel(object):
       self.encoder_inputs, buckets, reuse=reuse, encoder_input_length=self.encoder_input_length,
       **parameters
     )
-
 
     self.outputs, self.decoder_states, self.attention_weights = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs,
@@ -276,14 +277,16 @@ class Seq2SeqModel(object):
     outputs = session.run(output_feed, input_feed)
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
-  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True):
+  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, weights=None):
+    if not isinstance(session, list):
+      session = [session]
+
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
     encoder_size, _ = self.buckets[bucket_id]
 
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch({bucket_id: data}, bucket_id,
                                                                                           batch_size=1)
-
     input_feed = {}
     for i in xrange(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
@@ -291,12 +294,12 @@ class Seq2SeqModel(object):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
     output_feed = [self.encoder_state[bucket_id]] + self.attention_states[bucket_id]
-    res = session.run(output_feed, input_feed)
-    state, attention_states = res[0], res[1:]
+    res = [session_.run(output_feed, input_feed) for session_ in session]
+    state, attention_states = zip(*[(res_[0], res_[1:]) for res_ in res])
 
     max_len = self.buckets[bucket_id][1]
-    attention_weights = [np.zeros([1, encoder_size]) for _ in self.encoder_names]
-    decoder_input = decoder_inputs[0]   # GO symbol
+    attention_weights = [[np.zeros([1, encoder_size]) for _ in self.encoder_names] for _ in session]
+    decoder_input = decoder_inputs[0]  # GO symbol
 
     finished_hypotheses = []
     finished_scores = []
@@ -305,23 +308,28 @@ class Seq2SeqModel(object):
     scores = np.zeros([1], dtype=np.float32)
 
     for _ in range(max_len):
-      input_feed  = {
-        self.encoder_state[bucket_id]: state,
-        self.decoder_inputs[0]: decoder_input  # in beam-search decoder, we only feed the first input
-      }
-      for i in range(self.encoder_count):
-        input_feed[self.attention_states[bucket_id][i]] = attention_states[i]
-        input_feed[self.attention_weights[bucket_id][0][i]] = attention_weights[i]
+      # each session/model has its own input and output
+      input_feed = [{
+          self.encoder_state[bucket_id]: state_,
+          self.decoder_inputs[0]: decoder_input  # in beam-search decoder, we only feed the first input
+        } for state_ in state]
+
+      for input_feed_, attention_states_, attention_weights_ in zip(input_feed, attention_states, attention_weights):
+        for i in range(self.encoder_count):
+          input_feed_[self.attention_states[bucket_id][i]] = attention_states_[i]
+          input_feed_[self.attention_weights[bucket_id][0][i]] = attention_weights_[i]
 
       output_feed = [self.beam_search_outputs[bucket_id],
                      self.decoder_states[bucket_id][0]] + self.attention_weights[bucket_id][1]
-      res = session.run(output_feed, input_feed)
-      decoder_output, decoder_state, attention_weights = res[0], res[1], res[2:]
+
+      res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
+      decoder_output, decoder_state, attention_weights = zip(*[(res_[0], res_[1], res_[2:]) for res_ in res])
 
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
-      scores_ = scores[:, None] - np.log(decoder_output)
+      scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output],
+                                             axis=0, weights=weights)
       scores_ = scores_.flatten()
       flat_ids = np.argsort(scores_)[:beam_size]
 
@@ -330,7 +338,7 @@ class Seq2SeqModel(object):
 
       new_hypotheses = []
       new_scores = []
-      new_state = []
+      new_state = [[] for _ in session]
       new_input = []
 
       for flat_id, hyp_id, token_id in zip(flat_ids, hyp_ids, token_ids_):
@@ -338,17 +346,19 @@ class Seq2SeqModel(object):
         score = scores_[flat_id]
 
         if token_id == utils.EOS_ID:
-          beam_size -= 1
+          # early stop: hypothesis is finished, it is thus unnecessary to keep expanding it
+          beam_size -= 1  # number of possible hypotheses is reduced by one
           finished_hypotheses.append(hypothesis)
           finished_scores.append(score)
         else:
           new_hypotheses.append(hypothesis)
-          new_state.append(decoder_state[hyp_id])
+          for i, decoder_state_ in enumerate(decoder_state):
+            new_state[i].append(decoder_state_[hyp_id])
           new_scores.append(score)
           new_input.append(token_id)
 
       hypotheses = new_hypotheses
-      state = np.array(new_state)
+      state = [np.array(new_state_) for new_state_ in new_state]
       scores = np.array(new_scores)
       decoder_input = np.array(new_input, dtype=np.int32)
 
@@ -358,9 +368,10 @@ class Seq2SeqModel(object):
     hypotheses += finished_hypotheses
     scores = np.concatenate([scores, finished_scores])
 
-    if normalize:  # normalize score by length
+    if normalize:  # normalize score by length (to encourage longer sentences)
       scores /= map(len, hypotheses)
 
+    # sort best-list by score
     sorted_idx = np.argsort(scores)
     hypotheses = np.array(hypotheses)[sorted_idx].tolist()
     scores = scores[sorted_idx].tolist()
@@ -441,7 +452,6 @@ class Seq2SeqModel(object):
       batch_weights.append(batch_weight)
 
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights, encoder_input_length
-
 
   def read_data(self, train_set, buckets, max_train_size=None):
     src_train_ids, trg_train_ids = train_set

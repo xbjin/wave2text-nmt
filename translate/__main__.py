@@ -65,7 +65,11 @@ parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the
 parser.add_argument('--load-embeddings', nargs='+', help='list of extensions for which to load the embeddings')
 parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --load-checkpoints and --reset are '
                                                 'not specified, will try to load earlier versions of this checkpoint')
-parser.add_argument('--load-checkpoints', nargs='+', help='list of checkpoints to load (in loading order)')
+parser.add_argument('--checkpoints', nargs='+', help='list of checkpoints to load (in loading order)')
+
+parser.add_argument('--ensemble', help='use an ensemble of models while decoding, whose parameters '
+                                       'are those specified by the --load-checkpoints parameter', action='store_true')
+
 parser.add_argument('--src-ext', nargs='+', default=['fr',], help='source file extension(s) '
                                                                   '(also used as encoder ids)')
 parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file extension(s) '
@@ -80,7 +84,6 @@ parser.add_argument('--remove-unk', help='remove UNK symbols from decoder output
 parser.add_argument('--use-lm', help='use language model', action='store_true')
 parser.add_argument('--lm-order', type=int, default=3, help='N-gram of language model')
 
-
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
@@ -89,7 +92,7 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-
+parser.add_argument('--bidir', action='store_true')
 
 
 """
@@ -124,6 +127,14 @@ java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEO
 
 def main(args=None):
   args = parser.parse_args(args)
+
+  if args.debug:   # toy settings
+    args.vocab_size = 10000
+    args.size = 128
+    args.steps_per_checkpoint = 50
+    args.steps_per_eval = 200
+    args.verbose = True
+    args.batch_size = 32
 
   if not os.path.exists(args.train_dir):
     os.makedirs(args.train_dir)
@@ -211,7 +222,15 @@ def main(args=None):
   config.gpu_options.per_process_gpu_memory_fraction = args.mem_fraction
 
   with tf.Session(config=config) as sess:
-    model.initialize(sess, args.load_checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+    if args.ensemble and (args.eval or args.decode):
+      # create one session for each model in the ensemble
+      sess = [tf.Session() for _ in args.checkpoints]
+      for sess_, checkpoint in zip(sess, args.checkpoints):
+        model.initialize(sess_, [checkpoint], reset=True)
+    else:
+      model.initialize(sess, args.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+
+    # TODO: load best checkpoint for eval and decode
 
     if args.decode:
       model.decode(sess, filenames, args.beam_size, output=args.output, remove_unk=args.remove_unk)

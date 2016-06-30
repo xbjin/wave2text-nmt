@@ -68,19 +68,24 @@ python -m translate ${data_dir} ${train_dir} \
 --dropout-rate ${dropout_rate}
 --beam-size 1
 
+exit   # rest of the script is to run by hand
+
 ## evaluation
-# mkdir btec-eval
-# python2 -m translate ${data_dir} ${train_dir} \
-# --decode ${data_dir}/test --output btec-eval/test.beam_1.out \
-# --reset --load-checkpoints ${train_dir}/checkpoints.fr_en/best \
-# --vocab-size ${vocab_size} --size ${embedding_size} --beam-size 1 -v \
+mkdir ${train_dir}/eval
+python2 -m translate ${data_dir} ${train_dir} \
+--decode ${data_dir}/test --beam-size 4 --output ${train_dir}/eval/test.beam_4.out \
+--reset --checkpoints ${train_dir}/checkpoints.fr_en/best \
+--vocab-size ${vocab_size} --size ${embedding_size} -v
+
 # scripts/multi-bleu.perl ${data_dir}/test.en < btec-eval/test.beam_1.out
+scripts/scoring/score.rb --hyp-detok ${train_dir}/eval/test.beam_4.out --ref ${data_dir}/test.en --print
 
 ## finetuning
-# python2 -m translate ${data_dir} model/btec_fr-en_finetuned/ \
-# --train \
-# --load-checkpoints ${train_dir}/checkpoints.fr_en/best \
-# --vocab-size ${vocab_size} --size ${embedding_size} --beam-size 1 -v --train-prefix dev \
-# --dropout-rate ${dropout_rate} \
-# --freeze-variables multi_encoder/encoder_fr/embedding attention_decoder/embedding \
-# --allow-growth
+python2 -m translate ${data_dir} ${train_dir}_tuned/ \
+--train -v \
+--checkpoints ${train_dir}/checkpoints.fr_en/best \
+--vocab-size ${vocab_size} --size ${embedding_size} --beam-size 1 --train-prefix train \
+--steps-per-checkpoint 1000 --steps-per-eval 2000 \
+--dropout-rate ${dropout_rate} \
+--freeze-variables multi_encoder/encoder_fr/embedding:0 attention_decoder/embedding:0 \
+--allow-growth --log-file ${train_dir}_tuned/log.txt

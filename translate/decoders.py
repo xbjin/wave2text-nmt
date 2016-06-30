@@ -155,7 +155,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       attention_weights=None,
                       feed_previous=False, output_projection=None, embeddings=None,
                       initial_state_attention=False,
-                      attention_filters=0, attention_filter_length=2, reuse=None, **kwargs):
+                      attention_filters=0, attention_filter_length=0, reuse=None, **kwargs):
   # TODO: dynamic RNN
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:

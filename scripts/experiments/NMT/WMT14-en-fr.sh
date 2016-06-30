@@ -70,4 +70,5 @@ python -m translate ${data_dir} ${train_dir} \
 --steps-per-eval 4000 \
 --dev-prefix dev.2000 \
 --learning-rate-decay-factor 0.99 \
---beam-size 1
+--beam-size 1 \
+--allow-growth
