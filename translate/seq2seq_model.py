@@ -331,6 +331,10 @@ class Seq2SeqModel(object):
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
+    
+      #TODO:  map _UNK to <unk>
+      #TODO: if [ngrams[num_tokens-1].get(key,None) not found : recursive search with bow
+      log_lm_score = np.zeros(len(trg_vocab.reverse))
       if ngrams:
           previous_hypotheses = [h[-(lm_order-1):] for h in hypotheses]
           for p_h in previous_hypotheses:
@@ -345,8 +349,6 @@ class Seq2SeqModel(object):
                   log_lm_score = [ngrams[0].get(w,0) for w in trg_vocab.reverse]
 
             
-      log_lm_score = 0  # TODO: score shouldn't be a scalar, but a vector of shape [vocab_size]
-
       scores_ = scores[:, None] - np.average([np.log(decoder_output_) + log_lm_score for decoder_output_ in decoder_output],
                                              axis=0, weights=weights)
       scores_ = scores_.flatten()
