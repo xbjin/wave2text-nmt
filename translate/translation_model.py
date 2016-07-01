@@ -230,11 +230,12 @@ class TranslationModel(object):
       utils.warn("line is too long ({} tokens), truncating".format(len_))
       token_ids = [ids_[:max_len] for ids_ in token_ids]
 
-    if beam_size <= 1 and not isinstance(sess, list):
-      trg_token_ids = self.model.greedy_decoding(sess, token_ids)
-    else:
-      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams)
-      trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
+    #if beam_size <= 1 and not isinstance(sess, list):
+    #  trg_token_ids = self.model.greedy_decoding(sess, token_ids)
+    #else:
+    hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams, 
+                                                                     trg_vocab = self.trg_vocab)#fix?
+    trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output
     if utils.EOS_ID in trg_token_ids:
