@@ -278,7 +278,8 @@ class Seq2SeqModel(object):
     outputs = session.run(output_feed, input_feed)
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
-  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, ngrams=None, weights=None):
+  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, ngrams=None, 
+                                                                       weights=None, trg_vocab=None):
     if not isinstance(session, list):
       session = [session]
 
@@ -306,6 +307,8 @@ class Seq2SeqModel(object):
     finished_scores = []
 
     hypotheses = [[]]
+    lm_order = len(ngrams)
+    print(lm_order)
     scores = np.zeros([1], dtype=np.float32)
 
     for _ in range(max_len):
@@ -329,9 +332,25 @@ class Seq2SeqModel(object):
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
-      log_lm_score = 0  # TODO: score shouldn't be a scalar, but a vector of shape [vocab_size]
+    
+      #TODO:  map _UNK to <unk>
+      #TODO: if [ngrams[num_tokens-1].get(key,None) not found : recursive search with bow
+      log_lm_score = np.zeros(len(trg_vocab.reverse))
+      if ngrams:
+          previous_hypotheses = [h[-(lm_order-1):] for h in hypotheses]
+          for p_h in previous_hypotheses:
+              previous_tokens = [trg_vocab.reverse[i] if i < len(trg_vocab.reverse) else utils._UNK for i in p_h]
+              num_tokens = len(previous_tokens) 
+              if num_tokens > 0:
+                  log_lm_score = []
+                  for w in trg_vocab.reverse:
+                      key = ' '.join(map(str, previous_tokens + [w]))
+                      log_lm_score += [ngrams[num_tokens-1].get(key,None)]              
+              else:
+                  log_lm_score = [ngrams[0].get(w,0) for w in trg_vocab.reverse]
 
-      scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output],
+            
+      scores_ = scores[:, None] - np.average([np.log(decoder_output_) + log_lm_score for decoder_output_ in decoder_output],
                                              axis=0, weights=weights)
       scores_ = scores_.flatten()
       flat_ids = np.argsort(scores_)[:beam_size]
@@ -343,9 +362,11 @@ class Seq2SeqModel(object):
       new_scores = []
       new_state = [[] for _ in session]
       new_input = []
-
+      print("####")
       for flat_id, hyp_id, token_id in zip(flat_ids, hyp_ids, token_ids_):
+        
         hypothesis = hypotheses[hyp_id] + [token_id]
+        print("hypothesis",hypothesis)
         score = scores_[flat_id]
 
         if token_id == utils.EOS_ID:
@@ -359,8 +380,9 @@ class Seq2SeqModel(object):
             new_state[i].append(decoder_state_[hyp_id])
           new_scores.append(score)
           new_input.append(token_id)
-
+      print("@@@@@@@@")
       hypotheses = new_hypotheses
+      print("new_hypotheses",new_hypotheses)
       state = [np.array(new_state_) for new_state_ in new_state]
       scores = np.array(new_scores)
       decoder_input = np.array(new_input, dtype=np.int32)
@@ -378,7 +400,7 @@ class Seq2SeqModel(object):
     sorted_idx = np.argsort(scores)
     hypotheses = np.array(hypotheses)[sorted_idx].tolist()
     scores = scores[sorted_idx].tolist()
-
+    print("score",scores)
     return hypotheses, scores
 
   def get_batch(self, data, bucket_id, batch_size=None):
