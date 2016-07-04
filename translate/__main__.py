@@ -36,20 +36,21 @@ parser.add_argument('--debug', action='store_true')
 
 # Model parameters
 parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
-parser.add_argument('--learning-rate-decay-factor', type=float, default=0.95, help='learning rate decay factor')
+parser.add_argument('--learning-rate-decay-factor', type=float, default=0.99, help='learning rate decay factor')
 parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
 parser.add_argument('--size', type=int, default=1024, help='size of each layer')
 parser.add_argument('--embedding-size', type=int, help='size of the embeddings')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
-parser.add_argument('--vocab-size', type=int, default=30000)
+parser.add_argument('--vocab-size', type=int, default=40000)
+parser.add_argument('--use-lstm', help='use LSTM cells instead of GRU', action='store_true')
 parser.add_argument('--num-samples', type=int, default=512, help='number of samples for sampled softmax (0 for '
                                                                   'standard softmax')
 parser.add_argument('--src-vocab-size', type=int, nargs='+', help='source vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--trg-vocab-size', type=int, nargs='+', help='target vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
-parser.add_argument('--steps-per-checkpoint', type=int, default=1000, help='number of updates per checkpoint')
+parser.add_argument('--steps-per-checkpoint', type=int, default=200, help='number of updates per checkpoint')
 parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
 parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
 parser.add_argument('--multi-task', help='train each encoder as a separate task', action='store_true')
@@ -194,7 +195,7 @@ def main(args=None):
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
                                          'src_vocab_size', 'trg_vocab_size', 'embedding_size',
                                          'bidir', 'freeze_variables', 'num_samples',
-                                         'attention_filters', 'attention_filter_length'])
+                                         'attention_filters', 'attention_filter_length', 'use_lstm'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or

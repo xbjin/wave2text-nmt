@@ -47,10 +47,10 @@ class Seq2SeqModel(object):
   """
 
   def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
-               src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size, use_lstm=True,
+               src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size,
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
-               attention_filter_length=0, **kwargs):
+               attention_filter_length=0, use_lstm=False, **kwargs):
     """Create the model.
 
     Args:
