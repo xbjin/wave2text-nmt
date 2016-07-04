@@ -98,8 +98,10 @@ def attention(state, prev_weights, hidden_states, encoder_names, attn_length, at
     u = []
 
     for encoder_name, hidden_ in zip(encoder_names, hidden_states):
+      # attention_decoder/attention/W_{encoder_name}
       k = tf.get_variable('W_{}'.format(encoder_name), [1, 1, attn_size, attn_size])
       hidden_features.append(tf.nn.conv2d(hidden_, k, [1, 1, 1, 1], 'SAME'))  # same as a dot product
+      # attention_decoder/attention/V_{encoder_name}
       v.append(tf.get_variable('V_{}'.format(encoder_name), [attn_size]))
 
       filter_ = None
@@ -111,6 +113,8 @@ def attention(state, prev_weights, hidden_states, encoder_names, attn_length, at
       u.append(u_)
       attn_filters.append(filter_)
 
+    # attention_decoder/attention/Linear/Matrix
+    # attention_decoder/attention/Linear/Bias
     y = rnn_cell.linear(state, attn_size, True)
     y = tf.reshape(y, [-1, 1, 1, attn_size])
 
@@ -247,6 +251,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
 
       # merge input and previous attentions into one vector of the right size
       input_size = inputs.get_shape().with_rank(2)[1]
+      # attention_decoder/Linear/Matrix
+      # attention_decoder/Linear/Bias
       x = rnn_cell.linear([inputs, attns], input_size, True)
 
       # run the RNN

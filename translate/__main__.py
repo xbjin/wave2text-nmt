@@ -52,6 +52,7 @@ parser.add_argument('--trg-vocab-size', type=int, nargs='+', help='target vocabu
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
 parser.add_argument('--steps-per-checkpoint', type=int, default=200, help='number of updates per checkpoint')
 parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
+parser.add_argument('--max-steps', type=int, default=0, help='max number of steps before stopping')
 parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
 parser.add_argument('--multi-task', help='train each encoder as a separate task', action='store_true')
 parser.add_argument('--task-ratio', type=float, nargs='+', help='ratio of each task')
@@ -247,7 +248,7 @@ def main(args=None):
     elif args.train:
       try:
         model.train(sess, filenames, args.beam_size, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
-                    args.max_train_size, eval_output, remove_unk=args.remove_unk)
+                    args.max_train_size, eval_output, remove_unk=args.remove_unk, max_steps=args.max_steps)
       except KeyboardInterrupt:
         utils.log('exiting...')
         model.save(sess)

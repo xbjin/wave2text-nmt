@@ -91,7 +91,7 @@ class TranslationModel(object):
                         blacklist=('learning_rate', 'global_step'))
 
   def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
-            max_train_size=None, eval_output=None, remove_unk=False):
+            max_train_size=None, eval_output=None, remove_unk=False, max_steps=0):
     utils.log('reading training and development data')
     self._read_data(filenames, max_train_size)
     
@@ -153,6 +153,10 @@ class TranslationModel(object):
         score = self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output,
                               remove_unk=remove_unk)
         self._manage_best_checkpoints(global_step, score)
+
+      if 0 < max_steps < global_step:
+        utils.log('finished training')
+        return
 
   def _manage_best_checkpoints(self, step, score):
     score_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
