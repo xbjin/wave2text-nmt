@@ -65,7 +65,7 @@ python -m translate ${data_dir} ${train_dir} \
 --steps-per-eval 2000 \
 --dev-prefix dev \
 --allow-growth \
---dropout-rate ${dropout_rate}
+--dropout-rate ${dropout_rate} \
 --beam-size 1
 
 exit   # rest of the script is to run by hand
