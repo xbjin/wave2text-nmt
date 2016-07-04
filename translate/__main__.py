@@ -21,7 +21,6 @@ from collections import namedtuple
 from translate.translation_model import TranslationModel
 
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
@@ -92,8 +91,10 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-parser.add_argument('--bidir', action='store_true')
-
+parser.add_argument('--bidir', action='store_true')   # TODO
+parser.add_argument('--attention-filters', type=int, default=0, help='number of convolution filters in attention'
+                                                                     ' mechanism')
+parser.add_argument('--attention-filter-length', type=int, default=10, help='length of convolution filters')
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -135,6 +136,7 @@ def main(args=None):
     args.steps_per_eval = 200
     args.verbose = True
     args.batch_size = 32
+    args.dev_prefix = 'dev.100'
 
   if not os.path.exists(args.train_dir):
     os.makedirs(args.train_dir)
@@ -191,7 +193,8 @@ def main(args=None):
   # NMT model parameters
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
                                          'src_vocab_size', 'trg_vocab_size', 'embedding_size',
-                                         'bidir', 'freeze_variables', 'num_samples'])
+                                         'bidir', 'freeze_variables', 'num_samples',
+                                         'attention_filters', 'attention_filter_length'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
@@ -213,7 +216,7 @@ def main(args=None):
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order)
 
-  utils.log('model parameters ({})'.format(len(tf.all_variables())))
+    utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
     utils.log('  {} shape {}'.format(var.name, var.get_shape()))
 

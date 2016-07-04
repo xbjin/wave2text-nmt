@@ -166,7 +166,7 @@ class TranslationModel(object):
 
     best_scores = sorted(scores, reverse=True)[:self.keep_best]
 
-    if any(score_ < score for score_, _ in best_scores):
+    if any(score_ < score for score_, _ in best_scores) or not best_scores:
       # TODO: check that best-* files are not deleted by saver
       shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}'.format(step)),
                   os.path.join(self.checkpoint_dir, 'best-{}'.format(step)))

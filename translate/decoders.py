@@ -68,6 +68,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
                                                               sequence_length=encoder_input_length_,
                                                               dtype=tf.float32, parallel_iterations=1)
         else:
+          encoder_input_length_ = None   # TODO: check impact of this parameter
           encoder_outputs_, encoder_state_ = rnn.rnn(cell, encoder_inputs_, sequence_length=encoder_input_length_,
                                                      dtype=tf.float32)
 
@@ -87,7 +88,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
 
 
 def attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
-              attention_filters=0, attention_filter_length=10, reuse=None):
+              attention_filters=0, attention_filter_length=0, reuse=None):
   assert len(hidden_states) == len(encoder_names)
 
   with tf.variable_scope('attention', reuse):
@@ -144,7 +145,7 @@ def attention(state, prev_weights, hidden_states, encoder_names, attn_length, at
       d = tf.reduce_sum(tf.reshape(a, [-1, attn_length, 1, 1]) * h, [1, 2])
       ds.append(d)
 
-    weighted_average = tf.add_n(ds)  # just sum the context vector of each encoder
+    weighted_average = tf.add_n(ds)  # just sum the context vector of each encoder (TODO: add weights there)
     weighted_average = tf.reshape(weighted_average, [-1, attn_size])
 
     return weighted_average, weights
@@ -159,7 +160,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
   # TODO: dynamic RNN
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
-    embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+    # embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+    embedding_initializer = None
     embedding_shape = [num_decoder_symbols, embedding_size]
   else:
     embedding_shape = None

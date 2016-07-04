@@ -154,7 +154,8 @@ class Seq2SeqModel(object):
       encoder_names=self.encoder_names, decoder_name=self.decoder_name,
       cell=cell, num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
       embedding_size=self.embedding_size, embeddings=embeddings,
-      output_projection=output_projection, bidir=bidir, initial_state_attention=True
+      output_projection=output_projection, bidir=bidir, initial_state_attention=True,
+      attention_filters=attention_filters, attention_filter_length=attention_filter_length
     )
 
     # self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -417,7 +418,8 @@ class Seq2SeqModel(object):
       for i, src_sentence in enumerate(src_sentences):
           encoder_pad = [utils.PAD_ID] * (encoder_size - len(src_sentence))
           # reverse THEN pad (better for early stopping...)
-          reversed_sentence = list(reversed(src_sentence)) + encoder_pad
+          # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
+          reversed_sentence = list(reversed(src_sentence + encoder_pad))
           encoder_inputs[i].append(reversed_sentence)
           encoder_input_length[i].append(len(src_sentence))
 
