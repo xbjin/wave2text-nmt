@@ -260,10 +260,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       if output_projection is None:
         output = cell_output
       else:
-        with tf.device('/cpu:0'):  # TODO try this
-          with tf.variable_scope('attention_output_projection'):
-            # FIXME: where does this come from?
-            output = rnn_cell.linear([cell_output, attns], output_size, True)
+        # with tf.device('/cpu:0'):  # TODO try this
+        with tf.variable_scope('attention_output_projection'):
+          # FIXME: where does this come from?
+          output = rnn_cell.linear([cell_output, attns], output_size, True)
       outputs.append(output)
 
       if loop_function is not None:
