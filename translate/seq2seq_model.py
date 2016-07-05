@@ -112,8 +112,12 @@ class Seq2SeqModel(object):
     # for now, we only apply dropout to the RNN cell inputs
     # TODO: try dropout at the output of the units, inside the attention mechanism, after the projections
     if dropout_rate > 0:
-      keep_prob = 1 - dropout_rate
-      cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=keep_prob)   # Zaremba applies dropout on the input
+      self.dropout = tf.Variable(1 - dropout_rate, trainable=False, name='dropout_keep_prob')
+      self.dropout_off = self.dropout.assign(1.0)
+      self.dropout_on = self.dropout.assign(1 - dropout_rate)
+      cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=self.dropout)   # Zaremba applies dropout on the input
+    else:
+      self.dropout = None
 
     # encoder takes a single cell (it builds the MultiRNNCell by itself)
     encoder_cell = decoder_cell = cell
@@ -217,6 +221,9 @@ class Seq2SeqModel(object):
     self.beam_search_outputs = [tf.nn.softmax(bucket_outputs[0]) for bucket_outputs in self.outputs]
 
   def step(self, session, data, bucket_id, forward_only=False):
+    if self.dropout is not None:
+      session.run(self.dropout_on)
+
     encoder_size, decoder_size = self.buckets[bucket_id]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch(data,
                                                                                           bucket_id)
@@ -255,6 +262,9 @@ class Seq2SeqModel(object):
     return res[0]  # losses
 
   def greedy_decoding(self, session, token_ids):
+    if self.dropout is not None:
+      session.run(self.dropout_off)
+
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
     encoder_size, decoder_size = self.buckets[bucket_id]
     data = [token_ids + [[]]]
@@ -281,9 +291,13 @@ class Seq2SeqModel(object):
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
   def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, ngrams=None, 
-                                                                       weights=None, trg_vocab=None):
+                           weights=None, trg_vocab=None):
     if not isinstance(session, list):
       session = [session]
+
+    if self.dropout is not None:
+      for session_ in session:
+        session_.run(self.dropout_off)
 
     bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
     encoder_size, _ = self.buckets[bucket_id]

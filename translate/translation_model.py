@@ -82,13 +82,13 @@ class TranslationModel(object):
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
     if not reset:
-      blacklist = ('learning_rate',) if reset_learning_rate else ()
+      blacklist = ('learning_rate', 'dropout_keep_prob') if reset_learning_rate else ()
       load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
 
     if checkpoints is not None:  # load partial checkpoints
       for checkpoint in checkpoints:  # checkpoint files to load
         load_checkpoint(sess, None, checkpoint,
-                        blacklist=('learning_rate', 'global_step'))
+                        blacklist=('learning_rate', 'global_step', 'dropout_keep_prob'))
 
   def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
             max_train_size=None, eval_output=None, remove_unk=False, max_steps=0):
