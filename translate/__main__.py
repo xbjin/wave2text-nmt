@@ -49,6 +49,9 @@ parser.add_argument('--bidir', action='store_true', help='use bidirectional enco
 parser.add_argument('--attention-filters', type=int, default=0, help='number of convolution filters in attention '
                                                                      'mechanism')
 parser.add_argument('--attention-filter-length', type=int, default=10, help='length of convolution filters')
+# TODO: pooling over time with multi-encoder, and non-bidir encoder
+parser.add_argument('--pooling-ratios', nargs='+', type=int, help='pooling over time between the layers of the '
+                                                                  'encoder: 1 out of every n outputs are kept')
 parser.add_argument('--vocab-size', type=int, default=40000)
 parser.add_argument('--use-lstm', help='use LSTM cells instead of GRU', action='store_true')
 parser.add_argument('--num-samples', type=int, default=512, help='number of samples for sampled softmax (0 for '
@@ -200,7 +203,8 @@ def main(args=None):
   parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'num_layers',
                                          'src_vocab_size', 'trg_vocab_size', 'embedding_size',
                                          'bidir', 'freeze_variables', 'num_samples',
-                                         'attention_filters', 'attention_filter_length', 'use_lstm'])
+                                         'attention_filters', 'attention_filter_length', 'use_lstm',
+                                         'pooling_ratios'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or

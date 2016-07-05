@@ -54,7 +54,7 @@ def unsafe_linear(args, output_size, bias, bias_start=0.0, scope=None):
 
 def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
                   encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=False,
-                  num_layers=1, **kwargs):
+                  num_layers=1, pooling_ratios=None, **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
@@ -90,15 +90,16 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
         if not bidir and num_layers > 1:  # bidir requires custom multi-rnn
           cell = rnn_cell.MultiRNNCell([cell] * num_layers)
 
+        # TODO: pooling over time (cf. pooling_ratios) for non-bidir encoders
         if bidir:  # FIXME: not compatible with `dynamic`
           encoder_outputs_, encoder_state_fw, encoder_state_bw = rnn.multi_bidirectional_rnn(
-            [(cell, cell)] * num_layers, encoder_inputs_, dtype=tf.float32
+            [(cell, cell)] * num_layers, encoder_inputs_, pooling_ratios=pooling_ratios, dtype=tf.float32
           )
           encoder_state_ = encoder_state_bw
-          # same as Bahdanau et al.
+          # same as Bahdanau et al.:
           # encoder_state_ = unsafe_linear(encoder_state_bw, cell.state_size, True,
           #                                scope='bidir_final_state')
-          # slightly different (they do projection later)
+          # slightly different (they do projection later):
           encoder_outputs_ = [
             unsafe_linear(outputs_, cell.output_size, False,
                           scope='bidir_projection') for outputs_ in encoder_outputs_]

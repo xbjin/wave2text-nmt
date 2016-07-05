@@ -50,7 +50,7 @@ class Seq2SeqModel(object):
                src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size,
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
-               attention_filter_length=0, use_lstm=False, **kwargs):
+               attention_filter_length=0, use_lstm=False, pooling_ratios=None, **kwargs):
     """Create the model.
 
     Args:
@@ -156,7 +156,8 @@ class Seq2SeqModel(object):
       num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
       embedding_size=self.embedding_size, embeddings=embeddings, num_layers=num_layers,
       output_projection=output_projection, bidir=bidir, initial_state_attention=True,
-      attention_filters=attention_filters, attention_filter_length=attention_filter_length
+      attention_filters=attention_filters, attention_filter_length=attention_filter_length,
+      pooling_ratios=pooling_ratios
     )
 
     # self.attention_states, self.encoder_state = decoders.multi_encoder(
