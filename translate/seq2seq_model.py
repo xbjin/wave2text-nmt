@@ -109,15 +109,16 @@ class Seq2SeqModel(object):
       single_cell = rnn_cell.GRUCell(size)
     cell = single_cell
 
-    if dropout_rate > 0:   # TODO: check that this works
-      # It seems like this does RNN dropout (Zaremba et al., 2015), i.e., no
-      # dropout on the recurrent connections (see models/rnn/ptb/ptb_word_lm.py)
+    # for now, we only apply dropout to the RNN cell inputs
+    # TODO: try dropout at the output of the units, inside the attention mechanism, after the projections
+    if dropout_rate > 0:
       keep_prob = 1 - dropout_rate
-      cell = rnn_cell.DropoutWrapper(cell, output_keep_prob=keep_prob)
-    # TODO: how about dropout elsewhere (inputs and attention mechanism)?
+      cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=keep_prob)   # Zaremba applies dropout on the input
 
+    # encoder takes a single cell (it builds the MultiRNNCell by itself)
+    encoder_cell = decoder_cell = cell
     if num_layers > 1:
-      cell = rnn_cell.MultiRNNCell([single_cell] * num_layers)
+      decoder_cell = rnn_cell.MultiRNNCell([decoder_cell] * num_layers)
 
     self.encoder_inputs = []
     self.decoder_inputs = []
@@ -152,8 +153,8 @@ class Seq2SeqModel(object):
 
     parameters = dict(
       encoder_names=self.encoder_names, decoder_name=self.decoder_name,
-      cell=cell, num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
-      embedding_size=self.embedding_size, embeddings=embeddings,
+      num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
+      embedding_size=self.embedding_size, embeddings=embeddings, num_layers=num_layers,
       output_projection=output_projection, bidir=bidir, initial_state_attention=True,
       attention_filters=attention_filters, attention_filter_length=attention_filter_length
     )
@@ -164,17 +165,17 @@ class Seq2SeqModel(object):
 
     self.attention_states, self.encoder_state = decoders.encoder_with_buckets(
       self.encoder_inputs, buckets, reuse=reuse, encoder_input_length=self.encoder_input_length,
-      **parameters
+      cell=encoder_cell, **parameters
     )
 
     self.outputs, self.decoder_states, self.attention_weights = decoders.decoder_with_buckets(
-      self.attention_states, self.encoder_state, self.decoder_inputs,
-      buckets, reuse=reuse, feed_previous=False, **parameters
+      self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
+      cell=decoder_cell, reuse=reuse, feed_previous=False, **parameters
     )
     # useful only for greedy decoding (beam size = 1)
     self.greedy_outputs, _, _ = decoders.decoder_with_buckets(
-      self.attention_states, self.encoder_state, self.decoder_inputs,
-      buckets, reuse=True, feed_previous=True, **parameters
+      self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
+      cell=decoder_cell, reuse=True, feed_previous=True, **parameters
     )
 
     self.losses = decoders.loss_with_buckets(self.outputs, targets, self.target_weights,

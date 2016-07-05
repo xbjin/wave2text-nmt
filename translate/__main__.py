@@ -32,17 +32,23 @@ parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
 parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings') # FIXME
-parser.add_argument('--debug', action='store_true')
 
 # Model parameters
+parser.add_argument('--debug', action='store_true', help='toy settings for debugging (overrides the program '
+                                                         'parameters)')
 parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
 parser.add_argument('--learning-rate-decay-factor', type=float, default=0.99, help='learning rate decay factor')
 parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
+parser.add_argument('--no-attention', action='store_true', help='disable the attention mechanism')
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
 parser.add_argument('--size', type=int, default=1024, help='size of each layer')
 parser.add_argument('--embedding-size', type=int, help='size of the embeddings')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
+parser.add_argument('--bidir', action='store_true', help='use bidirectional encoder')
+parser.add_argument('--attention-filters', type=int, default=0, help='number of convolution filters in attention '
+                                                                     'mechanism')
+parser.add_argument('--attention-filter-length', type=int, default=10, help='length of convolution filters')
 parser.add_argument('--vocab-size', type=int, default=40000)
 parser.add_argument('--use-lstm', help='use LSTM cells instead of GRU', action='store_true')
 parser.add_argument('--num-samples', type=int, default=512, help='number of samples for sampled softmax (0 for '
@@ -50,7 +56,8 @@ parser.add_argument('--num-samples', type=int, default=512, help='number of samp
 parser.add_argument('--src-vocab-size', type=int, nargs='+', help='source vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--trg-vocab-size', type=int, nargs='+', help='target vocabulary size(s) (overrides --vocab-size)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
-parser.add_argument('--steps-per-checkpoint', type=int, default=200, help='number of updates per checkpoint')
+parser.add_argument('--steps-per-checkpoint', type=int, default=1000, help='number of updates per checkpoint '
+                                                                           '(warning: saving can take a while)')
 parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
 parser.add_argument('--max-steps', type=int, default=0, help='max number of steps before stopping')
 parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
@@ -64,12 +71,13 @@ parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the
                                                                   'initialization (won\'t be used if the parameters '
                                                                   'are loaded from a checkpoint)')
 parser.add_argument('--load-embeddings', nargs='+', help='list of extensions for which to load the embeddings')
-parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --load-checkpoints and --reset are '
-                                                'not specified, will try to load earlier versions of this checkpoint')
+parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --reset is not specified, '
+                                                'will try to load earlier versions of this checkpoint')
 parser.add_argument('--checkpoints', nargs='+', help='list of checkpoints to load (in loading order)')
 
-parser.add_argument('--ensemble', help='use an ensemble of models while decoding, whose parameters '
-                                       'are those specified by the --load-checkpoints parameter', action='store_true')
+parser.add_argument('--ensemble', help='use an ensemble of models while decoding, whose checkpoints '
+                                       'are those specified by the --load-checkpoints parameter'
+                                       '(this changes the semantic of this parameter)', action='store_true')
 
 parser.add_argument('--src-ext', nargs='+', default=['fr',], help='source file extension(s) '
                                                                   '(also used as encoder ids)')
@@ -77,13 +85,13 @@ parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file e
                                                                   '(also used as decoder ids)')
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
 parser.add_argument('--log-file', help='log to this file instead of standard output')
-parser.add_argument('--replace-unk', help='replace unk symbols in the output (requires special pre-processing)',
-                    action='store_true')
+parser.add_argument('--replace-unk', help='replace UNK symbols in the output (requires special pre-processing'
+                                          'and a lookup dict)', action='store_true')
 parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')  # FIXME
 parser.add_argument('--keep-best', type=int, default=4, help='keep the n best models')
-parser.add_argument('--remove-unk', help='remove UNK symbols from decoder output', action='store_true')
+parser.add_argument('--remove-unk', help='remove UNK symbols from the decoder output', action='store_true')
 parser.add_argument('--use-lm', help='use language model', action='store_true')
-parser.add_argument('--lm-order', type=int, default=3, help='N-gram of language model')
+parser.add_argument('--lm-order', type=int, default=3, help='n-gram order of the language model')
 
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
@@ -91,12 +99,8 @@ parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
 parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU memory to use', default=1.0)
 parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
                     action='store_true')
-parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding')
+parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding (decoder is greedy by default)')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-parser.add_argument('--bidir', action='store_true')   # TODO
-parser.add_argument('--attention-filters', type=int, default=0, help='number of convolution filters in attention'
-                                                                     ' mechanism')
-parser.add_argument('--attention-filter-length', type=int, default=10, help='length of convolution filters')
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
