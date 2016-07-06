@@ -323,8 +323,9 @@ class Seq2SeqModel(object):
     finished_scores = []
 
     hypotheses = [[]]
-    lm_order = len(ngrams)
-    print(lm_order)
+    if ngrams is not None:
+      lm_order = len(ngrams)
+      print(lm_order)
     scores = np.zeros([1], dtype=np.float32)
 
     for _ in range(max_len):
