@@ -29,7 +29,7 @@ from translate import utils
 from translate import decoders
 
 from tensorflow.python.ops import variable_scope
-
+import sys
 
 class Seq2SeqModel(object):
   """Sequence-to-sequence model with attention and for multiple buckets.
@@ -352,8 +352,21 @@ class Seq2SeqModel(object):
     
       #TODO:  map _UNK to <unk>
       #TODO: if [ngrams[num_tokens-1].get(key,None) not found : recursive search with bow
+
+          
+         
+      sys.exit(1)
       log_lm_score = np.zeros(len(trg_vocab.reverse))
       if ngrams:
+          #first we need to map voc with ngram voc
+          voc_map = {'_UNK':'<unk>', '_EOS':'</s>', '_GO':'<s>'}
+          trg_vocab_ = trg_vocab.reverse
+          for i,_ in enumerate(trg_vocab_):
+              for k, v in voc_map.iteritems():
+                  trg_vocab_[i] = trg_vocab_[i].replace(k, v)
+          for i in range(10):
+              print(trg_vocab_[i])          
+          
           previous_hypotheses = [h[-(lm_order-1):] for h in hypotheses]
           for p_h in previous_hypotheses:
               previous_tokens = [trg_vocab.reverse[i] if i < len(trg_vocab.reverse) else utils._UNK for i in p_h]
@@ -362,7 +375,7 @@ class Seq2SeqModel(object):
                   log_lm_score = []
                   for w in trg_vocab.reverse:
                       key = ' '.join(map(str, previous_tokens + [w]))
-                      log_lm_score += [ngrams[num_tokens-1].get(key,None)]              
+                      log_lm_score += [ngrams[num_tokens-1].get(key,None)]
               else:
                   log_lm_score = [ngrams[0].get(w,0) for w in trg_vocab.reverse]
 
