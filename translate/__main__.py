@@ -95,6 +95,8 @@ parser.add_argument('--keep-best', type=int, default=4, help='keep the n best mo
 parser.add_argument('--remove-unk', help='remove UNK symbols from the decoder output', action='store_true')
 parser.add_argument('--use-lm', help='use language model', action='store_true')
 parser.add_argument('--lm-order', type=int, default=3, help='n-gram order of the language model')
+parser.add_argument('--model-weights', type=float, nargs='+', help='weight of each model: ensemble models and '
+                                                                   'language model (LM weight is last)')
 
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
@@ -110,11 +112,9 @@ data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
 Features:
 - model ensembling + language model
-- bi-directional rnn
 - try getting rid of buckets (by using dynamic_rnn for encoder + custom dynamic rnn for decoder)
 - audio features for speech recognition
 - local attention model
-- pooling between encoder layers
 - copy vocab to model dir
 - train dir/data dir should be optional
 - AdaDelta, AdaGrad
@@ -125,7 +125,6 @@ Benchmarks:
 - compare our baseline system with vanilla Tensorflow seq2seq, and GroundHog/blocks-examples
 - try replicating Jean et al. (2015)'s results
 - analyze the impact of this initial_state_attention parameter (pain in the ass for beam-search decoding)
-- test beam-search (beam=1...10) : to be fair, model should be trained with initial_state_attention=True.
 - try reproducing the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
 
@@ -155,8 +154,11 @@ def main(args=None):
   logger.setLevel(logging_level)
 
   utils.log(' '.join(sys.argv))
-  commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
-  utils.log('commit hash {}'.format(commit_hash))
+  try:
+    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+    utils.log('commit hash {}'.format(commit_hash))
+  except:
+    pass
 
   utils.log('program arguments')
   for k, v in vars(args).items():
@@ -204,7 +206,7 @@ def main(args=None):
                                          'src_vocab_size', 'trg_vocab_size', 'embedding_size',
                                          'bidir', 'freeze_variables', 'num_samples',
                                          'attention_filters', 'attention_filter_length', 'use_lstm',
-                                         'pooling_ratios'])
+                                         'pooling_ratios', 'model_weights'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or

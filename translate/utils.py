@@ -16,13 +16,13 @@ from contextlib import contextmanager
 
 # special vocabulary symbols
 _PAD = "_PAD"
-_GO = "_GO"
+_BOS = "_GO"
 _EOS = "_EOS"
 _UNK = "_UNK"
-_START_VOCAB = [_PAD, _GO, _EOS, _UNK]
+_START_VOCAB = [_PAD, _BOS, _EOS, _UNK]
 
 PAD_ID = 0
-GO_ID = 1
+BOS_ID = 1
 EOS_ID = 2
 UNK_ID = 3
 
@@ -243,7 +243,7 @@ def initialize_lookup_dict(lookup_dict_path):
     return dict(line.split() for line in f)
 
 
-def read_ngrams(lm_path, lm_order):
+def read_ngrams(lm_path, lm_order, vocab):
   gram_list = []
   gram_dict = {}
   with open(lm_path) as f:
@@ -258,11 +258,23 @@ def read_ngrams(lm_path, lm_order):
       else:
         arr = map(str.rstrip, line.split("\t"))        
         gram = arr.pop(1)
-        gram_dict[gram] = arr
+        gram_dict[gram] = list(map(float, arr))
   # FIXME: is the lm_order parameter necessary, since we can infer it from the arpa file?
   if len(gram_list) != lm_order:
     warn("lm_order arg ({}) doesn't match lm order in arpa file ({})".format(lm_order, len(gram_list)))
-  return gram_list
+
+  ngrams = []
+  mappings = {'<s>': _BOS, '</s>': _EOS, '<unk>': _UNK}
+
+  for kgrams in gram_list:
+    d = {}
+    for seq, probas in kgrams.iteritems():
+      ids = tuple(vocab.get(mappings.get(w, w)) for w in seq.split())
+      if any(id_ is None for id_ in ids):
+        continue
+      d[ids] = probas
+    ngrams.append(d)
+  return ngrams
 
 
 def create_logger(log_file=None):                
@@ -283,3 +295,16 @@ def log(msg, level=logging.INFO):
 
 def debug(msg): log(msg, level=logging.DEBUG)
 def warn(msg): log(msg, level=logging.WARN)
+
+
+def estimate_lm_probability(sequence, ngrams):
+  sequence = tuple(sequence)
+  order = len(sequence)
+  assert 0 < order <= len(ngrams)
+  ngrams_ = ngrams[order - 1]
+
+  if sequence in ngrams_:
+    return ngrams_[sequence][0]
+  else:
+    backoff_weight = ngrams[order - 2].get(sequence[:-1], (None, 1.0))[1]
+    return estimate_lm_probability(sequence[1:], ngrams) + backoff_weight

@@ -72,7 +72,8 @@ class TranslationModel(object):
     self.src_vocabs = [utils.initialize_vocabulary(vocab_path) for vocab_path in filenames.src_vocab]
     self.trg_vocab = utils.initialize_vocabulary(filenames.trg_vocab)
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
-    self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.lm_order)
+
+    self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.lm_order, self.trg_vocab.vocab)
 
     # FIXME
     if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
@@ -224,6 +225,8 @@ class TranslationModel(object):
   def _decode_sentence(self, sess, src_sentences, beam_size=4, remove_unk=False):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
+    utils.debug('translating {}'.format(src_sentences[0].strip()))
+
     tokens = [sentence.split() for sentence in src_sentences]
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  for vocab, sentence in zip(self.src_vocabs, src_sentences)]
@@ -238,7 +241,11 @@ class TranslationModel(object):
       trg_token_ids = self.model.greedy_decoding(sess, token_ids)
     else:
       hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
-                                                           trg_vocab=self.trg_vocab) # fix?
+                                                           reverse_vocab=self.trg_vocab.reverse)
+      for hypothesis, score in zip(hypotheses, scores):
+        utils.debug('hypothesis={} | score={}'.format(
+          ' '.join(self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK for i in hypothesis),
+          score))
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output

@@ -50,7 +50,8 @@ class Seq2SeqModel(object):
                src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size,
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
-               attention_filter_length=0, use_lstm=False, pooling_ratios=None, **kwargs):
+               attention_filter_length=0, use_lstm=False, pooling_ratios=None,
+               model_weights=None, **kwargs):
     """Create the model.
 
     Args:
@@ -75,6 +76,7 @@ class Seq2SeqModel(object):
     self.buckets = buckets
     self.batch_size = batch_size
     self.encoder_count = len(src_ext)
+    self.model_weights = model_weights
 
     self.learning_rate = learning_rate
     self.global_step = global_step
@@ -291,7 +293,7 @@ class Seq2SeqModel(object):
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
   def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, ngrams=None, 
-                           weights=None, trg_vocab=None):
+                           weights=None, reverse_vocab=None):
     if not isinstance(session, list):
       session = [session]
 
@@ -323,9 +325,6 @@ class Seq2SeqModel(object):
     finished_scores = []
 
     hypotheses = [[]]
-    if ngrams is not None:
-      lm_order = len(ngrams)
-      print(lm_order)
     scores = np.zeros([1], dtype=np.float32)
 
     for _ in range(max_len):
@@ -346,28 +345,44 @@ class Seq2SeqModel(object):
       res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
       decoder_output, decoder_state, attention_weights = zip(*[(res_[0], res_[1], res_[2:]) for res_ in res])
 
+      # hypotheses, list of tokens ids of shape (beam_size, previous_len)
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
       # attention_weights, shape=(beam_size, max_len)
-    
-      #TODO:  map _UNK to <unk>
-      #TODO: if [ngrams[num_tokens-1].get(key,None) not found : recursive search with bow
-      log_lm_score = np.zeros(len(trg_vocab.reverse))
-      if ngrams:
-          previous_hypotheses = [h[-(lm_order-1):] for h in hypotheses]
-          for p_h in previous_hypotheses:
-              previous_tokens = [trg_vocab.reverse[i] if i < len(trg_vocab.reverse) else utils._UNK for i in p_h]
-              num_tokens = len(previous_tokens) 
-              if num_tokens > 0:
-                  log_lm_score = []
-                  for w in trg_vocab.reverse:
-                      key = ' '.join(map(str, previous_tokens + [w]))
-                      log_lm_score += [ngrams[num_tokens-1].get(key,None)]              
-              else:
-                  log_lm_score = [ngrams[0].get(w,0) for w in trg_vocab.reverse]
 
-            
-      scores_ = scores[:, None] - np.average([np.log(decoder_output_) + log_lm_score for decoder_output_ in decoder_output],
+      if ngrams is not None:
+        lm_score = []
+        lm_order = len(ngrams)
+
+        for hypothesis in hypotheses:
+          hypothesis = [utils.BOS_ID] + hypothesis   # not sure about this (should we put <s> at the beginning?)
+          history = hypothesis[1 - lm_order:]
+          score_ = []
+
+          for token_id in range(self.trg_vocab_size):
+            # if token is not in unigrams, this means that either there is something
+            # wrong with the ngrams (e.g. trained on wrong file),
+            # or trg_vocab_size is larger than actual vocabulary
+            if (token_id,) not in ngrams[0]:
+              prob = float('-inf')
+            elif token_id == utils.BOS_ID:
+              prob = float('-inf')
+            else:
+              prob = utils.estimate_lm_probability(history + [token_id], ngrams)
+            score_.append(prob)
+
+          lm_score.append(score_)
+        lm_score = np.array(lm_score, dtype=np.float32)
+      else:
+        lm_score = np.zeros((1, self.trg_vocab_size))
+
+      # default LM weight: 0.4
+      weights = self.model_weights
+      if weights is None and ngrams is not None:
+        weights = [0.6 / len(session)] * len(session) + [0.4]
+
+      scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output] +
+                                             [lm_score],
                                              axis=0, weights=weights)
       scores_ = scores_.flatten()
       flat_ids = np.argsort(scores_)[:beam_size]
@@ -379,12 +394,14 @@ class Seq2SeqModel(object):
       new_scores = []
       new_state = [[] for _ in session]
       new_input = []
-      print("####")
+
       for flat_id, hyp_id, token_id in zip(flat_ids, hyp_ids, token_ids_):
-        
         hypothesis = hypotheses[hyp_id] + [token_id]
-        print("hypothesis",hypothesis)
         score = scores_[flat_id]
+
+        # for debugging purposes
+        if reverse_vocab:
+          hyp_str = ' '.join(reverse_vocab[id_] if 0 < id_ < len(reverse_vocab) else utils._UNK for id_ in hypothesis)
 
         if token_id == utils.EOS_ID:
           # early stop: hypothesis is finished, it is thus unnecessary to keep expanding it
@@ -397,9 +414,8 @@ class Seq2SeqModel(object):
             new_state[i].append(decoder_state_[hyp_id])
           new_scores.append(score)
           new_input.append(token_id)
-      print("@@@@@@@@")
+
       hypotheses = new_hypotheses
-      print("new_hypotheses",new_hypotheses)
       state = [np.array(new_state_) for new_state_ in new_state]
       scores = np.array(new_scores)
       decoder_input = np.array(new_input, dtype=np.int32)
@@ -417,7 +433,6 @@ class Seq2SeqModel(object):
     sorted_idx = np.argsort(scores)
     hypotheses = np.array(hypotheses)[sorted_idx].tolist()
     scores = scores[sorted_idx].tolist()
-    print("score",scores)
     return hypotheses, scores
 
   def get_batch(self, data, bucket_id, batch_size=None):
@@ -464,7 +479,7 @@ class Seq2SeqModel(object):
 
       # Decoder inputs get an extra "GO" symbol, and are padded then.
       decoder_pad_size = decoder_size - len(trg_sentence) - 1
-      decoder_inputs.append([utils.GO_ID] + trg_sentence +
+      decoder_inputs.append([utils.BOS_ID] + trg_sentence +
                             [utils.PAD_ID] * decoder_pad_size)
 
     # Now we create batch-major vectors from the data selected above.
