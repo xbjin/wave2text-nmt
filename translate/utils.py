@@ -9,10 +9,12 @@ import tempfile
 import numpy as np
 import math
 import logging
+import struct
 import sys
 
 from collections import namedtuple
 from contextlib import contextmanager
+from itertools import izip
 
 # special vocabulary symbols
 _PAD = "_PAD"
@@ -92,8 +94,8 @@ def sentence_to_token_ids(sentence, vocabulary):
   return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
 
 
-def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix,
-                  load_embeddings, multi_task=False, replace_unk=False, use_lm=False, **kwargs):
+def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix, lm_prefix,
+                  multi_task=False, replace_unk=False, use_lm=False, **kwargs):
   trg_ext = trg_ext[0]    # FIXME: for now
   
   train_path = os.path.join(data_dir, train_prefix)
@@ -123,7 +125,7 @@ def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embeddin
   src_test = ["{}.{}".format(test_path, ext) for ext in src_ext] if test_path is not None else None
   trg_test = "{}.{}".format(test_path, trg_ext) if test_path is not None else None
   lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
-  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(train_prefix, trg_ext)) if use_lm else None
+  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(lm_prefix, trg_ext)) if use_lm else None
 
   embedding_path = os.path.join(data_dir, embedding_prefix)
   embeddings = ['{}.{}'.format(embedding_path, ext) for ext in src_ext + [trg_ext]]
@@ -188,36 +190,68 @@ def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size,
   return embeddings
 
 
-def read_dataset(source_paths, target_path, buckets, max_size=None):
+def read_binary_features(filename):
+  """
+  Reads a binary file containing vector features. First two numbers correspond to
+  number of entries (lines), and dimension of the vectors.
+  Each entry starts with a 32 bits integer indicating the number of frames, followed by
+  (frames x dimension) 32 bits floating point numbers.
+
+  @Returns: list of (frames x dimension) shaped arrays
+  """
+  all_feats = []
+
+  with open(filename, 'rb') as f:
+    lines, dim = struct.unpack('ii', f.read(8))
+    for _ in xrange(lines):
+      frames, = struct.unpack('i', f.read(4))
+      n = frames * dim
+      feats = struct.unpack('f' * n, f.read(4 * n))
+      all_feats.append(list(np.array(feats).reshape(frames, dim)))
+
+  return all_feats
+
+
+def read_dataset(source_paths, target_path, buckets, max_size=None, vector_inputs=None):
   data_set = [[] for _ in buckets]
 
-  filenames = source_paths + [target_path]
-  with open_files(filenames) as files:
+  lines = read_lines(source_paths, target_path, vector_inputs=vector_inputs)
+  for counter, (src_lines, trg_line) in enumerate(lines, 1):
+    if max_size and counter >= max_size:
+      break
+    if counter % 100000 == 0:
+      log("  reading data line {}".format(counter))
 
-    for counter, lines in enumerate(zip(*files), 1):
-      if max_size and counter >= max_size:
+    source_ids = [line if isinstance(line, list) else map(int, line.split()) for line in src_lines]
+    target_ids = map(int, trg_line.split())
+    target_ids.append(EOS_ID)
+
+    if any(len(ids_) == 0 for ids_ in source_ids + [target_ids]):  # skip empty lines
+      continue
+
+    for bucket_id, (source_size, target_size) in enumerate(buckets):
+      if len(target_ids) < target_size and all(len(ids_) < source_size for ids_ in source_ids):
+        data_set[bucket_id].append(source_ids + [target_ids])
         break
-      if counter % 100000 == 0:
-        log("  reading data line {}".format(counter))
 
-      ids = [map(int, line.split()) for line in lines]
-      source_ids, target_ids = ids[:-1], ids[-1]
-      
-      target_ids.append(EOS_ID)
-
-      if any(len(ids_) == 0 for ids_ in ids):  # skip empty lines
-        continue
-
-      for bucket_id, (source_size, target_size) in enumerate(buckets):
-        if len(target_ids) < target_size and all(len(ids_) < source_size for ids_ in source_ids):
-          data_set[bucket_id].append(source_ids + [target_ids])
-          break
-
-  debug('files: {}'.format(' '.join(filenames)))
+  debug('files: {}'.format(' '.join(source_paths + [target_path])))
   for bucket_id, data in enumerate(data_set):
     debug('  bucket {} size {}'.format(bucket_id, len(data)))
 
   return data_set
+
+
+def read_lines(source_paths, target_path, vector_inputs=None):
+  filenames = source_paths + [target_path]
+  vector_inputs = (vector_inputs or [False] * len(source_paths)) + [False]
+
+  iterators = [
+    read_binary_features(filename) if vector_input else open(filename)
+    for filename, vector_input in zip(filenames, vector_inputs)
+  ]
+
+  for lines in zip(*iterators):
+    yield lines[:-1], lines[-1]
 
 
 def replace_unk(src_tokens, trg_tokens, trg_token_ids, lookup_dict):
@@ -244,29 +278,27 @@ def initialize_lookup_dict(lookup_dict_path):
 
 
 def read_ngrams(lm_path, lm_order, vocab):
-  gram_list = []
-  gram_dict = {}
+  ngram_list = []
   with open(lm_path) as f:
-    for i in range(5):
-      next(f)
     for line in f:
-      if "-grams:" in line or "\\end\\" in line:
-         pass
-      elif line in ['\n', '\r\n']:
-        gram_list.append(gram_dict)
-        gram_dict = {}
-      else:
-        arr = map(str.rstrip, line.split("\t"))        
-        gram = arr.pop(1)
-        gram_dict[gram] = list(map(float, arr))
+      line = line.strip()
+      if re.match(r'\\\d-grams:', line):
+        ngram_list.append({})
+      elif not line or line == '\\end\\':
+        continue
+      elif ngram_list:
+        arr = map(str.rstrip, line.split('\t'))
+        ngram = arr.pop(1)
+        ngram_list[-1][ngram] = list(map(float, arr))
+
   # FIXME: is the lm_order parameter necessary, since we can infer it from the arpa file?
-  if len(gram_list) != lm_order:
-    warn("lm_order arg ({}) doesn't match lm order in arpa file ({})".format(lm_order, len(gram_list)))
+  if len(ngram_list) != lm_order:
+    warn("lm_order arg ({}) doesn't match lm order in arpa file ({})".format(lm_order, len(ngram_list)))
 
   ngrams = []
   mappings = {'<s>': _BOS, '</s>': _EOS, '<unk>': _UNK}
 
-  for kgrams in gram_list:
+  for kgrams in ngram_list:
     d = {}
     for seq, probas in kgrams.iteritems():
       ids = tuple(vocab.get(mappings.get(w, w)) for w in seq.split())
@@ -298,6 +330,12 @@ def warn(msg): log(msg, level=logging.WARN)
 
 
 def estimate_lm_probability(sequence, ngrams):
+  """
+  P(w_3 | w_1, w_2) =
+      log_prob(w_1 w_2 w_3)             } if (w_1 w_2 w_3) in language model
+      P(w_3 | w_2) + backoff(w_1 w_2)   } otherwise
+  in case (w_1 w_2) has no backoff weight, a weight of 0.0 is used
+  """
   sequence = tuple(sequence)
   order = len(sequence)
   assert 0 < order <= len(ngrams)
@@ -306,5 +344,6 @@ def estimate_lm_probability(sequence, ngrams):
   if sequence in ngrams_:
     return ngrams_[sequence][0]
   else:
-    backoff_weight = ngrams[order - 2].get(sequence[:-1], (None, 1.0))[1]
+    weights = ngrams[order - 2].get(sequence[:-1])
+    backoff_weight = weights[1] if weights is not None and len(weights) > 1 else 0.0
     return estimate_lm_probability(sequence[1:], ngrams) + backoff_weight

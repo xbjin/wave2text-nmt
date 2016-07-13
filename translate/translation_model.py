@@ -15,15 +15,29 @@ from translate import seq2seq_model, utils
 
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False, task_ratio=None, keep_best=1, lm_order=3):
+               learning_rate_decay_factor, multi_task=False, task_ratio=None,
+               keep_best=1, lm_order=3, data_types=None):
     self.src_ext = src_ext
     self.trg_ext = trg_ext[0]
-    self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
+
+    if any(type_ == 'feats' for type_ in data_types.values()):   # dirty hack
+      self.buckets = [(120, 10), (160, 10), (200, 15), (240, 15), (280, 15), (340, 20), (400, 20)]
+    else:
+      self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
+
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
     self.lm_order = lm_order
     self.multi_task = multi_task
     self.parameters = parameters
+
+    # handle different data types than sequences of token ids
+    # 'feats' corresponds to sequences of vector features
+    self.data_types = data_types or {}
+    self.vector_inputs = [ext for ext, type_ in data_types.iteritems() if type_ == 'feats']
+
+    if multi_task and any(self.vector_inputs):
+      raise NotImplementedError   # TODO
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
     self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
@@ -33,7 +47,7 @@ class TranslationModel(object):
     
     # main model
     self.model = seq2seq_model.Seq2SeqModel(src_ext, trg_ext, self.buckets, self.learning_rate, self.global_step,
-                                            embeddings, **vars(parameters))
+                                            embeddings, vector_inputs=self.vector_inputs, **vars(parameters))
     self.models = []
     
     if multi_task:  # multi-task
@@ -55,6 +69,8 @@ class TranslationModel(object):
     self.trg_vocab = None
 
   def _read_data(self, filenames, max_train_size):
+    vector_inputs = [ext in self.vector_inputs for ext in self.src_ext]
+
     utils.debug('reading training data')
     if self.multi_task:
       for model, src_train_ids, trg_train_ids in zip(self.models, filenames.src_train_ids, filenames.trg_train_ids):
@@ -63,22 +79,26 @@ class TranslationModel(object):
       
     else:
       train_set = (filenames.src_train_ids, filenames.trg_train_ids)
-      self.model.read_data(train_set, self.buckets, max_train_size)
+      self.model.read_data(train_set, self.buckets, max_train_size, vector_inputs=vector_inputs)
     
     utils.debug('reading development data')
-    self.model.dev_set = utils.read_dataset(filenames.src_dev_ids, filenames.trg_dev_ids, self.buckets)
+    self.model.dev_set = utils.read_dataset(filenames.src_dev_ids, filenames.trg_dev_ids, self.buckets,
+                                            vector_inputs=vector_inputs)
 
   def _read_vocab(self, filenames):
-    self.src_vocabs = [utils.initialize_vocabulary(vocab_path) for vocab_path in filenames.src_vocab]
+    # don't try reading vocabulary for encoders that take pre-computed features
+    self.src_vocabs = [utils.initialize_vocabulary(vocab_path) if ext not in self.vector_inputs else None
+      for ext, vocab_path in zip(self.src_ext, filenames.src_vocab)]
+
     self.trg_vocab = utils.initialize_vocabulary(filenames.trg_vocab)
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
 
     self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.lm_order, self.trg_vocab.vocab)
 
     # FIXME
-    if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
-           zip(self.src_vocabs + [self.trg_vocab], self.parameters.src_vocab_size + [self.parameters.trg_vocab_size])):
-      utils.warn('warning: inconsistent vocabulary size')
+    # if any(len(vocab.reverse) != vocab_size for vocab, vocab_size in
+    #        zip(self.src_vocabs + [self.trg_vocab], self.parameters.src_vocab_size + [self.parameters.trg_vocab_size])):
+    #   utils.warn('warning: inconsistent vocabulary size')
 
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
@@ -225,10 +245,11 @@ class TranslationModel(object):
   def _decode_sentence(self, sess, src_sentences, beam_size=4, remove_unk=False):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
-    utils.debug('translating {}'.format(src_sentences[0].strip()))
+    if isinstance(src_sentences[0], basestring):
+      utils.debug('translating {}'.format(src_sentences[0].strip()))
 
-    tokens = [sentence.split() for sentence in src_sentences]
-    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
+    token_ids = [utils.sentence_to_token_ids(sentence.split(), vocab.vocab)
+                 if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence in zip(self.src_vocabs, src_sentences)]
     max_len = self.buckets[-1][0] - 1
 
@@ -259,7 +280,7 @@ class TranslationModel(object):
       trg_tokens = [token for token in trg_tokens if token != utils._UNK]
 
     if self.lookup_dict is not None:
-      trg_tokens = utils.replace_unk(tokens[0], trg_tokens, trg_token_ids, self.lookup_dict)
+      trg_tokens = utils.replace_unk(src_sentences[0].split(), trg_tokens, trg_token_ids, self.lookup_dict)
 
     return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
@@ -267,7 +288,7 @@ class TranslationModel(object):
     self._read_vocab(filenames)
     utils.debug('decoding, UNK replacement {}'.format('OFF' if self.lookup_dict is None else 'ON'))
       
-    with utils.open_files(filenames.src_test) as files:
+    with utils.open_files(filenames.src_test) as files:  # FIXME (speech)
       output_file = None
       try:
         output_file = sys.stdout if output is None else open(output, 'w')
@@ -290,18 +311,19 @@ class TranslationModel(object):
     src_filenames = filenames.src_dev if on_dev else filenames.src_test
     trg_filename = filenames.trg_dev if on_dev else filenames.trg_test
 
-    with utils.open_files(src_filenames) as src_files, open(trg_filename) as trg_file:
-      hypotheses = [self._decode_sentence(sess, src_sentences, beam_size, remove_unk)
-                    for src_sentences in zip(*src_files)]
-      references = [line.strip().replace('@@ ', '') for line in trg_file]
-      
-      bleu = utils.bleu_score(bleu_script, hypotheses, references)
-      utils.log(bleu)
-      if output is not None:
-        with open(output, 'w') as f:
-          f.writelines(line + '\n' for line in hypotheses)
+    vector_inputs = [ext in self.vector_inputs for ext in self.src_ext]
+    src_lines, trg_lines = zip(*utils.read_lines(src_filenames, trg_filename, vector_inputs))
 
-      return bleu.score
+    hypotheses = [self._decode_sentence(sess, src_lines_, beam_size, remove_unk) for src_lines_ in src_lines]
+    references = [line.strip().replace('@@ ', '') for line in trg_lines]
+
+    bleu = utils.bleu_score(bleu_script, hypotheses, references)
+    utils.log(bleu)
+    if output is not None:
+      with open(output, 'w') as f:
+        f.writelines(line + '\n' for line in hypotheses)
+
+    return bleu.score
 
   def save(self, sess):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)

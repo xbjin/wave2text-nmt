@@ -73,6 +73,9 @@ parser.add_argument('--dev-prefix', default='dev', help='name of the development
 parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the embedding files to use as '
                                                                   'initialization (won\'t be used if the parameters '
                                                                   'are loaded from a checkpoint)')
+parser.add_argument('--as-features', nargs='+', help='list of extensions for which the input file contains '
+                                                     'vector features instead of token ids (useful for '
+                                                     'speech recognition)')
 parser.add_argument('--load-embeddings', nargs='+', help='list of extensions for which to load the embeddings')
 parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --reset is not specified, '
                                                 'will try to load earlier versions of this checkpoint')
@@ -95,6 +98,8 @@ parser.add_argument('--keep-best', type=int, default=4, help='keep the n best mo
 parser.add_argument('--remove-unk', help='remove UNK symbols from the decoder output', action='store_true')
 parser.add_argument('--use-lm', help='use language model', action='store_true')
 parser.add_argument('--lm-order', type=int, default=3, help='n-gram order of the language model')
+parser.add_argument('--lm-prefix', default='train', help='prefix of the language model file (suffix '
+                                                         'is always arpa.trg_ext')
 parser.add_argument('--model-weights', type=float, nargs='+', help='weight of each model: ensemble models and '
                                                                    'language model (LM weight is last)')
 
@@ -106,6 +111,8 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding (decoder is greedy by default)')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
+parser.add_argument('--character-level', help='output is at the character level (for BLEU eval characters need to '
+                                              'be joined into words)', action='store_true')  # TODO
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -163,6 +170,10 @@ def main(args=None):
   utils.log('program arguments')
   for k, v in vars(args).items():
     utils.log('  {:<20} {}'.format(k, v))
+
+  extensions = args.src_ext + args.trg_ext
+  data_types = dict((ext, 'feats' if args.as_features is not None and ext in args.as_features else 'ids')
+                    for ext in extensions)
 
   if args.src_vocab_size is None:
     args.src_vocab_size = [args.vocab_size for _ in args.src_ext]
@@ -226,7 +237,8 @@ def main(args=None):
   with tf.device(device):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
-                             task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order)
+                             task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order,
+                             data_types=data_types)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():

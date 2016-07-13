@@ -51,7 +51,7 @@ class Seq2SeqModel(object):
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
                attention_filter_length=0, use_lstm=False, pooling_ratios=None,
-               model_weights=None, **kwargs):
+               model_weights=None, vector_inputs=None, **kwargs):
     """Create the model.
 
     Args:
@@ -72,11 +72,14 @@ class Seq2SeqModel(object):
       learning_rate_decay_factor: decay learning rate by this much when needed.
       use_lstm: if true, we use LSTM cells instead of GRU cells.
       num_samples: number of samples for sampled softmax.
+      vector_inputs: list of encoder_names that directly read features instead
+        of token ids.
     """
     self.buckets = buckets
     self.batch_size = batch_size
     self.encoder_count = len(src_ext)
     self.model_weights = model_weights
+    self.vector_inputs = vector_inputs or []
 
     self.learning_rate = learning_rate
     self.global_step = global_step
@@ -134,14 +137,20 @@ class Seq2SeqModel(object):
     self.encoder_names = list(src_ext)
     self.decoder_name = trg_ext
     self.embedding_size = embedding_size if embedding_size is not None else size
+    # TODO: different embedding size for each encoder
 
     # last bucket is the largest one
     src_bucket_size, trg_bucket_size = buckets[-1]
     for encoder_name in self.encoder_names:
       encoder_inputs_ = []
       for i in xrange(src_bucket_size):
-        encoder_inputs_.append(tf.placeholder(tf.int32, shape=[None],
-                                              name="encoder_{}_{}".format(encoder_name, i)))
+        placeholder_name = "encoder_{}_{}".format(encoder_name, i)
+        if encoder_name in self.vector_inputs:
+          placeholder = tf.placeholder(tf.float32, shape=[None, self.embedding_size], name=placeholder_name)
+        else:
+          placeholder = tf.placeholder(tf.int32, shape=[None], name=placeholder_name)
+
+        encoder_inputs_.append(placeholder)
 
       self.encoder_inputs.append(encoder_inputs_)
       self.encoder_input_length.append(
@@ -470,12 +479,17 @@ class Seq2SeqModel(object):
       trg_sentence = sentences[-1]
 
       for i, src_sentence in enumerate(src_sentences):
-          encoder_pad = [utils.PAD_ID] * (encoder_size - len(src_sentence))
-          # reverse THEN pad (better for early stopping...)
-          # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
-          reversed_sentence = list(reversed(src_sentence + encoder_pad))
-          encoder_inputs[i].append(reversed_sentence)
-          encoder_input_length[i].append(len(src_sentence))
+        if isinstance(src_sentence[0], np.ndarray):
+          pad = np.zeros([self.embedding_size], dtype=np.float32)
+        else:
+          pad = utils.PAD_ID
+
+        encoder_pad = [pad] * (encoder_size - len(src_sentence))
+        # reverse THEN pad (better for early stopping...)
+        # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
+        reversed_sentence = list(reversed(src_sentence + encoder_pad))
+        encoder_inputs[i].append(reversed_sentence)
+        encoder_input_length[i].append(len(src_sentence))
 
       # Decoder inputs get an extra "GO" symbol, and are padded then.
       decoder_pad_size = decoder_size - len(trg_sentence) - 1
@@ -488,6 +502,7 @@ class Seq2SeqModel(object):
     encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
     for i in range(self.encoder_count):
       for length_idx in xrange(encoder_size):
+        # import pdb; pdb.set_trace()
         batch_encoder_inputs[i].append(
           np.array([encoder_inputs[i][batch_idx][length_idx]
                     for batch_idx in xrange(batch_size)], dtype=np.int32))
@@ -511,9 +526,10 @@ class Seq2SeqModel(object):
 
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights, encoder_input_length
 
-  def read_data(self, train_set, buckets, max_train_size=None):
+  def read_data(self, train_set, buckets, max_train_size=None, vector_inputs=None):
     src_train_ids, trg_train_ids = train_set
-    self.train_set = utils.read_dataset(src_train_ids, trg_train_ids, buckets, max_train_size)
+    self.train_set = utils.read_dataset(src_train_ids, trg_train_ids, buckets, max_train_size,
+                                        vector_inputs=vector_inputs)
 
     train_bucket_sizes = map(len, self.train_set)
     train_total_size = float(sum(train_bucket_sizes))

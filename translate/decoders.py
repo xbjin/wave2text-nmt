@@ -74,18 +74,22 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
     for encoder_name, encoder_inputs_, encoder_input_length_, num_encoder_symbols_ in zip(
         encoder_names, encoder_inputs, encoder_input_length, num_encoder_symbols):
       with tf.variable_scope('encoder_{}'.format(encoder_name)):
-        initializer = embeddings.get(encoder_name)
-        if initializer is None:
-          initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
-          embedding_shape = [num_encoder_symbols_, embedding_size]
-        else:
-          embedding_shape = None
+        # inputs are token ids, which need to be mapped to vectors (embeddings)
+        if encoder_inputs_[0].dtype == tf.int32:
+          initializer = embeddings.get(encoder_name)
+          if initializer is None:
+            initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+            embedding_shape = [num_encoder_symbols_, embedding_size]
+          else:
+            embedding_shape = None
 
-        with tf.device('/cpu:0'):
-          embedding = tf.get_variable('embedding', shape=embedding_shape,
-                                      initializer=initializer)
+          with tf.device('/cpu:0'):
+            embedding = tf.get_variable('embedding', shape=embedding_shape,
+                                        initializer=initializer)
 
-        encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
+          encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
+        else:  # do nothing: inputs are already vectors
+          pass
 
         if not bidir and num_layers > 1:  # bidir requires custom multi-rnn
           cell = rnn_cell.MultiRNNCell([cell] * num_layers)
@@ -197,11 +201,79 @@ def attention(state, prev_weights, hidden_states, encoder_names, attn_length, at
 
     return weighted_average, weights
 
+def local_attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
+                    attention_filters=0, attention_filter_length=0, reuse=None):
+  assert len(hidden_states) == len(encoder_names)
+
+  with tf.variable_scope('attention', reuse):
+    hidden_features = []
+    v = []
+    attn_filters = []
+    u = []
+
+    for encoder_name, hidden_ in zip(encoder_names, hidden_states):
+      # attention_decoder/attention/W_{encoder_name}
+      k = tf.get_variable('W_{}'.format(encoder_name), [1, 1, attn_size, attn_size])
+      hidden_features.append(tf.nn.conv2d(hidden_, k, [1, 1, 1, 1], 'SAME'))  # same as a dot product
+      # attention_decoder/attention/V_{encoder_name}
+      v.append(tf.get_variable('V_{}'.format(encoder_name), [attn_size]))
+
+      filter_ = None
+      u_ = None
+      if attention_filters > 0:
+        filter_ = tf.get_variable('filter_{}'.format(encoder_name),
+                                  [attention_filter_length * 2 + 1, 1, 1, attention_filters])
+        u_ = tf.get_variable('U_{}'.format(encoder_name), [attention_filters, attn_size])
+      u.append(u_)
+      attn_filters.append(filter_)
+
+    # attention_decoder/attention/Linear/Matrix
+    # attention_decoder/attention/Linear/Bias
+    y = rnn_cell.linear(state, attn_size, True)
+    y = tf.reshape(y, [-1, 1, 1, attn_size])
+
+    weights = []
+    ds = []
+
+    if prev_weights is None:
+      prev_weights = len(encoder_names) * [None]
+
+    # for each encoder
+    for f, h, v_, prev_a, filter_, u_ in zip(hidden_features, hidden_states, v, prev_weights, attn_filters, u):
+      # attention mask is a softmax of v^T * tanh(...)
+      if filter_ is not None and u_ is not None:
+        prev_a = tf.reshape(prev_a, [-1, attn_length, 1, 1])
+        # compute convolution between prev_a and filter_
+        conv = tf.nn.conv2d(prev_a, filter_, [1, 1, 1, 1], 'SAME')
+        # flattening for dot product
+        shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
+        conv = tf.reshape(conv, shape)
+        z = tf.matmul(conv, u_)
+        z = tf.reshape(z, [-1, attn_length, 1, attn_size])
+
+        s = f + y + z
+      else:
+        s = f + y
+
+      e = tf.reduce_sum(v_ * tf.tanh(s), [2, 3])
+      a = tf.nn.softmax(e)
+      weights.append(a)
+
+      # now calculate the attention-weighted vector d
+      d = tf.reduce_sum(tf.reshape(a, [-1, attn_length, 1, 1]) * h, [1, 2])
+      ds.append(d)
+
+    weighted_average = tf.add_n(ds)  # just sum the context vector of each encoder (TODO: add weights there)
+    weighted_average = tf.reshape(weighted_average, [-1, attn_size])
+
+    return weighted_average, weights
+
+
 
 def decoder(decoder_inputs, initial_state, decoder_name,
             cell, num_decoder_symbols, embedding_size,
             feed_previous=False, output_projection=None, embeddings=None,
-            reuse=None, dropout_rate=0.0, **kwargs):
+            reuse=None, **kwargs):
   """ Decoder without attention """
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
@@ -264,8 +336,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       attention_weights=None,
                       feed_previous=False, output_projection=None, embeddings=None,
                       initial_state_attention=False,
-                      attention_filters=0, attention_filter_length=0, reuse=None,
-                      dropout_rate=0.0, **kwargs):
+                      attention_filters=0, attention_filter_length=0, reuse=None, **kwargs):
   # TODO: dynamic RNN
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
