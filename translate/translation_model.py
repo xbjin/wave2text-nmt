@@ -248,7 +248,7 @@ class TranslationModel(object):
     if isinstance(src_sentences[0], basestring):
       utils.debug('translating {}'.format(src_sentences[0].strip()))
 
-    token_ids = [utils.sentence_to_token_ids(sentence.split(), vocab.vocab)
+    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence in zip(self.src_vocabs, src_sentences)]
     max_len = self.buckets[-1][0] - 1
