@@ -31,7 +31,6 @@ parser.add_argument('train_dir', default='model', help='training directory')
 parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
-parser.add_argument('--export-embeddings', nargs='+', help='list of extensions for which to export the embeddings') # FIXME
 
 # Model parameters
 parser.add_argument('--debug', action='store_true', help='toy settings for debugging (overrides the program '
@@ -43,6 +42,7 @@ parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rat
 parser.add_argument('--no-attention', action='store_true', help='disable the attention mechanism')
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
 parser.add_argument('--size', type=int, default=1024, help='size of each layer')
+# TODO: different embedding size for each encoder + decoder
 parser.add_argument('--embedding-size', type=int, help='size of the embeddings')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
 parser.add_argument('--bidir', action='store_true', help='use bidirectional encoder')
@@ -57,7 +57,7 @@ parser.add_argument('--use-lstm', help='use LSTM cells instead of GRU', action='
 parser.add_argument('--num-samples', type=int, default=512, help='number of samples for sampled softmax (0 for '
                                                                   'standard softmax')
 parser.add_argument('--src-vocab-size', type=int, nargs='+', help='source vocabulary size(s) (overrides --vocab-size)')
-parser.add_argument('--trg-vocab-size', type=int, nargs='+', help='target vocabulary size(s) (overrides --vocab-size)')
+parser.add_argument('--trg-vocab-size', type=int, help='target vocabulary size (overrides --vocab-size)')
 parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
 parser.add_argument('--steps-per-checkpoint', type=int, default=1000, help='number of updates per checkpoint '
                                                                            '(warning: saving can take a while)')
@@ -73,9 +73,9 @@ parser.add_argument('--dev-prefix', default='dev', help='name of the development
 parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the embedding files to use as '
                                                                   'initialization (won\'t be used if the parameters '
                                                                   'are loaded from a checkpoint)')
-parser.add_argument('--as-features', nargs='+', help='list of extensions for which the input file contains '
-                                                     'vector features instead of token ids (useful for '
-                                                     'speech recognition)')
+parser.add_argument('--binary-input', nargs='+', help='list of extensions for which the input file contains '
+                                                      'vector features instead of token ids (useful for '
+                                                      'speech recognition)')
 parser.add_argument('--load-embeddings', nargs='+', help='list of extensions for which to load the embeddings')
 parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --reset is not specified, '
                                                 'will try to load earlier versions of this checkpoint')
@@ -87,8 +87,8 @@ parser.add_argument('--ensemble', help='use an ensemble of models while decoding
 
 parser.add_argument('--src-ext', nargs='+', default=['fr',], help='source file extension(s) '
                                                                   '(also used as encoder ids)')
-parser.add_argument('--trg-ext', nargs='+', default=['en',], help='target file extension(s) '
-                                                                  '(also used as decoder ids)')
+parser.add_argument('--trg-ext', default='en', help='target file extension '
+                                                    '(also used as decoder id)')
 parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
 parser.add_argument('--log-file', help='log to this file instead of standard output')
 parser.add_argument('--replace-unk', help='replace UNK symbols in the output (requires special pre-processing'
@@ -118,9 +118,7 @@ parser.add_argument('--character-level', help='output is at the character level 
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
 Features:
-- model ensembling + language model
 - try getting rid of buckets (by using dynamic_rnn for encoder + custom dynamic rnn for decoder)
-- audio features for speech recognition
 - local attention model
 - copy vocab to model dir
 - train dir/data dir should be optional
@@ -131,7 +129,7 @@ Features:
 Benchmarks:
 - compare our baseline system with vanilla Tensorflow seq2seq, and GroundHog/blocks-examples
 - try replicating Jean et al. (2015)'s results
-- analyze the impact of this initial_state_attention parameter (pain in the ass for beam-search decoding)
+- analyze the impact of this initial_state_attention parameter
 - try reproducing the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
 
@@ -171,30 +169,26 @@ def main(args=None):
   for k, v in vars(args).items():
     utils.log('  {:<20} {}'.format(k, v))
 
-  extensions = args.src_ext + args.trg_ext
-  data_types = dict((ext, 'feats' if args.as_features is not None and ext in args.as_features else 'ids')
-                    for ext in extensions)
+  extensions = args.src_ext + [args.trg_ext]
 
   if args.src_vocab_size is None:
     args.src_vocab_size = [args.vocab_size for _ in args.src_ext]
   if args.trg_vocab_size is None:
-    args.trg_vocab_size = [args.vocab_size for _ in args.trg_ext]
+    args.trg_vocab_size = args.vocab_size
 
   # enforce constraints
   assert args.steps_per_eval % args.steps_per_checkpoint == 0, (
     'steps-per-eval should be a multiple of steps-per-checkpoint')
   assert len(args.src_ext) == len(args.src_vocab_size), (
     '--src-vocab-size takes {} parameter(s)'.format(len(args.src_ext)))
-  assert len(args.trg_ext) == len(args.trg_vocab_size), (
-    '--trg-vocab-size takes {} parameter(s)'.format(len(args.trg_ext)))
   assert args.task_ratio is None or len(args.task_ratio) == len(args.src_ext), (
     '--task-ratio takes {} parameter(s)'.format(len(args.src_ext)))
-  assert len(set(args.src_ext + args.trg_ext)) == len(args.src_ext + args.trg_ext), (
+  assert len(set(extensions)) == len(extensions), (
     'all extensions need to be unique')
-  assert args.decode or args.eval or args.export_embeddings or args.train, (
-    'you need to specify at least one action (decode, eval, export-embeddings or train)')
+  assert args.decode or args.eval or args.train, (
+    'you need to specify at least one action (decode, eval, or train)')
 
-  filenames = utils.get_filenames(**vars(args))
+  filenames = utils.get_filenames(extensions=extensions, **vars(args))
   utils.debug('filenames')
   for k, v in vars(filenames).items():
     utils.log('  {:<20} {}'.format(k, v))
@@ -208,7 +202,8 @@ def main(args=None):
     if not os.path.exists(filename):
       utils.warn('warning: file {} does not exist'.format(filename))
 
-  embeddings = utils.read_embeddings(filenames, **vars(args))
+  vocab_sizes = args.src_vocab_size + [args.trg_vocab_size]
+  embeddings = utils.read_embeddings(filenames, extensions, vocab_sizes, **vars(args))
  
   utils.debug('embeddings {}'.format(embeddings))
 
@@ -221,7 +216,7 @@ def main(args=None):
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or
-                       'checkpoints.{}_{}'.format('-'.join(args.src_ext), '-'.join(args.trg_ext)))
+                       'checkpoints.{}_{}'.format('-'.join(args.src_ext), args.trg_ext))
   checkpoint_dir = os.path.join(args.train_dir, checkpoint_prefix)
   eval_output = os.path.join(args.train_dir, 'eval.out')
   
@@ -238,7 +233,7 @@ def main(args=None):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order,
-                             data_types=data_types)
+                             binary_input=args.binary_input)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
@@ -258,15 +253,11 @@ def main(args=None):
       model.initialize(sess, args.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
     # TODO: load best checkpoint for eval and decode
-
     if args.decode:
       model.decode(sess, filenames, args.beam_size, output=args.output, remove_unk=args.remove_unk)
     elif args.eval:
       model.evaluate(sess, filenames, args.beam_size, bleu_script=args.bleu_script, output=args.output,
                      remove_unk=args.remove_unk)
-    elif args.export_embeddings:
-      model.export_embeddings(sess, filenames, extensions=args.export_embeddings,
-                              output_prefix=os.path.join(args.train_dir, args.embedding_prefix))
     elif args.train:
       try:
         model.train(sess, filenames, args.beam_size, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,

@@ -269,7 +269,6 @@ def local_attention(state, prev_weights, hidden_states, encoder_names, attn_leng
     return weighted_average, weights
 
 
-
 def decoder(decoder_inputs, initial_state, decoder_name,
             cell, num_decoder_symbols, embedding_size,
             feed_previous=False, output_projection=None, embeddings=None,

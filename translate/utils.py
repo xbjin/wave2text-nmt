@@ -12,7 +12,7 @@ import logging
 import struct
 import sys
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from contextlib import contextmanager
 from itertools import izip
 
@@ -94,46 +94,27 @@ def sentence_to_token_ids(sentence, vocabulary):
   return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
 
 
-def get_filenames(data_dir, src_ext, trg_ext, train_prefix, dev_prefix, embedding_prefix, lm_prefix,
+def get_filenames(data_dir, extensions, train_prefix, dev_prefix, embedding_prefix, lm_prefix,
                   multi_task=False, replace_unk=False, use_lm=False, **kwargs):
-  trg_ext = trg_ext[0]    # FIXME: for now
-  
+  """ Last extension is always assumed to be the target """
+  if multi_task:
+    raise NotImplementedError
+
   train_path = os.path.join(data_dir, train_prefix)
-  src_train = ["{}.{}".format(train_path, ext) for ext in src_ext]
-  src_train_ids = ["{}.ids.{}".format(train_path, ext) for ext in src_ext]
-
-  if multi_task:  # multi-task setting: one target file for each encoder
-    trg_train = ["{}.{}.{}".format(train_path, ext, trg_ext) for ext in src_ext]
-    trg_train_ids = ["{}.ids.{}.{}".format(train_path, ext, trg_ext) for ext in src_ext]
-  else:
-    trg_train = "{}.{}".format(train_path, trg_ext)
-    trg_train_ids = "{}.ids.{}".format(train_path, trg_ext)
-
   dev_path = os.path.join(data_dir, dev_prefix)
-  src_dev = ["{}.{}".format(dev_path, ext) for ext in src_ext]
-  trg_dev = "{}.{}".format(dev_path, trg_ext)
-
-  src_dev_ids = ["{}.ids.{}".format(dev_path, ext) for ext in src_ext]
-  trg_dev_ids = "{}.ids.{}".format(dev_path, trg_ext)
-
-  src_vocab = [os.path.join(data_dir, "vocab.{}".format(ext)) for ext in src_ext]
-  trg_vocab = os.path.join(data_dir, "vocab.{}".format(trg_ext))
-
   test_path = kwargs.get('decode')  # `decode` or `eval` or None
   test_path = test_path if test_path is not None else kwargs.get('eval')
-
-  src_test = ["{}.{}".format(test_path, ext) for ext in src_ext] if test_path is not None else None
-  trg_test = "{}.{}".format(test_path, trg_ext) if test_path is not None else None
-  lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
-  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(lm_prefix, trg_ext)) if use_lm else None
-
   embedding_path = os.path.join(data_dir, embedding_prefix)
-  embeddings = ['{}.{}'.format(embedding_path, ext) for ext in src_ext + [trg_ext]]
+  lm_path = os.path.join(data_dir, "{}.arpa.{}".format(lm_prefix, extensions[-1])) if use_lm else None
 
-  filenames = namedtuple('filenames', ['src_train', 'trg_train', 'src_dev', 'trg_dev', 'src_vocab', 'trg_vocab',
-                                       'src_train_ids', 'trg_train_ids', 'src_dev_ids', 'trg_dev_ids',
-                                       'src_test', 'trg_test', 'lookup_dict', 'lm_path', 'embeddings'])
+  train = ['{}.{}'.format(train_path, ext) for ext in extensions]
+  dev = ['{}.{}'.format(dev_path, ext) for ext in extensions]
+  test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
+  vocab = [os.path.join(data_dir, 'vocab.{}'.format(ext)) for ext in extensions]
+  lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
+  embeddings = ['{}.{}'.format(embedding_path, ext) for ext in extensions]
 
+  filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lookup_dict', 'lm_path', 'embeddings'])
   return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})
 
 
@@ -153,15 +134,12 @@ def bleu_score(bleu_script, hypotheses, references):
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
 
 
-def read_embeddings(filenames, src_ext, trg_ext, src_vocab_size, trg_vocab_size, size,
+def read_embeddings(filenames, extensions, vocab_sizes, size,
                     load_embeddings=None, norm_embeddings=None, **kwargs):
-  extensions = src_ext + trg_ext
-  vocab_sizes = src_vocab_size + trg_vocab_size
-  vocab_paths = filenames.src_vocab + [filenames.trg_vocab]
-
   embeddings = {}  
 
-  for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes, vocab_paths, filenames.embeddings):
+  for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes,
+                                                   filenames.vocab, filenames.embeddings):
     if load_embeddings is None or ext not in load_embeddings:
       continue
 
@@ -212,46 +190,45 @@ def read_binary_features(filename):
   return all_feats
 
 
-def read_dataset(source_paths, target_path, buckets, max_size=None, vector_inputs=None):
+def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input=None):
   data_set = [[] for _ in buckets]
 
-  lines = read_lines(source_paths, target_path, vector_inputs=vector_inputs)
-  for counter, (src_lines, trg_line) in enumerate(lines, 1):
+  line_reader = read_lines(paths, extensions, binary_input=binary_input)
+  for counter, inputs in enumerate(line_reader, 1):
     if max_size and counter >= max_size:
       break
     if counter % 100000 == 0:
       log("  reading data line {}".format(counter))
 
-    source_ids = [line if isinstance(line, list) else map(int, line.split()) for line in src_lines]
-    target_ids = map(int, trg_line.split())
-    target_ids.append(EOS_ID)
+    inputs = [
+      sentence_to_token_ids(input_, vocab.vocab)
+      if vocab is not None and isinstance(input_, basestring)
+      else input_ for input_, vocab in zip(inputs, vocabs)
+    ]
 
-    if any(len(ids_) == 0 for ids_ in source_ids + [target_ids]):  # skip empty lines
+    if not all(inputs):  # skip empty inputs
       continue
 
-    for bucket_id, (source_size, target_size) in enumerate(buckets):
-      if len(target_ids) < target_size and all(len(ids_) < source_size for ids_ in source_ids):
-        data_set[bucket_id].append(source_ids + [target_ids])
-        break
+    for bucket_id, bucket in enumerate(buckets):
+      if all(len(input_) < bucket_size for input_, bucket_size in zip(inputs, bucket)):
+        data_set[bucket_id].append(inputs)
 
-  debug('files: {}'.format(' '.join(source_paths + [target_path])))
+  debug('files: {}'.format(' '.join(paths)))
   for bucket_id, data in enumerate(data_set):
     debug('  bucket {} size {}'.format(bucket_id, len(data)))
 
   return data_set
 
 
-def read_lines(source_paths, target_path, vector_inputs=None):
-  filenames = source_paths + [target_path]
-  vector_inputs = (vector_inputs or [False] * len(source_paths)) + [False]
+def read_lines(paths, extensions, binary_input=None):
+  binary_input = binary_input or []
 
   iterators = [
-    read_binary_features(filename) if vector_input else open(filename)
-    for filename, vector_input in zip(filenames, vector_inputs)
+    read_binary_features(filename) if ext in binary_input else open(filename)
+    for ext, filename in zip(extensions, paths)
   ]
 
-  for lines in zip(*iterators):
-    yield lines[:-1], lines[-1]
+  return izip(*iterators)
 
 
 def replace_unk(src_tokens, trg_tokens, trg_token_ids, lookup_dict):

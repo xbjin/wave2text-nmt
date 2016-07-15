@@ -51,7 +51,7 @@ class Seq2SeqModel(object):
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
                attention_filter_length=0, use_lstm=False, pooling_ratios=None,
-               model_weights=None, vector_inputs=None, **kwargs):
+               model_weights=None, binary_input=None, **kwargs):
     """Create the model.
 
     Args:
@@ -72,20 +72,18 @@ class Seq2SeqModel(object):
       learning_rate_decay_factor: decay learning rate by this much when needed.
       use_lstm: if true, we use LSTM cells instead of GRU cells.
       num_samples: number of samples for sampled softmax.
-      vector_inputs: list of encoder_names that directly read features instead
+      binary_input: list of encoder_names that directly read features instead
         of token ids.
     """
     self.buckets = buckets
     self.batch_size = batch_size
     self.encoder_count = len(src_ext)
     self.model_weights = model_weights
-    self.vector_inputs = vector_inputs or []
+    self.binary_input = binary_input or []
 
     self.learning_rate = learning_rate
     self.global_step = global_step
-
-    trg_ext = trg_ext[0]   # FIXME: for now we assume we have only one decoder
-    self.trg_vocab_size = trg_vocab_size[0]
+    self.trg_vocab_size = trg_vocab_size
 
     assert len(src_vocab_size) == self.encoder_count
 
@@ -137,7 +135,6 @@ class Seq2SeqModel(object):
     self.encoder_names = list(src_ext)
     self.decoder_name = trg_ext
     self.embedding_size = embedding_size if embedding_size is not None else size
-    # TODO: different embedding size for each encoder
 
     # last bucket is the largest one
     src_bucket_size, trg_bucket_size = buckets[-1]
@@ -145,7 +142,7 @@ class Seq2SeqModel(object):
       encoder_inputs_ = []
       for i in xrange(src_bucket_size):
         placeholder_name = "encoder_{}_{}".format(encoder_name, i)
-        if encoder_name in self.vector_inputs:
+        if encoder_name in self.binary_input:
           placeholder = tf.placeholder(tf.float32, shape=[None, self.embedding_size], name=placeholder_name)
         else:
           placeholder = tf.placeholder(tf.int32, shape=[None], name=placeholder_name)
@@ -476,7 +473,7 @@ class Seq2SeqModel(object):
       # Get a random tuple of sentences in this bucket.
       sentences = random.choice(data[bucket_id])
       src_sentences = sentences[0:-1]
-      trg_sentence = sentences[-1]
+      trg_sentence = sentences[-1] + [utils.EOS_ID]
 
       for i, src_sentence in enumerate(src_sentences):
         if isinstance(src_sentence[0], np.ndarray):
@@ -526,10 +523,8 @@ class Seq2SeqModel(object):
 
     return batch_encoder_inputs, batch_decoder_inputs, batch_weights, encoder_input_length
 
-  def read_data(self, train_set, buckets, max_train_size=None, vector_inputs=None):
-    src_train_ids, trg_train_ids = train_set
-    self.train_set = utils.read_dataset(src_train_ids, trg_train_ids, buckets, max_train_size,
-                                        vector_inputs=vector_inputs)
+  def assign_data_set(self, train_set):
+    self.train_set = train_set
 
     train_bucket_sizes = map(len, self.train_set)
     train_total_size = float(sum(train_bucket_sizes))
@@ -539,22 +534,3 @@ class Seq2SeqModel(object):
     # the size if i-th training bucket, as used later.
     self.train_bucket_scales = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                                 for i in xrange(len(train_bucket_sizes))]
-
-  def get_embeddings(self, sess):
-    """
-    Returns a dict of embedding matrices for each extension
-    """
-
-    with variable_scope.variable_scope('many2one_rnn_seq2seq',
-                                       reuse=True):
-      shared_embeddings = self.shared_embeddings or []
-      embeddings = {}
-      names = self.encoder_names + [self.decoder_name]
-
-      for name in names:
-        part = 'decoder' if name == self.decoder_name else 'encoder'
-        scope = 'shared_embeddings' if name in shared_embeddings else '{}_{}'.format(part, name)
-        variable = tf.get_variable('{}/embedding'.format(scope))
-        embeddings[name] = variable.eval(session=sess)
-
-      return embeddings
