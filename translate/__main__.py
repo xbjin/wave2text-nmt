@@ -114,8 +114,8 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding (decoder is greedy by default)')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-parser.add_argument('--character-level', nargs='+', help='list of extensions whose input is at the character '
-                                                         'level')
+parser.add_argument('--character-level', nargs='+', help='list of extensions whose input is at the character level')
+parser.add_argument('--buckets', nargs='+', type=int, help='list of bucket sizes')
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -152,7 +152,7 @@ def main(args=None):
   args = parser.parse_args(args)
 
   if args.debug:   # toy settings
-    args.vocab_size = 100
+    args.vocab_size = 10000
     args.size = 128
     args.steps_per_checkpoint = 50
     args.steps_per_eval = 200
@@ -196,6 +196,7 @@ def main(args=None):
     'all extensions need to be unique')
   assert args.decode or args.eval or args.train, (
     'you need to specify at least one action (decode, eval, or train)')
+  assert args.buckets is None or len(args.buckets) % len(extensions) == 0
 
   filenames = utils.get_filenames(extensions=extensions, **vars(args))
   utils.debug('filenames')
@@ -212,6 +213,9 @@ def main(args=None):
       utils.warn('warning: file {} does not exist'.format(filename))
 
   vocab_sizes = args.src_vocab_size + [args.trg_vocab_size]
+  if args.buckets is not None:
+    buckets = [tuple(args.buckets[i:i + len(extensions)])
+               for i in range(0, len(args.buckets), len(extensions))]
   embeddings = utils.read_embeddings(filenames, extensions, vocab_sizes, **vars(args))
  
   utils.debug('embeddings {}'.format(embeddings))
@@ -242,7 +246,8 @@ def main(args=None):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order,
-                             binary_input=args.binary_input, character_level=args.character_level)
+                             binary_input=args.binary_input, character_level=args.character_level,
+                             buckets=buckets)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():

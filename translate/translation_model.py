@@ -17,20 +17,25 @@ from collections import OrderedDict
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
                learning_rate_decay_factor, multi_task=False, task_ratio=None,
-               keep_best=1, lm_order=3, binary_input=None, character_level=None):
+               keep_best=1, lm_order=3, binary_input=None, character_level=None,
+               buckets=None):
     self.src_ext = src_ext
     self.trg_ext = trg_ext
     self.extensions = src_ext + [trg_ext]
 
     # TODO: automatically find bucket sizes + handle multi-encoder setting
-    if binary_input:
-      # dirty hack, for now we assume that binary input means speech recognition,
-      # means longer frames
-      self.buckets = [(120, 10), (160, 10), (200, 15), (240, 15), (280, 15), (340, 20), (400, 20)]
-    elif character_level:
-      self.buckets = [(20, 20), (40, 40), (60, 60), (100, 100)]  # quick fix
-    else:
+    # if binary_input:
+    #   # dirty hack, for now we assume that binary input means speech recognition,
+    #   # means longer frames
+    #   self.buckets = [(120, 10), (160, 10), (200, 15), (240, 15), (280, 15), (340, 20), (400, 20)]
+    # elif character_level:
+    #   self.buckets = [(20, 20), (40, 40), (60, 60), (100, 100)]  # quick fix
+    # else:
+    #   self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
+    if buckets is None:
       self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
+    else:
+      self.buckets = buckets
 
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
@@ -40,7 +45,7 @@ class TranslationModel(object):
 
     # list of extensions that use vector features instead of text features
     self.binary_input = binary_input or []
-    self.character_level = character_level or None
+    self.character_level = character_level or []
 
     if multi_task:   # TODO
       raise NotImplementedError
