@@ -216,6 +216,8 @@ def main(args=None):
   if args.buckets is not None:
     buckets = [tuple(args.buckets[i:i + len(extensions)])
                for i in range(0, len(args.buckets), len(extensions))]
+  else:
+    buckets = None
   embeddings = utils.read_embeddings(filenames, extensions, vocab_sizes, **vars(args))
  
   utils.debug('embeddings {}'.format(embeddings))
