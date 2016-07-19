@@ -159,9 +159,8 @@ def read_embeddings(filenames, extensions, vocab_sizes, size,
       else:
         embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
 
-    if norm_embeddings:
+    if norm_embeddings:   # FIXME
       embedding /= np.linalg.norm(embedding)
-      debug('embedding of lang ' + ext + 'normalized')
 
     embeddings[ext] = embedding
 

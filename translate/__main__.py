@@ -46,6 +46,9 @@ parser.add_argument('--size', type=int, default=1024, help='size of each layer')
 parser.add_argument('--embedding-size', type=int, help='size of the embeddings')
 parser.add_argument('--num-layers', type=int, default=1, help='number of layers in the model')
 parser.add_argument('--bidir', action='store_true', help='use bidirectional encoder')
+parser.add_argument('--attention-window-size', type=int, default=0, help='size of the attention context window '
+                                                                         '(local attention), default value of 0 '
+                                                                         'means global attention')
 parser.add_argument('--attention-filters', type=int, default=0, help='number of convolution filters in attention '
                                                                      'mechanism')
 parser.add_argument('--attention-filter-length', type=int, default=10, help='length of convolution filters')
@@ -212,7 +215,7 @@ def main(args=None):
                                          'src_vocab_size', 'trg_vocab_size', 'embedding_size',
                                          'bidir', 'freeze_variables', 'num_samples',
                                          'attention_filters', 'attention_filter_length', 'use_lstm',
-                                         'pooling_ratios', 'model_weights'])
+                                         'pooling_ratios', 'model_weights', 'attention_window_size'])
   parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
 
   checkpoint_prefix = (args.checkpoint_prefix or

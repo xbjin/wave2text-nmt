@@ -226,7 +226,7 @@ class TranslationModel(object):
       utils.debug('using external language model')
 
     filenames_ = filenames.dev if on_dev else filenames.test
-    lines = zip(*utils.read_lines(filenames_, self.extensions, self.binary_input))
+    lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
 
     hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
                   for lines_ in lines]

@@ -134,37 +134,52 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
     return attention_states, encoder_state
 
 
-def attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
-              attention_filters=0, attention_filter_length=0, reuse=None):
+def compute_energy(hidden, state, name, **kwargs):
+  attn_size = hidden.get_shape()[3].value
+
+  y = rnn_cell.linear(state, attn_size, True)
+  y = tf.reshape(y, [-1, 1, 1, attn_size])
+
+  k = tf.get_variable('W_{}'.format(name), [1, 1, attn_size, attn_size])
+  f = tf.nn.conv2d(hidden, k, [1, 1, 1, 1], 'SAME')   # same as a dot product
+
+  v = tf.get_variable('V_{}'.format(name), [attn_size])
+  s = f + y
+  return tf.reduce_sum(v * tf.tanh(s), [2, 3])
+
+
+def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filters,
+                               attention_filter_length, **kwargs):
+  attn_length = hidden.get_shape()[1].value
+  attn_size = hidden.get_shape()[3].value
+  batch_size = tf.shape(hidden)[0]
+
+  filter_shape = [attention_filter_length * 2 + 1, 1, 1, attention_filters]
+  filter_ = tf.get_variable('filter_{}'.format(name), filter_shape)
+  u = tf.get_variable('U_{}'.format(name), [attention_filters, attn_size])
+  prev_weights = tf.reshape(prev_weights, [-1, attn_length, 1, 1])
+  conv = tf.nn.conv2d(prev_weights, filter_, [1, 1, 1, 1], 'SAME')
+  shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
+  conv = tf.reshape(conv, shape)
+  z = tf.matmul(conv, u)
+  z = tf.reshape(z, [-1, attn_length, 1, attn_size])
+
+  y = rnn_cell.linear(state, attn_size, True)
+  y = tf.reshape(y, [-1, 1, 1, attn_size])
+
+  k = tf.get_variable('W_{}'.format(name), [1, 1, attn_size, attn_size])
+  f = tf.nn.conv2d(hidden, k, [1, 1, 1, 1], 'SAME')  # same as a dot pr
+
+  v = tf.get_variable('V_{}'.format(name), [attn_size])
+  s = f + y + z
+  return tf.reduce_sum(v * tf.tanh(s), [2, 3])
+
+
+def global_attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size,
+                     attention_filters=0, attention_filter_length=0, reuse=None, **kwargs):
   assert len(hidden_states) == len(encoder_names)
 
   with tf.variable_scope('attention', reuse):
-    hidden_features = []
-    v = []
-    attn_filters = []
-    u = []
-
-    for encoder_name, hidden_ in zip(encoder_names, hidden_states):
-      # attention_decoder/attention/W_{encoder_name}
-      k = tf.get_variable('W_{}'.format(encoder_name), [1, 1, attn_size, attn_size])
-      hidden_features.append(tf.nn.conv2d(hidden_, k, [1, 1, 1, 1], 'SAME'))  # same as a dot product
-      # attention_decoder/attention/V_{encoder_name}
-      v.append(tf.get_variable('V_{}'.format(encoder_name), [attn_size]))
-
-      filter_ = None
-      u_ = None
-      if attention_filters > 0:
-        filter_ = tf.get_variable('filter_{}'.format(encoder_name),
-                                  [attention_filter_length * 2 + 1, 1, 1, attention_filters])
-        u_ = tf.get_variable('U_{}'.format(encoder_name), [attention_filters, attn_size])
-      u.append(u_)
-      attn_filters.append(filter_)
-
-    # attention_decoder/attention/Linear/Matrix
-    # attention_decoder/attention/Linear/Bias
-    y = rnn_cell.linear(state, attn_size, True)
-    y = tf.reshape(y, [-1, 1, 1, attn_size])
-
     weights = []
     ds = []
 
@@ -172,28 +187,16 @@ def attention(state, prev_weights, hidden_states, encoder_names, attn_length, at
       prev_weights = len(encoder_names) * [None]
 
     # for each encoder
-    for f, h, v_, prev_a, filter_, u_ in zip(hidden_features, hidden_states, v, prev_weights, attn_filters, u):
-      # attention mask is a softmax of v^T * tanh(...)
-      if filter_ is not None and u_ is not None:
-        prev_a = tf.reshape(prev_a, [-1, attn_length, 1, 1])
-        # compute convolution between prev_a and filter_
-        conv = tf.nn.conv2d(prev_a, filter_, [1, 1, 1, 1], 'SAME')
-        # flattening for dot product
-        shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
-        conv = tf.reshape(conv, shape)
-        z = tf.matmul(conv, u_)
-        z = tf.reshape(z, [-1, attn_length, 1, attn_size])
-
-        s = f + y + z
-      else:
-        s = f + y
-
-      e = tf.reduce_sum(v_ * tf.tanh(s), [2, 3])
+    for hidden, prev_weights_, encoder_name in zip(hidden_states, prev_weights, encoder_names):
+      compute_energy_ = compute_energy_with_filter if attention_filters > 0 else compute_energy
+      e = compute_energy_(hidden, state, encoder_name,
+                          prev_weights=prev_weights_, attention_filters=attention_filters,
+                          attention_filter_length=attention_filter_length)
       a = tf.nn.softmax(e)
       weights.append(a)
 
       # now calculate the attention-weighted vector d
-      d = tf.reduce_sum(tf.reshape(a, [-1, attn_length, 1, 1]) * h, [1, 2])
+      d = tf.reduce_sum(tf.reshape(a, [-1, attn_length, 1, 1]) * hidden, [1, 2])
       ds.append(d)
 
     weighted_average = tf.add_n(ds)  # just sum the context vector of each encoder (TODO: add weights there)
@@ -201,37 +204,16 @@ def attention(state, prev_weights, hidden_states, encoder_names, attn_length, at
 
     return weighted_average, weights
 
-def local_attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size, batch_size,
-                    attention_filters=0, attention_filter_length=0, reuse=None):
+
+def local_attention(state, prev_weights, hidden_states, encoder_names, attn_length, attn_size,
+                    attention_window_size=5, attention_filters=0,
+                    attention_filter_length=0, reuse=None, **kwargs):
+  """
+  Local attention of Luong et al. (http://arxiv.org/abs/1508.04025)
+  """
   assert len(hidden_states) == len(encoder_names)
 
   with tf.variable_scope('attention', reuse):
-    hidden_features = []
-    v = []
-    attn_filters = []
-    u = []
-
-    for encoder_name, hidden_ in zip(encoder_names, hidden_states):
-      # attention_decoder/attention/W_{encoder_name}
-      k = tf.get_variable('W_{}'.format(encoder_name), [1, 1, attn_size, attn_size])
-      hidden_features.append(tf.nn.conv2d(hidden_, k, [1, 1, 1, 1], 'SAME'))  # same as a dot product
-      # attention_decoder/attention/V_{encoder_name}
-      v.append(tf.get_variable('V_{}'.format(encoder_name), [attn_size]))
-
-      filter_ = None
-      u_ = None
-      if attention_filters > 0:
-        filter_ = tf.get_variable('filter_{}'.format(encoder_name),
-                                  [attention_filter_length * 2 + 1, 1, 1, attention_filters])
-        u_ = tf.get_variable('U_{}'.format(encoder_name), [attention_filters, attn_size])
-      u.append(u_)
-      attn_filters.append(filter_)
-
-    # attention_decoder/attention/Linear/Matrix
-    # attention_decoder/attention/Linear/Bias
-    y = rnn_cell.linear(state, attn_size, True)
-    y = tf.reshape(y, [-1, 1, 1, attn_size])
-
     weights = []
     ds = []
 
@@ -239,31 +221,50 @@ def local_attention(state, prev_weights, hidden_states, encoder_names, attn_leng
       prev_weights = len(encoder_names) * [None]
 
     # for each encoder
-    for f, h, v_, prev_a, filter_, u_ in zip(hidden_features, hidden_states, v, prev_weights, attn_filters, u):
-      # attention mask is a softmax of v^T * tanh(...)
-      if filter_ is not None and u_ is not None:
-        prev_a = tf.reshape(prev_a, [-1, attn_length, 1, 1])
-        # compute convolution between prev_a and filter_
-        conv = tf.nn.conv2d(prev_a, filter_, [1, 1, 1, 1], 'SAME')
-        # flattening for dot product
-        shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
-        conv = tf.reshape(conv, shape)
-        z = tf.matmul(conv, u_)
-        z = tf.reshape(z, [-1, attn_length, 1, attn_size])
+    for hidden, encoder_name, prev_weights_ in zip(hidden_states, encoder_names, prev_weights):
+      S = hidden.get_shape()[1].value   # source length
+      wp = tf.get_variable('Wp_{}'.format(encoder_name), [attn_size, attn_size])
+      vp = tf.get_variable('vp_{}'.format(encoder_name), [attn_size, 1])
+      pt = tf.nn.sigmoid(tf.matmul(tf.nn.tanh(tf.matmul(state, wp)), vp))
+      pt = tf.floor(S * tf.reshape(pt, [-1, 1]))  # aligned position in the source sentence
 
-        s = f + y + z
-      else:
-        s = f + y
+      # hidden's shape is (?, bucket_size, 1, state_size)
+      batch_size = tf.shape(state)[0]
 
-      e = tf.reduce_sum(v_ * tf.tanh(s), [2, 3])
-      a = tf.nn.softmax(e)
+      indices = tf.convert_to_tensor(range(attn_length), dtype=tf.float32)
+      idx = tf.tile(indices, tf.pack([batch_size]))
+      idx = tf.reshape(idx, [-1, attn_length])
+
+      # low = tf.reshape(p - attention_window_size, [-1, 1])
+      # high = tf.reshape(p + attention_window_size, [-1, 1])
+      low = pt - attention_window_size
+      high = pt + attention_window_size
+
+      # FIXME: is this really more efficient than global attention?
+      mlow = tf.to_float(idx < low)
+      mhigh =  tf.to_float(idx > high)
+      m = mlow + mhigh
+      mask = tf.to_float(tf.equal(m, 0.0))
+
+      compute_energy_ = compute_energy_with_filter if attention_filters > 0 else compute_energy
+      e = compute_energy_(hidden, state, encoder_name,
+                          prev_weights=prev_weights_, attention_filters=attention_filters,
+                          attention_filter_length=attention_filter_length)
+
+      a = tf.nn.softmax(e * mask)
+
+      sigma = attention_window_size / 2
+      numerator = -tf.pow((idx - pt), tf.convert_to_tensor(2, dtype=tf.float32))
+      div = tf.truediv(numerator, sigma ** 2)
+
+      a = a * tf.exp(div)   # result of the truncated normal distribution
       weights.append(a)
 
       # now calculate the attention-weighted vector d
-      d = tf.reduce_sum(tf.reshape(a, [-1, attn_length, 1, 1]) * h, [1, 2])
+      d = tf.reduce_sum(tf.reshape(a, [-1, attn_length, 1, 1]) * hidden, [1, 2])
       ds.append(d)
 
-    weighted_average = tf.add_n(ds)  # just sum the context vector of each encoder (TODO: add weights there)
+    weighted_average = tf.add_n(ds)  # just sum the context vector of each encoder
     weighted_average = tf.reshape(weighted_average, [-1, attn_size])
 
     return weighted_average, weights
@@ -335,7 +336,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                       attention_weights=None,
                       feed_previous=False, output_projection=None, embeddings=None,
                       initial_state_attention=False,
-                      attention_filters=0, attention_filter_length=0, reuse=None, **kwargs):
+                      attention_filters=0, attention_filter_length=0,
+                      attention_window_size=0, reuse=None, **kwargs):
   # TODO: dynamic RNN
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
@@ -386,7 +388,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       for states in attention_states
     ]
 
-    attention_ = functools.partial(attention, hidden_states=hidden_states,
+    if attention_window_size == 0:
+      attention_ = global_attention
+    else:
+      attention_ = local_attention
+
+    attention_ = functools.partial(attention_, hidden_states=hidden_states,
                                    encoder_names=encoder_names, attn_length=attn_length,
                                    attn_size=attn_size, batch_size=batch_size,
                                    attention_filters=attention_filters,
@@ -409,7 +416,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
     if initial_state_attention:
       # for beam-search decoder (feed_dict substitution)
       all_attention_weights.append(attention_weights)
-      attns, attention_weights = attention_(initial_state, attention_weights)
+      attns, attention_weights = attention_(initial_state, prev_weights=attention_weights)
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
       attns.set_shape([None, attn_size])
@@ -440,7 +447,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
       decoder_states.append(state)
 
       # run the attention mechanism
-      attns, attention_weights = attention_(state, attention_weights, reuse=initial_state_attention)
+      attns, attention_weights = attention_(state, prev_weights=attention_weights,
+                                            reuse=initial_state_attention)
 
       if output_projection is None:
         output = cell_output

@@ -51,7 +51,8 @@ class Seq2SeqModel(object):
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
                attention_filter_length=0, use_lstm=False, pooling_ratios=None,
-               model_weights=None, binary_input=None, **kwargs):
+               model_weights=None, binary_input=None,
+               attention_window_size=0, **kwargs):
     """Create the model.
 
     Args:
@@ -169,7 +170,7 @@ class Seq2SeqModel(object):
       embedding_size=self.embedding_size, embeddings=embeddings, num_layers=num_layers,
       output_projection=output_projection, bidir=bidir, initial_state_attention=True,
       attention_filters=attention_filters, attention_filter_length=attention_filter_length,
-      pooling_ratios=pooling_ratios
+      pooling_ratios=pooling_ratios, attention_window_size=attention_window_size
     )
 
     # self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -485,6 +486,7 @@ class Seq2SeqModel(object):
         # reverse THEN pad (better for early stopping...)
         # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
         reversed_sentence = list(reversed(src_sentence + encoder_pad))
+
         encoder_inputs[i].append(reversed_sentence)
         encoder_input_length[i].append(len(src_sentence))
 
