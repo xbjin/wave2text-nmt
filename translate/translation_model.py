@@ -17,7 +17,7 @@ from collections import OrderedDict
 class TranslationModel(object):
   def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
                learning_rate_decay_factor, multi_task=False, task_ratio=None,
-               keep_best=1, lm_order=3, binary_input=None):
+               keep_best=1, lm_order=3, binary_input=None, character_level=None):
     self.src_ext = src_ext
     self.trg_ext = trg_ext
     self.extensions = src_ext + [trg_ext]
@@ -27,6 +27,8 @@ class TranslationModel(object):
       # dirty hack, for now we assume that binary input means speech recognition,
       # means longer frames
       self.buckets = [(120, 10), (160, 10), (200, 15), (240, 15), (280, 15), (340, 20), (400, 20)]
+    elif character_level:
+      self.buckets = [(20, 20), (40, 40), (60, 60), (100, 100)]  # quick fix
     else:
       self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
 
@@ -38,6 +40,7 @@ class TranslationModel(object):
 
     # list of extensions that use vector features instead of text features
     self.binary_input = binary_input or []
+    self.character_level = character_level or None
 
     if multi_task:   # TODO
       raise NotImplementedError
@@ -64,12 +67,13 @@ class TranslationModel(object):
 
     utils.debug('reading training data')
     train_set = utils.read_dataset(filenames.train, self.extensions, self.vocabs, self.buckets,
-                                   max_size=max_train_size, binary_input=self.binary_input)
+                                   max_size=max_train_size, binary_input=self.binary_input,
+                                   character_level=self.character_level)
     self.model.assign_data_set(train_set)
     
     utils.debug('reading development data')
     dev_set = utils.read_dataset(filenames.dev, self.extensions, self.vocabs, self.buckets,
-                                 binary_input=self.binary_input)
+                                 binary_input=self.binary_input, character_level=self.character_level)
     self.model.dev_set = dev_set
 
   def _read_vocab(self, filenames):
@@ -169,6 +173,7 @@ class TranslationModel(object):
     if isinstance(src_sentences[0], basestring):
       utils.debug('translating {}'.format(src_sentences[0].strip()))
 
+    # TODO: this should be in utils
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence in zip(self.vocabs, src_sentences)]
@@ -184,10 +189,10 @@ class TranslationModel(object):
     else:
       hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
                                                            reverse_vocab=self.trg_vocab.reverse)
-      for hypothesis, score in zip(hypotheses, scores):
-        utils.debug('hypothesis={} | score={}'.format(
-          ' '.join(self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK for i in hypothesis),
-          score))
+      # for hypothesis, score in zip(hypotheses, scores):
+      #   utils.debug('hypothesis={} | score={}'.format(
+      #     ' '.join(self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK for i in hypothesis),
+      #     score))
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output
@@ -203,7 +208,10 @@ class TranslationModel(object):
     if self.lookup_dict is not None:
       trg_tokens = utils.replace_unk(src_sentences[0].split(), trg_tokens, trg_token_ids, self.lookup_dict)
 
-    return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
+    if self.trg_ext in self.character_level:
+      return ''.join(trg_tokens)
+    else:
+      return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
   def decode(self, sess, filenames, beam_size, output=None, remove_unk=False):
     self._read_vocab(filenames)

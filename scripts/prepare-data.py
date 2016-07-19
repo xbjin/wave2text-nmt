@@ -4,6 +4,8 @@ from __future__ import division
 from itertools import izip, islice
 from random import shuffle
 from contextlib import contextmanager
+from collections import Counter
+from functools import partial
 import itertools
 import argparse
 import subprocess
@@ -12,6 +14,7 @@ import os
 import logging
 import sys
 import shutil
+import codecs
 import shlex
 
 
@@ -52,12 +55,15 @@ UNK_ID = 3
 temporary_files = []
 
 
+open = partial(codecs.open, encoding='utf8')
+
+
 @contextmanager
 def open_files(names, mode='r'):
     files = []
     try:
         for name_ in names:
-            files.append(open(name_, mode=mode))
+            files.append(codecs.open(name_, mode=mode))
         yield files
     finally:
         for file_ in files:
@@ -84,15 +90,17 @@ def read_vocabulary(filename):
         return dict(map(reversed, enumerate(words)))
 
 
-def create_vocabulary(filename, output_filename, size):
+def create_vocabulary(filename, output_filename, size, character_level=False):
     logging.info('creating vocabulary {} from {}'.format(output_filename,
                                                          filename))
-    vocab = {}
+    vocab = Counter()
     with open(filename) as input_file, \
          open(output_filename, 'w') as output_file:
         for line in input_file:
-            for w in line.split():
-                vocab[w] = vocab.get(w, 0) + 1
+            line = line.strip() if character_level else line.split()
+
+            for w in line:
+                vocab[w] += 1
 
         vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
         if 0 < size < len(vocab_list):
@@ -134,7 +142,8 @@ def process_file(filename, lang, args):
             processes.append([path_to('lowercase.perl')])
         if args.normalize_digits:
             processes.append(['sed', 's/[[:digit:]]/0/g'])
-
+        if args.escape_special_chars:
+            processes.append([path_to('escape-special-chars.perl')])
 
         ps = None
 
@@ -268,6 +277,13 @@ if __name__ == '__main__':
     parser.add_argument('--lang', nargs='+', help='optional list of language '
                                                   'codes (when different '\
                                                   'than file extensions)')
+    parser.add_argument('--character-level', nargs='+', help='builds '
+                        'a character-level vocabulary for the given extensions, '
+                        'line length filtering is also performed at the '
+                        'character level')
+    parser.add_argument('--subwords', nargs='+', help='convert words to subword'
+                        'units for the given extensions')
+    parser.add_argument('--bpe-path', help='path to existing subword units (corpus prefix)')
 
     parser.add_argument('--normalize-punk', help='normalize punctuation',
                         action='store_true')
@@ -283,6 +299,8 @@ if __name__ == '__main__':
                         '(used as delimiters by moses)', action='store_true')
     parser.add_argument('--remove-duplicates', help='remove duplicate pairs',
                         action='store_true')
+    parser.add_argument('--escape-special-chars', help='escape special characters',
+                        action='store_true')
     parser.add_argument('--remove-duplicate-lines', help='more restrictive '
                         'than --remove-duplicates, remove any pair of lines '
                         'whose source or target side was already seen.')
@@ -293,10 +311,6 @@ if __name__ == '__main__':
                         help='min number of tokens per line')
     parser.add_argument('--max', nargs='+', type=int, default=50,
                         help='max number of tokens per line (0 for no limit)')
-
-    parser.add_argument('--subwords', action='store_true')
-    parser.add_argument('--bpe-path', help='path to existing subword units (corpus prefix)')
-
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
                         'the vocabularies', default=30000)
     parser.add_argument('--vocab-path', help='path to existing vocabularies (corpus prefix)')
@@ -323,13 +337,16 @@ if __name__ == '__main__':
 
     args.max = [i if i > 0 else float('inf') for i in args.max]
 
+    assert not (args.subwords and args.character_level), 'error: --subwords and --character-level' \
+                                                         'options are incompatible'
+
     if args.lang is None:
         args.lang = args.extensions
     elif len(args.lang) != n:
         sys.exit('wrong number of values for parameter --lang')
     if args.vocab_path is not None:
         args.vocab_path = ['{}.{}'.format(args.vocab_path, ext) for ext in args.extensions]
-    if args.bpe_path is not None and len(args.bpe_path) != n:
+    if args.bpe_path is not None:
         args.bpe_path = ['{}.{}'.format(args.bpe_path, ext) for ext in args.extensions]
 
     if args.verbose:
@@ -389,10 +406,14 @@ if __name__ == '__main__':
                 split_corpora = split_corpus(corpora[-1], sizes)
 
                 # union of `filenames` and `split_filenames`
-                for i, corpus in enumerate(split_corpora):
-                    if corpus is None:
-                        continue
-                    corpora[i] = corpus
+                for corpus, split_corpus in zip(corpora, split_corpora):
+                    if split_corpus is not None:
+                        corpus[:] = split_corpus
+
+            # filter corpora by line length
+            # TODO: character-level filtering
+            for corpus in corpora:
+                corpus[:] = filter_corpus(corpus, args)
 
             # create subwords and process files accordingly
             if args.subwords:
@@ -406,9 +427,11 @@ if __name__ == '__main__':
 
                     # create subwords
                     train_corpus = corpora[-1]
-                    for filename, bpe_filename, size in zip(train_corpus, bpe_filenames, args.vocab_size):
-                        # assume that we initially have ~500 unique symbols (characters)
-                        create_subwords(filename, bpe_filename, size - 500)
+                    for ext, filename, bpe_filename, size in zip(args.extensions, train_corpus, bpe_filenames,
+                                                                 args.vocab_size):
+                        if ext in args.subwords:
+                            # this does not ensure a vocabulary size of `size`
+                            create_subwords(filename, bpe_filename, size)
 
                 # apply subwords to train, dev and test
                 for corpus in corpora:
@@ -416,11 +439,12 @@ if __name__ == '__main__':
                         continue
 
                     filenames = [
-                        apply_subwords(filename, bpe_filename)
-                        for filename, bpe_filename in zip(corpus, bpe_filenames)
+                        apply_subwords(filename, bpe_filename) if ext in args.subwords else filename
+                        for ext, filename, bpe_filename in zip(args.extensions, corpus, bpe_filenames)
                     ]
 
-                    filenames = filter_corpus(filenames, args)  # filter lines by length again...
+                    # filter lines by length again...
+                    filenames = filter_corpus(filenames, args)
                     corpus[:] = filenames
 
             # move temporary files to their destination
@@ -459,7 +483,8 @@ if __name__ == '__main__':
                                                             vocab_output_filenames,
                                                             args.vocab_size,
                                                             args.extensions):
-                vocab = create_vocabulary(filename, output_filename, size)
+                character_level = args.character_level and ext in args.character_level
+                vocab = create_vocabulary(filename, output_filename, size, character_level)
                 vocabs.append(vocab)
         else:
             vocabs = None

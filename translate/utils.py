@@ -77,7 +77,7 @@ def initialize_vocabulary(vocabulary_path):
     raise ValueError("Vocabulary file %s not found.", vocabulary_path)
 
 
-def sentence_to_token_ids(sentence, vocabulary):
+def sentence_to_token_ids(sentence, vocabulary, character_level=False):
   """Convert a string to list of integers representing token-ids.
 
   For example, a sentence "I have a dog" may become tokenized into
@@ -87,11 +87,14 @@ def sentence_to_token_ids(sentence, vocabulary):
   Args:
     sentence: a string, the sentence to convert to token-ids.
     vocabulary: a dictionary mapping tokens to integers.
+    character_level: consider sentence as a string of characters, and
+      not as a string of words.
 
   Returns:
     a list of integers, the token-ids for the sentence.
   """
-  return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
+  sentence = sentence if character_level else sentence.split()
+  return [vocabulary.get(w, UNK_ID) for w in sentence]
 
 
 def get_filenames(data_dir, extensions, train_prefix, dev_prefix, embedding_prefix, lm_prefix,
@@ -189,10 +192,13 @@ def read_binary_features(filename):
   return all_feats
 
 
-def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input=None):
+def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input=None,
+                 character_level=None):
   data_set = [[] for _ in buckets]
 
   line_reader = read_lines(paths, extensions, binary_input=binary_input)
+  character_level = character_level or []
+
   for counter, inputs in enumerate(line_reader, 1):
     if max_size and counter >= max_size:
       break
@@ -200,9 +206,10 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
       log("  reading data line {}".format(counter))
 
     inputs = [
-      sentence_to_token_ids(input_, vocab.vocab)
+      sentence_to_token_ids(input_, vocab.vocab, character_level=(ext in character_level))
       if vocab is not None and isinstance(input_, basestring)
-      else input_ for input_, vocab in zip(inputs, vocabs)
+      else input_
+      for input_, vocab, ext in zip(inputs, vocabs, extensions)
     ]
 
     if not all(inputs):  # skip empty inputs
@@ -211,6 +218,7 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
     for bucket_id, bucket in enumerate(buckets):
       if all(len(input_) < bucket_size for input_, bucket_size in zip(inputs, bucket)):
         data_set[bucket_id].append(inputs)
+        break
 
   debug('files: {}'.format(' '.join(paths)))
   for bucket_id, data in enumerate(data_set):

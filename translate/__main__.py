@@ -114,8 +114,8 @@ parser.add_argument('--allow-growth', help='allow GPU memory allocation to chang
                     action='store_true')
 parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding (decoder is greedy by default)')
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-parser.add_argument('--character-level', help='output is at the character level (for BLEU eval characters need to '
-                                              'be joined into words)', action='store_true')  # TODO
+parser.add_argument('--character-level', nargs='+', help='list of extensions whose input is at the character '
+                                                         'level')
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -139,6 +139,12 @@ Benchmarks:
 Evaluation:
 scripts/scoring/score.rb --ref {ref} --hyp-detok {hyp} --print
 java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
+
+BTEC baseline configuration:
+python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
+--num-layers 2 --dropout-rate 0.5 --steps-per-checkpoint 1000 --steps-per-eval 2000 \
+--learning-rate-decay-factor 0.95 --use-lstm --bidir -v --train --gpu-id 0 --allow-growth \
+--src-ext fr --trg-ext en --log-file models/btec/log.txt
 """
 
 
@@ -146,7 +152,7 @@ def main(args=None):
   args = parser.parse_args(args)
 
   if args.debug:   # toy settings
-    args.vocab_size = 10000
+    args.vocab_size = 100
     args.size = 128
     args.steps_per_checkpoint = 50
     args.steps_per_eval = 200
@@ -236,7 +242,7 @@ def main(args=None):
     model = TranslationModel(args.src_ext, args.trg_ext, parameter_values, embeddings, checkpoint_dir,
                              args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
                              task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order,
-                             binary_input=args.binary_input)
+                             binary_input=args.binary_input, character_level=args.character_level)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
