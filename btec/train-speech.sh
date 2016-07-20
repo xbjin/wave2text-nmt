@@ -8,14 +8,13 @@ then
     exit 1
 fi
 
-# character-level input, word-level output
+# binary input, word-level output
 
-root_dir=models/btec_char
-data_dir=data/btec_char
+root_dir=models/btec_speech
+data_dir=data/btec_speech
 gpu_id=${GPU}
 size=512
 embedding_size="1024 512"
-src_vocab_size=`wc -l ${data_dir}/vocab.fr | cut -d' ' -f1`
 trg_vocab_size=`wc -l ${data_dir}/vocab.en | cut -d' ' -f1`
 num_samples=512
 layers=2
@@ -26,15 +25,15 @@ steps_per_eval=2000
 decay_factor=0.95
 lstm=--use-lstm
 bidir=--bidir
-buckets="--buckets 30 7 40 10 60 15 100 25"
+buckets="120 10 160 10 200 15 240 15 280 15 340 20 400 20"
 
 echo "### training model"
 
 mkdir -p ${root_dir}
 
 parameters="--size ${size} --embedding-size ${embedding_size} --layers ${layers} \
---vocab-size ${src_vocab_size} ${trg_vocab_size} --ext fr en ${lstm} ${bidir} \
---gpu-id ${gpu_id} --allow-growth ${buckets}"
+--vocab-size ${trg_vocab_size} --ext feats en ${lstm} ${bidir} \
+--gpu-id ${gpu_id} --allow-growth ${buckets} --binary-input feats"
 train_parameters="--train --verbose ${parameters} --dropout-rate ${dropout_rate} --beam-size 1 \
 --max-steps ${max_steps} --learning-rate-decay-factor ${decay_factor} \
 --steps-per-checkpoint ${steps_per_checkpoint} --steps-per-eval ${steps_per_eval}"

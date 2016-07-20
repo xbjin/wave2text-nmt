@@ -41,8 +41,8 @@ parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip g
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
 parser.add_argument('--no-attention', action='store_true', help='disable the attention mechanism')
 parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
-parser.add_argument('--size', nargs='+', type=int, default=[1024], help='size of each layer')
-# TODO: different embedding size for each encoder + decoder
+# TODO: different RNN size for each encoder + decoder
+parser.add_argument('--size', nargs='+', type=int, default=[1024], help='number of units in the RNN')
 parser.add_argument('--embedding-size', nargs='+', type=int, help='size of the embeddings')
 
 parser.add_argument('--layers', type=int, default=1, help='number of layers in the model')
