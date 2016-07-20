@@ -54,7 +54,7 @@ def unsafe_linear(args, output_size, bias, bias_start=0.0, scope=None):
 
 def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
                   encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=False,
-                  num_layers=1, pooling_ratios=None, **kwargs):
+                  layers=1, pooling_ratios=None, **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
@@ -71,15 +71,16 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
     if encoder_input_length is None:
       encoder_input_length = [None] * len(encoder_names)
 
-    for encoder_name, encoder_inputs_, encoder_input_length_, num_encoder_symbols_ in zip(
-        encoder_names, encoder_inputs, encoder_input_length, num_encoder_symbols):
+    for encoder_name, encoder_inputs_, encoder_input_length_, num_encoder_symbols_, embedding_size_ in zip(
+        encoder_names, encoder_inputs, encoder_input_length, num_encoder_symbols, embedding_size[:-1]):
+
       with tf.variable_scope('encoder_{}'.format(encoder_name)):
         # inputs are token ids, which need to be mapped to vectors (embeddings)
         if encoder_inputs_[0].dtype == tf.int32:
           initializer = embeddings.get(encoder_name)
           if initializer is None:
             initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
-            embedding_shape = [num_encoder_symbols_, embedding_size]
+            embedding_shape = [num_encoder_symbols_, embedding_size_]
           else:
             embedding_shape = None
 
@@ -91,13 +92,13 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
         else:  # do nothing: inputs are already vectors
           pass
 
-        if not bidir and num_layers > 1:  # bidir requires custom multi-rnn
-          cell = rnn_cell.MultiRNNCell([cell] * num_layers)
+        if not bidir and layers > 1:  # bidir requires custom multi-rnn
+          cell = rnn_cell.MultiRNNCell([cell] * layers)
 
         # TODO: pooling over time (cf. pooling_ratios) for non-bidir encoders
         if bidir:  # FIXME: not compatible with `dynamic`
           encoder_outputs_, encoder_state_fw, encoder_state_bw = rnn.multi_bidirectional_rnn(
-            [(cell, cell)] * num_layers, encoder_inputs_, pooling_ratios=pooling_ratios, dtype=tf.float32
+            [(cell, cell)] * layers, encoder_inputs_, pooling_ratios=pooling_ratios, dtype=tf.float32
           )
           encoder_state_ = encoder_state_bw
           # same as Bahdanau et al.:
@@ -109,7 +110,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
                           scope='bidir_projection') for outputs_ in encoder_outputs_]
         elif dynamic:
           encoder_inputs_ = tf.transpose(
-            tf.reshape(tf.concat(0, encoder_inputs_), [len(encoder_inputs_), -1, embedding_size]),
+            tf.reshape(tf.concat(0, encoder_inputs_), [len(encoder_inputs_), -1, embedding_size_]),
             perm=[1, 0, 2])
           encoder_outputs_, encoder_state_ = rnn.dynamic_rnn(cell, encoder_inputs_,
                                                              sequence_length=encoder_input_length_,
@@ -278,7 +279,7 @@ def decoder(decoder_inputs, initial_state, decoder_name,
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
     embedding_initializer = None
-    embedding_shape = [num_decoder_symbols, embedding_size]
+    embedding_shape = [num_decoder_symbols, embedding_size[-1]]
   else:
     embedding_shape = None
 
@@ -343,7 +344,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
   if embedding_initializer is None:
     # embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
     embedding_initializer = None
-    embedding_shape = [num_decoder_symbols, embedding_size]
+    embedding_shape = [num_decoder_symbols, embedding_size[-1]]
   else:
     embedding_shape = None
 

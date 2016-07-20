@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-data_dir=data/btec_fr-en
+data_dir=data/btec
 vocab_size=10000
 
 mkdir -p ${data_dir}

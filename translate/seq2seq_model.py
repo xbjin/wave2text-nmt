@@ -47,7 +47,7 @@ class Seq2SeqModel(object):
   """
 
   def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
-               src_vocab_size, trg_vocab_size, size, num_layers, max_gradient_norm, batch_size,
+               src_vocab_size, trg_vocab_size, size, layers, max_gradient_norm, batch_size,
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
                attention_filter_length=0, use_lstm=False, pooling_ratios=None,
@@ -64,7 +64,7 @@ class Seq2SeqModel(object):
         longer than O will be pushed to the next bucket and padded accordingly.
         We assume that the list is sorted, e.g., [(2, 4), (8, 16)].
       size: number of units in each layer of the model.
-      num_layers: number of layers in the model.
+      layers: number of layers in the model.
       max_gradient_norm: gradients will be clipped to maximally this norm.
       batch_size: the size of the batches used during training;
         the model construction is independent of batch_size, so it can be
@@ -76,6 +76,7 @@ class Seq2SeqModel(object):
       binary_input: list of encoder_names that directly read features instead
         of token ids.
     """
+    size = size[0]   # for now, only one size
     self.buckets = buckets
     self.batch_size = batch_size
     self.encoder_count = len(src_ext)
@@ -125,26 +126,27 @@ class Seq2SeqModel(object):
 
     # encoder takes a single cell (it builds the MultiRNNCell by itself)
     encoder_cell = decoder_cell = cell
-    if num_layers > 1:
-      decoder_cell = rnn_cell.MultiRNNCell([decoder_cell] * num_layers)
+    if layers > 1:
+      decoder_cell = rnn_cell.MultiRNNCell([decoder_cell] * layers)
 
     self.encoder_inputs = []
     self.decoder_inputs = []
     self.target_weights = []
     self.encoder_input_length = []
 
+    self.extensions = list(src_ext) + [trg_ext]
     self.encoder_names = list(src_ext)
     self.decoder_name = trg_ext
-    self.embedding_size = embedding_size if embedding_size is not None else size
+    self.embedding_size = embedding_size
 
     # last bucket is the largest one
     src_bucket_size, trg_bucket_size = buckets[-1]
-    for encoder_name in self.encoder_names:
+    for encoder_name, embedding_size_ in zip(self.encoder_names, self.embedding_size):
       encoder_inputs_ = []
       for i in xrange(src_bucket_size):
         placeholder_name = "encoder_{}_{}".format(encoder_name, i)
         if encoder_name in self.binary_input:
-          placeholder = tf.placeholder(tf.float32, shape=[None, self.embedding_size], name=placeholder_name)
+          placeholder = tf.placeholder(tf.float32, shape=[None, embedding_size_], name=placeholder_name)
         else:
           placeholder = tf.placeholder(tf.int32, shape=[None], name=placeholder_name)
 
@@ -167,7 +169,7 @@ class Seq2SeqModel(object):
     parameters = dict(
       encoder_names=self.encoder_names, decoder_name=self.decoder_name,
       num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
-      embedding_size=self.embedding_size, embeddings=embeddings, num_layers=num_layers,
+      embedding_size=self.embedding_size, embeddings=embeddings, layers=layers,
       output_projection=output_projection, bidir=bidir, initial_state_attention=True,
       attention_filters=attention_filters, attention_filter_length=attention_filter_length,
       pooling_ratios=pooling_ratios, attention_window_size=attention_window_size

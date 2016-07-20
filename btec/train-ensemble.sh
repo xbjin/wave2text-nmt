@@ -11,8 +11,8 @@ fi
 
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64/"
 
-root_dir=btec/models/ensemble
-data_dir=data/btec_fr-en
+root_dir=models/btec_ensemble
+data_dir=data/btec
 gpu_id=${GPU}
 embedding_size=256
 vocab_size=10000

@@ -137,20 +137,20 @@ def bleu_score(bleu_script, hypotheses, references):
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
 
 
-def read_embeddings(filenames, extensions, vocab_sizes, size,
+def read_embeddings(filenames, extensions, vocab_sizes, embedding_size,
                     load_embeddings=None, norm_embeddings=None, **kwargs):
   embeddings = {}  
 
-  for ext, vocab_size, vocab_path, filename in zip(extensions, vocab_sizes,
-                                                   filenames.vocab, filenames.embeddings):
+  for ext, vocab_size, vocab_path, filename, embedding_size_ in zip(extensions,
+      vocab_sizes, filenames.vocab, filenames.embeddings, embedding_size):
     if load_embeddings is None or ext not in load_embeddings:
       continue
 
     with open(filename) as file_:
       lines = (line.split() for line in file_)
       _, size_ = next(lines)
-      assert int(size_) == size, 'wrong embedding size'
-      embedding = np.zeros((vocab_size, size), dtype="float32")
+      assert int(size_) == embedding_size_, 'wrong embedding size'
+      embedding = np.zeros((vocab_size, size_), dtype="float32")
 
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
 
@@ -160,7 +160,7 @@ def read_embeddings(filenames, extensions, vocab_sizes, size,
       if word in d:
         embedding[index] = d[word]
       else:
-        embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size)
+        embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size_)
 
     if norm_embeddings:   # FIXME
       embedding /= np.linalg.norm(embedding)

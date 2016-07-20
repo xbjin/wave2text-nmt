@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-data_dir=data/btec_fr-en
+data_dir=data/btec_char
 vocab_size=10000
 
 mkdir -p ${data_dir}
@@ -22,5 +22,5 @@ echo "### pre-processing data"
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
 --vocab-size ${vocab_size} \
---character-level en
+--character-level fr
 fi

@@ -8,8 +8,8 @@ then
     exit 1
 fi
 
-root_dir=models/btec
-data_dir=data/btec
+root_dir=models/btec_subwords
+data_dir=data/btec_subwords
 gpu_id=${GPU}
 embedding_size=256
 src_vocab_size=`wc -l ${data_dir}/vocab.fr | cut -d' ' -f1`

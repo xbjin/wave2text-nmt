@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-data_dir=data/btec_fr-en
+data_dir=data/btec_subwords
 vocab_size=10000
 
 mkdir -p ${data_dir}
@@ -17,8 +17,8 @@ echo "### pre-processing data"
 
 ./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} --mode all \
 --verbose \
---max 50 \
 --lowercase \
+--subwords fr en \
 --dev-corpus ${corpus_dev} \
 --test-corpus ${corpus_test} \
 --vocab-size ${vocab_size}
