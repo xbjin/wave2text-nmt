@@ -15,7 +15,7 @@ data_dir=data/btec_speech
 gpu_id=${GPU}
 size=512
 embedding_size="1024 512"
-trg_vocab_size=`wc -l ${data_dir}/vocab.en | cut -d' ' -f1`
+trg_vocab_size=`wc -l ${data_dir}/vocab.fr | cut -d' ' -f1`
 num_samples=512
 layers=2
 dropout_rate=0.5
@@ -32,7 +32,7 @@ echo "### training model"
 mkdir -p ${root_dir}
 
 parameters="--size ${size} --embedding-size ${embedding_size} --layers ${layers} \
---vocab-size ${trg_vocab_size} --ext feats en ${lstm} ${bidir} \
+--vocab-size ${trg_vocab_size} --ext feats fr ${lstm} ${bidir} \
 --gpu-id ${gpu_id} --allow-growth ${buckets} --binary-input feats"
 train_parameters="--train --verbose ${parameters} --dropout-rate ${dropout_rate} --beam-size 1 \
 --max-steps ${max_steps} --learning-rate-decay-factor ${decay_factor} \
