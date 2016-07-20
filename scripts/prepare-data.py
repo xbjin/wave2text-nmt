@@ -111,7 +111,7 @@ def create_vocabulary(filename, output_filename, size, character_level=False):
     return dict(map(reversed, enumerate(vocab_list)))
 
 
-def process_file(filename, lang, args):
+def process_file(filename, lang, ext, args):
     logging.info('processing ' + filename)
 
     with open_temp_files(num=1) as output_, open(filename) as input_:
@@ -125,24 +125,23 @@ def process_file(filename, lang, args):
 
         processes = [['cat']]   # just copy file if there is no other operation
 
-        if args.normalize_punk:
+        if ext in args.normalize_punk:
             processes.append([path_to('normalize-punctuation.perl'), '-l',
                               lang])
             # replace html entities: FIXME
             # processes.append(shlex.split("perl -MHTML::Entities -pe 'decode_entities($_);'"))
         if args.normalize_moses:
             processes.append(['sed', 's/|//g'])
-        if args.subwords:
+        if ext in args.subwords:
             processes.append(['sed', 's/@\\+/@/g'])  # @@ is used as delimiter for subwords
-
-        if args.tokenize:
+        if ext not in args.no_tokenize:
             processes.append([path_to('tokenizer.perl'), '-l', lang, '-threads',
                               str(args.threads)])
-        if args.lowercase:
+        if ext in args.lowercase:
             processes.append([path_to('lowercase.perl')])
-        if args.normalize_digits:
+        if ext in args.normalize_digits:
             processes.append(['sed', 's/[[:digit:]]/0/g'])
-        if args.escape_special_chars:
+        if ext in args.escape_special_chars:
             processes.append([path_to('escape-special-chars.perl')])
 
         ps = None
@@ -171,8 +170,8 @@ def filter_corpus(filenames, args):
 
 
 def process_corpus(filenames, args):
-    filenames = [process_file(filename, lang, args)
-                 for lang, filename in zip(args.lang, filenames)]
+    filenames = [process_file(filename, lang, ext, args)
+        for lang, ext, filename in zip(args.lang, args.extensions, filenames)]
 
     with open_files(filenames) as input_files, \
          open_temp_files(len(filenames)) as output_files:
@@ -237,6 +236,99 @@ def apply_subwords(filename, bpe_filename):
         return output_.name
 
 
+def process_corpora(args, corpora, output_corpora, sizes):
+    for corpus in corpora:
+        if corpus is not None:
+            corpus[:] = process_corpus(corpus, args)
+
+    # split corpus into train/dev/test
+    # size of 0: no corpus is created
+    # size of None: copy everything (default for train)
+    # if dev/test corpus is provided, we don't split
+    if any(sizes):
+        logging.info('splitting files')
+        split_corpora = split_corpus(corpora[-1], sizes)
+
+        # union of `filenames` and `split_filenames`
+        for corpus, split_corpus_ in zip(corpora, split_corpora):
+            if split_corpus_ is not None:
+                corpus[:] = split_corpus_
+
+    # filter corpora by line length
+    # TODO: character-level filtering
+    for corpus in corpora:
+        if corpus is not None:
+            corpus[:] = filter_corpus(corpus, args)
+
+        # create subwords and process files accordingly
+    if args.subwords:
+        if args.bpe_path:
+            bpe_filenames = args.bpe_path
+        else:
+            bpe_filenames = [
+                os.path.join(args.output_dir, 'bpe.{}'.format(ext))
+                for ext in args.extensions
+                ]
+
+            # create subwords
+            train_corpus = corpora[-1]
+            for ext, filename, bpe_filename, size in zip(args.extensions, train_corpus, bpe_filenames,
+                                                         args.vocab_size):
+                if ext in args.subwords:
+                    # this does not ensure a vocabulary size of `size`
+                    create_subwords(filename, bpe_filename, size)
+
+        # apply subwords to train, dev and test
+        for corpus in corpora:
+            if corpus is None:
+                continue
+
+            filenames = [
+                apply_subwords(filename, bpe_filename) if ext in args.subwords else filename
+                for ext, filename, bpe_filename in zip(args.extensions, corpus, bpe_filenames)
+                ]
+
+            # filter lines by length again...
+            filenames = filter_corpus(filenames, args)
+            corpus[:] = filenames
+
+            # move temporary files to their destination
+    for corpus, output_corpus in zip(corpora, output_corpora):
+        if corpus is None:
+            continue
+        for filename, output_filename in zip(corpus, output_corpus):
+            shutil.move(filename, output_filename)
+
+        corpus[:] = output_corpus
+
+
+def process_vocabularies(args, corpora):
+    ## create vocabularies
+    vocab_output_filenames = [
+        os.path.join(args.output_dir, '{}.{}'.format(args.vocab_prefix, ext))
+        for ext in args.extensions
+    ]
+
+    if args.vocab_path is not None:
+        # copy vocabularies if necessary
+        for vocab_filename, output_filename in zip(args.vocab_path,
+                                                   vocab_output_filenames):
+            if vocab_filename != output_filename:
+                shutil.copy(vocab_filename, output_filename)
+        return
+
+    logging.info('creating vocabulary files')
+    # training corpus is used to create vocabulary
+    train_corpus = corpora[-1]
+
+    for filename, output_filename, size, ext in zip(train_corpus,
+                                                    vocab_output_filenames,
+                                                    args.vocab_size,
+                                                    args.extensions):
+        character_level = ext in args.character_level
+        create_vocabulary(filename, output_filename, size, character_level)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=help_msg,
             formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -254,16 +346,15 @@ if __name__ == '__main__':
                         'all: do all of the above', default='all',
                         choices=('prepare', 'vocab', 'all'))
 
-    parser.add_argument('--output-prefix', help='start filenames with '
-                        'this prefix', default='')
+    parser.add_argument('--output', help='start filenames with '
+                        'this prefix', default='train')
 
-    parser.add_argument('--suffix', default='train')
-    parser.add_argument('--dev-suffix', default='dev')
-    parser.add_argument('--test-suffix', default='test')
+    parser.add_argument('--dev-prefix', default='dev')
+    parser.add_argument('--test-prefix', default='test')
+    parser.add_argument('--vocab-prefix', default='vocab')
 
-    # TODO: vocab prefix
-    parser.add_argument('--dev-corpus', help='development corpus')
-    parser.add_argument('--test-corpus', help='test corpus')
+    parser.add_argument('--dev-corpus', help='input development corpus')
+    parser.add_argument('--test-corpus', help='input test corpus')
 
     parser.add_argument('--scripts', help='path to script directory', default='scripts')
 
@@ -277,56 +368,48 @@ if __name__ == '__main__':
     parser.add_argument('--lang', nargs='+', help='optional list of language '
                                                   'codes (when different '\
                                                   'than file extensions)')
-    parser.add_argument('--character-level', nargs='+', help='builds '
+    parser.add_argument('--character-level', nargs='*', help='builds '
                         'a character-level vocabulary for the given extensions, '
                         'line length filtering is also performed at the '
                         'character level')
-    parser.add_argument('--subwords', nargs='+', help='convert words to subword'
+    parser.add_argument('--subwords', nargs='*', help='convert words to subword'
                         'units for the given extensions')
     parser.add_argument('--bpe-path', help='path to existing subword units (corpus prefix)')
 
-    parser.add_argument('--normalize-punk', help='normalize punctuation',
-                        action='store_true')
-    parser.add_argument('--normalize-digits', help='normalize digits '
-                        '(replace all digits with 0)', action='store_true')
-    parser.add_argument('--lowercase', help='put everything to lowercase',
-                        action='store_true')
-    parser.add_argument('--shuffle', help='shuffle the corpus',
-                        action='store_true')
-    parser.add_argument('--no-tokenize', dest='tokenize',
-                        help='no tokenization', action='store_false')
+    parser.add_argument('--normalize-punk', nargs='*', help='normalize punctuation')
+    parser.add_argument('--normalize-digits', nargs='*', help='normalize digits with 0')
+    parser.add_argument('--lowercase', nargs='*', help='put everything to lowercase',)
+    parser.add_argument('--no-tokenize', nargs='*', help='no tokenization')
+    parser.add_argument('--escape-special-chars', nargs='*', help='escape special characters')
+    parser.add_argument('--shuffle', help='shuffle the corpus', action='store_true')
+
     parser.add_argument('--normalize-moses', help='remove | symbols '
                         '(used as delimiters by moses)', action='store_true')
     parser.add_argument('--remove-duplicates', help='remove duplicate pairs',
                         action='store_true')
-    parser.add_argument('--escape-special-chars', help='escape special characters',
-                        action='store_true')
     parser.add_argument('--remove-duplicate-lines', help='more restrictive '
                         'than --remove-duplicates, remove any pair of lines '
                         'whose source or target side was already seen.')
+
     parser.add_argument('-v', '--verbose', help='verbose mode',
                         action='store_true')
 
-    parser.add_argument('--min', nargs='+', type=int, default=1,
+    parser.add_argument('--min', nargs='+', type=int, default=[1],
                         help='min number of tokens per line')
-    parser.add_argument('--max', nargs='+', type=int, default=50,
+    parser.add_argument('--max', nargs='+', type=int, default=[50],
                         help='max number of tokens per line (0 for no limit)')
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
-                        'the vocabularies', default=30000)
+                        'the vocabularies', default=[30000])
     parser.add_argument('--vocab-path', help='path to existing vocabularies (corpus prefix)')
     parser.add_argument('--threads', type=int, default=16)
 
     args = parser.parse_args()
 
     def fixed_length_arg(name, value, length):
-        if value is None:
+        if len(value) == length:
             return value
-        elif isinstance(value, int):
-            return [value for _ in range(length)]
         elif len(value) == 1:
             return [value[0] for _ in range(length)]
-        elif len(value) == length:
-            return value
         else:
             sys.exit('wrong number of values for parameter {}'.format(name))
 
@@ -334,11 +417,23 @@ if __name__ == '__main__':
     args.min = fixed_length_arg('--min', args.min, n)
     args.max = fixed_length_arg('--max', args.max, n)
     args.vocab_size = fixed_length_arg('--vocab-size', args.vocab_size, n)
-
     args.max = [i if i > 0 else float('inf') for i in args.max]
 
-    assert not (args.subwords and args.character_level), 'error: --subwords and --character-level' \
-                                                         'options are incompatible'
+    def extension_arg(value):
+        if value is None:
+            return []
+        elif len(value) == 0:
+            return args.extensions
+        else:
+            return value
+
+    args.subwords = extension_arg(args.subwords)
+    args.character_level = extension_arg(args.character_level)
+    args.no_tokenize = extension_arg(args.no_tokenize)
+    args.lowercase = extension_arg(args.lowercase)
+    args.normalize_digits = extension_arg(args.normalize_digits)
+    args.normalize_punk = extension_arg(args.normalize_punk)
+    args.escape_special_chars = extension_arg(args.escape_special_chars)
 
     if args.lang is None:
         args.lang = args.extensions
@@ -359,20 +454,13 @@ if __name__ == '__main__':
         logging.info('creating directory')
         os.makedirs(args.output_dir)
 
-    input_corpora = (args.dev_corpus, args.test_corpus, args.corpus)
-
-    # corpora names are a concatenation of a prefix and a suffix (e.g. europarl.train)
-    output_corpora_names = [
-        args.output_prefix if not suffix else
-        suffix if not args.output_prefix else
-        '{}.{}'.format(args.output_prefix, suffix)
-        for suffix in (args.dev_suffix, args.test_suffix, args.suffix)
-    ]
+    input_corpora_prefix = (args.dev_corpus, args.test_corpus, args.corpus)
+    output_corpora_prefix = (args.dev_prefix, args.test_prefix, args.output)
 
     # full paths to dev, test and train corpora
-    output_corpora = [
-        os.path.join(args.output_dir, name)
-        for name in output_corpora_names
+    output_corpora_prefix = [
+        os.path.join(args.output_dir, corpus_prefix)
+        for corpus_prefix in output_corpora_prefix
     ]
 
     try:
@@ -380,9 +468,13 @@ if __name__ == '__main__':
         # a value of None (default for dev and test) means that no
         # corpus is provided
         corpora = [
-            (None if corpus is None else
-            ['{}.{}'.format(corpus, ext) for ext in args.extensions])
-            for corpus in input_corpora
+            corpus_prefix and ['{}.{}'.format(corpus_prefix, ext) for ext in args.extensions]
+            for corpus_prefix in input_corpora_prefix
+        ]
+
+        output_corpora = [
+            corpus_prefix and ['{}.{}'.format(corpus_prefix, ext) for ext in args.extensions]
+            for corpus_prefix in output_corpora_prefix
         ]
 
         sizes = [
@@ -393,105 +485,13 @@ if __name__ == '__main__':
 
         ## process corpora and copy them to their destination
         if create_corpus_:
-            for i, corpus in enumerate(corpora):
-                if corpus is not None:
-                    corpora[i] = process_corpus(corpus, args)
-
-            # split corpus into train/dev/test
-            # size of 0: no corpus is created
-            # size of None: copy everything (default for train)
-            # if dev/test corpus is provided, we don't split
-            if any(sizes):
-                logging.info('splitting files')
-                split_corpora = split_corpus(corpora[-1], sizes)
-
-                # union of `filenames` and `split_filenames`
-                for corpus, split_corpus in zip(corpora, split_corpora):
-                    if split_corpus is not None:
-                        corpus[:] = split_corpus
-
-            # filter corpora by line length
-            # TODO: character-level filtering
-            for corpus in corpora:
-                corpus[:] = filter_corpus(corpus, args)
-
-            # create subwords and process files accordingly
-            if args.subwords:
-                if args.bpe_path:
-                    bpe_filenames = args.bpe_path
-                else:
-                    bpe_filenames = [
-                        os.path.join(args.output_dir, 'bpe.{}'.format(ext))
-                        for ext in args.extensions
-                    ]
-
-                    # create subwords
-                    train_corpus = corpora[-1]
-                    for ext, filename, bpe_filename, size in zip(args.extensions, train_corpus, bpe_filenames,
-                                                                 args.vocab_size):
-                        if ext in args.subwords:
-                            # this does not ensure a vocabulary size of `size`
-                            create_subwords(filename, bpe_filename, size)
-
-                # apply subwords to train, dev and test
-                for corpus in corpora:
-                    if corpus is None:
-                        continue
-
-                    filenames = [
-                        apply_subwords(filename, bpe_filename) if ext in args.subwords else filename
-                        for ext, filename, bpe_filename in zip(args.extensions, corpus, bpe_filenames)
-                    ]
-
-                    # filter lines by length again...
-                    filenames = filter_corpus(filenames, args)
-                    corpus[:] = filenames
-
-            # move temporary files to their destination
-            for i, corpus in enumerate(corpora):
-                if corpus is None:
-                    continue
-                output_corpus = ['{}.{}'.format(output_corpora[i], ext)
-                                 for ext in args.extensions]
-                for filename, output_filename in zip(corpus, output_corpus):
-                    shutil.move(filename, output_filename)
-
-                corpora[i] = output_corpus
-
-        ## create vocabularies
-        vocab_output_filenames = [
-            os.path.join(args.output_dir, 'vocab.{}'.format(ext))
-            for ext in args.extensions
-        ]
-
-        if args.vocab_path is not None:
-            logging.info('reading vocabulary files')
-            vocabs = [read_vocabulary(filename) for filename in args.vocab_path]
-            if create_vocab_:
-                # copy vocabularies if necessary
-                for vocab_filename, output_filename in zip(args.vocab_path,
-                                                           vocab_output_filenames):
-                    if vocab_filename != output_filename:
-                        shutil.copy(vocab_filename, output_filename)
-        elif create_vocab_:
-            logging.info('creating vocabulary files')
-            # training corpus is used to create vocabulary
-            train_corpus = corpora[-1]
-
-            vocabs = []
-            for filename, output_filename, size, ext in zip(train_corpus,
-                                                            vocab_output_filenames,
-                                                            args.vocab_size,
-                                                            args.extensions):
-                character_level = args.character_level and ext in args.character_level
-                vocab = create_vocabulary(filename, output_filename, size, character_level)
-                vocabs.append(vocab)
-        else:
-            vocabs = None
+            process_corpora(args, corpora, output_corpora, sizes)
+        if create_vocab_:
+            process_vocabularies(args, corpora)
 
     finally:
         logging.info('removing temporary files')
-        for name in temporary_files:  # remove temporary files
+        for name in temporary_files:
             try:
                 os.remove(name)
             except OSError:
