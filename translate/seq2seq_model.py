@@ -236,6 +236,7 @@ class Seq2SeqModel(object):
     encoder_size, decoder_size = self.buckets[bucket_id]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch(data,
                                                                                           bucket_id)
+
     # check if the sizes match
     if len(encoder_inputs[0]) != encoder_size:
       raise ValueError("Encoder length must be equal to the one in bucket,"

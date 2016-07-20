@@ -175,8 +175,8 @@ class TranslationModel(object):
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
     # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
     # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
-    if isinstance(src_sentences[0], basestring):
-      utils.debug('translating {}'.format(src_sentences[0].strip()))
+    # if isinstance(src_sentences[0], basestring):
+    #   utils.debug('translating {}'.format(src_sentences[0].strip()))
 
     # TODO: this should be in utils
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)

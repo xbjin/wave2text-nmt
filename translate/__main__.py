@@ -197,6 +197,8 @@ def main(args=None):
   assert args.decode or args.eval or args.train, (
     'you need to specify at least one action (decode, eval, or train)')
   assert args.buckets is None or len(args.buckets) % len(extensions) == 0
+  assert not (args.use_lm and args.character_level and args.trg_ext in args.character_level), (
+    'can\'t use a language model when the output is at the character level')
 
   filenames = utils.get_filenames(extensions=extensions, **vars(args))
   utils.debug('filenames')

@@ -70,7 +70,7 @@ def initialize_vocabulary(vocabulary_path):
     rev_vocab = []
     with open(vocabulary_path) as f:
       rev_vocab.extend(f.readlines())
-    rev_vocab = [line.strip() for line in rev_vocab]
+    rev_vocab = [line.rstrip('\n') for line in rev_vocab]
     vocab = dict([(x, y) for (y, x) in enumerate(rev_vocab)])
     return namedtuple('vocab', 'vocab reverse')(vocab, rev_vocab)
   else:
@@ -93,7 +93,7 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
   Returns:
     a list of integers, the token-ids for the sentence.
   """
-  sentence = sentence if character_level else sentence.split()
+  sentence = sentence.strip() if character_level else sentence.split()
   return [vocabulary.get(w, UNK_ID) for w in sentence]
 
 
