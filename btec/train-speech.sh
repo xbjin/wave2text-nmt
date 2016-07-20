@@ -25,7 +25,7 @@ steps_per_eval=2000
 decay_factor=0.95
 lstm=--use-lstm
 bidir=--bidir
-buckets="120 10 160 10 200 15 240 15 280 15 340 20 400 20"
+buckets="--buckets 120 10 160 10 200 15 240 15 280 15 340 20 400 20"
 
 echo "### training model"
 
