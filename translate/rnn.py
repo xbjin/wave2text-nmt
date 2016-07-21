@@ -374,7 +374,7 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
   return (outputs, output_state_fw, output_state_bw)
 
 
-def multi_bidirectional_rnn(cells, inputs, pooling_ratios=None,
+def multi_bidirectional_rnn(cells, inputs, time_pooling=None,
                             initial_state_fw=None, initial_state_bw=None,
                             dtype=None, sequence_length=None, scope=None):
   if not isinstance(inputs, list):
@@ -387,9 +387,9 @@ def multi_bidirectional_rnn(cells, inputs, pooling_ratios=None,
   output_states_bw = []
 
   # pooling over time (Bahdanau, Chorowski et al. 2015)
-  if pooling_ratios is None:
-    pooling_ratios = [1] * (len(cells) - 1)
-  pooling_ratios += [1]   # output ratio is always 1
+  if time_pooling is None:
+    time_pooling = [1] * (len(cells) - 1)
+  time_pooling += [1]   # output ratio is always 1
 
   for i, (cell_fw, cell_bw) in enumerate(cells):
     # Forward direction
@@ -407,7 +407,7 @@ def multi_bidirectional_rnn(cells, inputs, pooling_ratios=None,
               for fw, bw in zip(output_fw, output_bw)]
 
     # a ratio of 2 keeps 1 out of every 2 outputs for the next layer
-    ratio = pooling_ratios[i]
+    ratio = time_pooling[i]
     inputs = inputs[::ratio]
 
     output_states_fw.append(output_state_fw)

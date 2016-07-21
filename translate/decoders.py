@@ -54,7 +54,7 @@ def unsafe_linear(args, output_size, bias, bias_start=0.0, scope=None):
 
 def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
                   encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=False,
-                  layers=1, pooling_ratios=None, **kwargs):
+                  layers=1, time_pooling=None, **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
@@ -98,7 +98,7 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
         # TODO: pooling over time (cf. pooling_ratios) for non-bidir encoders
         if bidir:  # FIXME: not compatible with `dynamic`
           encoder_outputs_, encoder_state_fw, encoder_state_bw = rnn.multi_bidirectional_rnn(
-            [(cell, cell)] * layers, encoder_inputs_, pooling_ratios=pooling_ratios, dtype=tf.float32
+            [(cell, cell)] * layers, encoder_inputs_, time_pooling=time_pooling, dtype=tf.float32
           )
           encoder_state_ = encoder_state_bw
           # same as Bahdanau et al.:

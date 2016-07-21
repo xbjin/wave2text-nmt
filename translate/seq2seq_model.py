@@ -50,7 +50,7 @@ class Seq2SeqModel(object):
                src_vocab_size, trg_vocab_size, size, layers, max_gradient_norm, batch_size,
                num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
                bidir=False, freeze_variables=None, attention_filters=0,
-               attention_filter_length=0, use_lstm=False, pooling_ratios=None,
+               attention_filter_length=0, use_lstm=False, time_pooling=None,
                model_weights=None, binary_input=None,
                attention_window_size=0, **kwargs):
     """Create the model.
@@ -172,7 +172,7 @@ class Seq2SeqModel(object):
       embedding_size=self.embedding_size, embeddings=embeddings, layers=layers,
       output_projection=output_projection, bidir=bidir, initial_state_attention=True,
       attention_filters=attention_filters, attention_filter_length=attention_filter_length,
-      pooling_ratios=pooling_ratios, attention_window_size=attention_window_size
+      pooling_ratios=time_pooling, attention_window_size=attention_window_size
     )
 
     # self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -479,9 +479,10 @@ class Seq2SeqModel(object):
       src_sentences = sentences[0:-1]
       trg_sentence = sentences[-1] + [utils.EOS_ID]
 
-      for i, src_sentence in enumerate(src_sentences):
+      for i, (src_sentence, embedding_size_) in enumerate(
+          zip(src_sentences, self.embedding_size[:-1])):
         if isinstance(src_sentence[0], np.ndarray):
-          pad = np.zeros([self.embedding_size], dtype=np.float32)
+          pad = np.zeros([embedding_size_], dtype=np.float32)
         else:
           pad = utils.PAD_ID
 

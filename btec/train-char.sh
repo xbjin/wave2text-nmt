@@ -9,6 +9,7 @@ then
 fi
 
 # character-level input, word-level output
+# bad idea
 
 root_dir=models/btec_char
 data_dir=data/btec_char
