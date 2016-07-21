@@ -15,6 +15,7 @@ import logging
 import argparse
 import subprocess
 import tensorflow as tf
+import yaml
 
 from translate import utils
 from collections import namedtuple
@@ -112,6 +113,7 @@ parser.add_argument('--beam-size', type=int, default=1, help='beam size for deco
 parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
 parser.add_argument('--character-level', nargs='+', help='list of extensions whose input is at the character level')
 parser.add_argument('--buckets', nargs='+', type=int, help='list of bucket sizes')
+parser.add_argument('--config', help='load a configuration file in the YAML format')
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -146,15 +148,11 @@ python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
 
 def main(args=None):
   args = parser.parse_args(args)
-
-  if args.debug:   # toy settings
-    args.vocab_size = [10000]
-    args.size = [128]
-    args.steps_per_checkpoint = 50
-    args.steps_per_eval = 200
-    args.verbose = True
-    args.batch_size = 32
-    args.dev_prefix = 'dev.100'
+  if args.config is not None:
+    with open(args.config) as f:
+      config = yaml.safe_load(f)
+      for k, v in config.items():
+        setattr(args, k, v)
 
   if not os.path.exists(args.train_dir):
     os.makedirs(args.train_dir)

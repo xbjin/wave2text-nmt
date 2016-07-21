@@ -264,7 +264,7 @@ class Seq2SeqModel(object):
 
     # since our targets are decoder inputs shifted by one, we need one more
     last_target = self.decoder_inputs[decoder_size].name
-    input_feed[last_target] = np.zeros_like(input_feed.values()[0])
+    input_feed[last_target] = np.zeros_like(decoder_inputs[0])
 
     output_feed = [self.losses[bucket_id]]
     if not forward_only:
@@ -295,7 +295,7 @@ class Seq2SeqModel(object):
 
     # since our targets are decoder inputs shifted by one, we need one more
     last_target = self.decoder_inputs[decoder_size].name
-    input_feed[last_target] = np.zeros_like(input_feed.values()[0])
+    input_feed[last_target] = np.zeros_like(decoder_inputs[0])
 
     output_feed = self.greedy_outputs[bucket_id][:decoder_size]
 
@@ -479,9 +479,9 @@ class Seq2SeqModel(object):
       src_sentences = sentences[0:-1]
       trg_sentence = sentences[-1] + [utils.EOS_ID]
 
-      for i, (src_sentence, embedding_size_) in enumerate(
-          zip(src_sentences, self.embedding_size[:-1])):
-        if isinstance(src_sentence[0], np.ndarray):
+      for i, (ext, src_sentence, embedding_size_) in enumerate(
+          zip(self.encoder_names, src_sentences, self.embedding_size[:-1])):
+        if ext in self.binary_input:
           pad = np.zeros([embedding_size_], dtype=np.float32)
         else:
           pad = utils.PAD_ID
@@ -503,12 +503,14 @@ class Seq2SeqModel(object):
     batch_decoder_inputs, batch_weights = [], []
 
     encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
-    for i in range(self.encoder_count):
+
+    for i, ext in enumerate(self.encoder_names):
       for length_idx in xrange(encoder_size):
-        # import pdb; pdb.set_trace()
+        dtype = np.float32 if ext in self.binary_input else np.int32
+
         batch_encoder_inputs[i].append(
           np.array([encoder_inputs[i][batch_idx][length_idx]
-                    for batch_idx in xrange(batch_size)], dtype=np.int32))
+                    for batch_idx in xrange(batch_size)], dtype=dtype))
 
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
     for length_idx in xrange(decoder_size):
