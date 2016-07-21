@@ -1,6 +1,6 @@
 vocab_size: [0, 405]
-size: [64]
-embedding_size: [123, 64]
+size: [256, 256]
+embedding_size: [123, 256]
 steps_per_checkpoint: 50
 steps_per_eval: 200
 verbose: True
@@ -8,5 +8,6 @@ batch_size: 16
 dev_prefix: dev
 ext: [feats, en]
 binary_input: feats
-layers: 1
+layers: [3, 1]
+time_pooling: [2, 2]
 buckets: [200, 15]

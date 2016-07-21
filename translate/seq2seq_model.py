@@ -107,12 +107,10 @@ class Seq2SeqModel(object):
           return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples, self.trg_vocab_size)
       softmax_loss_function = sampled_loss
 
-    # create the internal multi-layer cell for our RNN
     if use_lstm:
-      single_cell = rnn_cell.BasicLSTMCell(size)
+      cell = rnn_cell.BasicLSTMCell(size)
     else:
-      single_cell = rnn_cell.GRUCell(size)
-    cell = single_cell
+      cell = rnn_cell.GRUCell(size)
 
     # for now, we only apply dropout to the RNN cell inputs
     # TODO: try dropout at the output of the units, inside the attention mechanism, after the projections
@@ -123,11 +121,6 @@ class Seq2SeqModel(object):
       cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=self.dropout)   # Zaremba applies dropout on the input
     else:
       self.dropout = None
-
-    # encoder takes a single cell (it builds the MultiRNNCell by itself)
-    encoder_cell = decoder_cell = cell
-    if layers > 1:
-      decoder_cell = rnn_cell.MultiRNNCell([decoder_cell] * layers)
 
     self.encoder_inputs = []
     self.decoder_inputs = []
@@ -169,10 +162,10 @@ class Seq2SeqModel(object):
     parameters = dict(
       encoder_names=self.encoder_names, decoder_name=self.decoder_name,
       num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
-      embedding_size=self.embedding_size, embeddings=embeddings, layers=layers,
+      embedding_size=self.embedding_size, embeddings=embeddings, layers=layers, cell=cell,
       output_projection=output_projection, bidir=bidir, initial_state_attention=True,
       attention_filters=attention_filters, attention_filter_length=attention_filter_length,
-      pooling_ratios=time_pooling, attention_window_size=attention_window_size
+      pooling_ratios=time_pooling, attention_window_size=attention_window_size,
     )
 
     # self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -181,17 +174,17 @@ class Seq2SeqModel(object):
 
     self.attention_states, self.encoder_state = decoders.encoder_with_buckets(
       self.encoder_inputs, buckets, reuse=reuse, encoder_input_length=self.encoder_input_length,
-      cell=encoder_cell, **parameters
+      **parameters
     )
 
     self.outputs, self.decoder_states, self.attention_weights = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
-      cell=decoder_cell, reuse=reuse, feed_previous=False, **parameters
+      reuse=reuse, feed_previous=False, **parameters
     )
     # useful only for greedy decoding (beam size = 1)
     self.greedy_outputs, _, _ = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
-      cell=decoder_cell, reuse=True, feed_previous=True, **parameters
+      reuse=True, feed_previous=True, **parameters
     )
 
     self.losses = decoders.loss_with_buckets(self.outputs, targets, self.target_weights,

@@ -46,8 +46,8 @@ parser.add_argument('--batch-size', type=int, default=64, help='training batch s
 parser.add_argument('--size', nargs='+', type=int, default=[1024], help='number of units in the RNN')
 parser.add_argument('--embedding-size', nargs='+', type=int, help='size of the embeddings')
 
-parser.add_argument('--layers', type=int, default=1, help='number of layers in the model')
-parser.add_argument('--bidir', action='store_true', help='use bidirectional encoder')
+parser.add_argument('--layers', nargs='+', type=int, default=[1], help='number of layers in the model')
+parser.add_argument('--bidir', action='store_true', help='use a bidirectional encoder')
 parser.add_argument('--attention-window-size', type=int, default=0, help='size of the attention context window '
                                                                          '(local attention), default value of 0 '
                                                                          'means global attention')
@@ -172,12 +172,24 @@ def main(args=None):
   for k, v in vars(args).items():
     utils.log('  {:<20} {}'.format(k, v))
 
+  # for --vocab-size, --layers and --embedding-size, the user has the choice to
+  # either give a single value, which is applied to each encoder and decoder,
+  # or a different value for each of them
   if len(args.vocab_size) == 1:
     args.vocab_size = args.vocab_size * len(args.ext)
+  if len(args.layers) == 1:
+    args.layers = args.layers * len(args.ext)
   if args.embedding_size is None:
     args.embedding_size = args.size
   if len(args.embedding_size) == 1:
     args.embedding_size = args.embedding_size * len(args.ext)
+
+  # TODO: option to concatenate values in time pooling, instead of skipping them
+  if args.time_pooling is not None:
+    # for each encoder, n layers -> (n - 1) pooling ratios (between each layer)
+    args.time_pooling = [args.time_pooling[i * (layers_ - 1):(i + 1) * (layers_ - 1)]
+                         for i, layers_ in enumerate(args.layers[:-1])]
+
   args.src_vocab_size = args.vocab_size[:-1]
   args.trg_vocab_size = args.vocab_size[-1]
   args.src_ext = args.ext[:-1]

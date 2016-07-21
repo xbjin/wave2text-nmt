@@ -52,9 +52,9 @@ def unsafe_linear(args, output_size, bias, bias_start=0.0, scope=None):
   return res + bias_term
 
 
-def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size,
+def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embedding_size, layers,
                   encoder_input_length=None, embeddings=None, reuse=None, bidir=False, dynamic=False,
-                  layers=1, time_pooling=None, **kwargs):
+                  time_pooling=None, **kwargs):
   assert len(encoder_inputs) == len(encoder_names)
 
   # convert embeddings to tensors
@@ -70,9 +70,17 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
 
     if encoder_input_length is None:
       encoder_input_length = [None] * len(encoder_names)
+    if time_pooling is None:
+      time_pooling = [None] * len(encoder_names)
 
-    for encoder_name, encoder_inputs_, encoder_input_length_, num_encoder_symbols_, embedding_size_ in zip(
-        encoder_names, encoder_inputs, encoder_input_length, num_encoder_symbols, embedding_size[:-1]):
+    for i, encoder_name in enumerate(encoder_names):
+      # TODO: use dicts instead of lists
+      encoder_inputs_ = encoder_inputs[i]
+      encoder_input_length_ = encoder_input_length[i]
+      embedding_size_ = embedding_size[i]
+      num_encoder_symbols_ = num_encoder_symbols[i]
+      layers_ = layers[i]
+      time_pooling_ = time_pooling[i]
 
       with tf.variable_scope('encoder_{}'.format(encoder_name)):
         # inputs are token ids, which need to be mapped to vectors (embeddings)
@@ -92,13 +100,13 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
         else:  # do nothing: inputs are already vectors
           pass
 
-        if not bidir and layers > 1:  # bidir requires custom multi-rnn
-          cell = rnn_cell.MultiRNNCell([cell] * layers)
+        if not bidir and layers_ > 1:  # bidir requires custom multi-rnn
+          cell = rnn_cell.MultiRNNCell([cell] * layers_)
 
         # TODO: pooling over time (cf. pooling_ratios) for non-bidir encoders
         if bidir:  # FIXME: not compatible with `dynamic`
           encoder_outputs_, encoder_state_fw, encoder_state_bw = rnn.multi_bidirectional_rnn(
-            [(cell, cell)] * layers, encoder_inputs_, time_pooling=time_pooling, dtype=tf.float32
+            [(cell, cell)] * layers_, encoder_inputs_, time_pooling=time_pooling_, dtype=tf.float32
           )
           encoder_state_ = encoder_state_bw
           # same as Bahdanau et al.:
@@ -119,11 +127,11 @@ def multi_encoder(encoder_inputs, encoder_names, cell, num_encoder_symbols, embe
           encoder_input_length_ = None   # TODO: check impact of this parameter
           encoder_outputs_, encoder_state_ = rnn.rnn(cell, encoder_inputs_, sequence_length=encoder_input_length_,
                                                      dtype=tf.float32)
-
         encoder_states.append(encoder_state_)
         encoder_outputs.append(encoder_outputs_)
 
-    encoder_state = tf.add_n(encoder_states)   # TODO: add weights there
+    # encoder_state = tf.add_n(encoder_states)
+    encoder_state = tf.concat(1, encoder_states)
 
     if dynamic and not bidir:
       attention_states = encoder_outputs
@@ -272,7 +280,7 @@ def local_attention(state, prev_weights, hidden_states, encoder_names, attn_leng
 
 
 def decoder(decoder_inputs, initial_state, decoder_name,
-            cell, num_decoder_symbols, embedding_size,
+            cell, num_decoder_symbols, embedding_size, layers,
             feed_previous=False, output_projection=None, embeddings=None,
             reuse=None, **kwargs):
   """ Decoder without attention """
@@ -282,6 +290,9 @@ def decoder(decoder_inputs, initial_state, decoder_name,
     embedding_shape = [num_decoder_symbols, embedding_size[-1]]
   else:
     embedding_shape = None
+
+  if layers[-1] > 1:
+      cell = rnn_cell.MultiRNNCell([cell] * layers[-1])
 
   if output_projection is None:
     cell = rnn_cell.OutputProjectionWrapper(cell, num_decoder_symbols)
@@ -309,7 +320,7 @@ def decoder(decoder_inputs, initial_state, decoder_name,
 
     loop_function = extract_argmax_and_embed if feed_previous else None
     decoder_inputs = [tf.nn.embedding_lookup(embedding, i) for i in decoder_inputs]
-    state = initial_state
+    state = unsafe_linear(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     outputs = []
     prev = None
@@ -334,7 +345,7 @@ def decoder(decoder_inputs, initial_state, decoder_name,
 
 def attention_decoder(decoder_inputs, initial_state, attention_states,
                       encoder_names, decoder_name, cell, num_decoder_symbols, embedding_size,
-                      attention_weights=None,
+                      layers, attention_weights=None,
                       feed_previous=False, output_projection=None, embeddings=None,
                       initial_state_attention=False,
                       attention_filters=0, attention_filter_length=0,
@@ -347,6 +358,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
     embedding_shape = [num_decoder_symbols, embedding_size[-1]]
   else:
     embedding_shape = None
+
+  if layers[-1] > 1:
+    cell = rnn_cell.MultiRNNCell([cell] * layers[-1])
 
   if output_projection is None:
     cell = rnn_cell.OutputProjectionWrapper(cell, num_decoder_symbols)
@@ -399,7 +413,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
                                    attn_size=attn_size, batch_size=batch_size,
                                    attention_filters=attention_filters,
                                    attention_filter_length=attention_filter_length)
-    state = initial_state
+
+    # decoder's first state is the encoder's last state
+    # however, their shapes don't necessarily match (multiple encoders, non-matching layers, etc.)
+    state = unsafe_linear(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     outputs = []
     all_attention_weights = []
@@ -417,7 +434,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states,
     if initial_state_attention:
       # for beam-search decoder (feed_dict substitution)
       all_attention_weights.append(attention_weights)
-      attns, attention_weights = attention_(initial_state, prev_weights=attention_weights)
+      attns, attention_weights = attention_(state, prev_weights=attention_weights)
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
       attns.set_shape([None, attn_size])
