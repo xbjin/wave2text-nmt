@@ -120,7 +120,6 @@ data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
 Features:
 - try getting rid of buckets (by using dynamic_rnn for encoder + custom dynamic rnn for decoder)
-- local attention model
 - copy vocab to model dir
 - train dir/data dir should be optional
 - AdaDelta, AdaGrad

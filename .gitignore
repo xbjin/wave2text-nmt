@@ -67,3 +67,4 @@ tmp/
 .idea/
 model/
 .spyderproject
+wsclient.cred
