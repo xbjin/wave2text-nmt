@@ -46,48 +46,23 @@ class Seq2SeqModel(object):
     http://arxiv.org/abs/1412.2007
   """
 
-  def __init__(self, src_ext, trg_ext, buckets, learning_rate, global_step, embeddings,
-               src_vocab_size, trg_vocab_size, size, layers, max_gradient_norm, batch_size,
-               num_samples=512, reuse=None, dropout_rate=0.0, embedding_size=None,
-               bidir=False, freeze_variables=None, attention_filters=0,
-               attention_filter_length=0, use_lstm=False, time_pooling=None,
-               model_weights=None, binary_input=None,
-               attention_window_size=0, **kwargs):
-    """Create the model.
-
-    Args:
-      src_vocab_size: size of the sources vocabularies.
-      trg_vocab_size: size of the target vocabulary.
-      buckets: a list of pairs (I, O), where I specifies maximum input length
-        that will be processed in that bucket, and O specifies maximum output
-        length. Training instances that have inputs longer than I or outputs
-        longer than O will be pushed to the next bucket and padded accordingly.
-        We assume that the list is sorted, e.g., [(2, 4), (8, 16)].
-      size: number of units in each layer of the model.
-      layers: number of layers in the model.
-      max_gradient_norm: gradients will be clipped to maximally this norm.
-      batch_size: the size of the batches used during training;
-        the model construction is independent of batch_size, so it can be
-        changed after initialization if this is convenient, e.g., for decoding.
-      learning_rate: learning rate to start with.
-      learning_rate_decay_factor: decay learning rate by this much when needed.
-      use_lstm: if true, we use LSTM cells instead of GRU cells.
-      num_samples: number of samples for sampled softmax.
-      binary_input: list of encoder_names that directly read features instead
-        of token ids.
-    """
-    size = size[0]   # for now, only one size
+  def __init__(self, encoders, decoder, buckets, learning_rate, global_step, max_gradient_norm, batch_size,
+               num_samples=512, reuse=None, dropout_rate=0.0, freeze_variables=None, lm_weight=None,
+               embeddings=None, **kwargs):
+    # size = size[0]   # for now, only one size (TODO)
     self.buckets = buckets
     self.batch_size = batch_size
-    self.encoder_count = len(src_ext)
-    self.model_weights = model_weights
-    self.binary_input = binary_input or []
+    self.lm_weight = lm_weight
+    self.encoders = encoders
+    self.decoder = decoder
 
     self.learning_rate = learning_rate
     self.global_step = global_step
-    self.trg_vocab_size = trg_vocab_size
 
-    assert len(src_vocab_size) == self.encoder_count
+    self.encoder_count = len(encoders)
+    self.trg_vocab_size = decoder['vocab_size']
+    self.trg_cell_size = decoder['cell_size']
+    self.binary_input = [encoder['name'] for encoder in encoders if encoder['binary']]
 
     # if we use sampled softmax, we need an output projection
     output_projection = None
@@ -96,7 +71,7 @@ class Seq2SeqModel(object):
     if 0 < num_samples < self.trg_vocab_size:
       with tf.device("/cpu:0"):
         with variable_scope.variable_scope(variable_scope.get_variable_scope(), reuse=reuse):
-          w = tf.get_variable("proj_w", [size, self.trg_vocab_size])
+          w = tf.get_variable("proj_w", [self.trg_cell_size, self.trg_vocab_size])
           w_t = tf.transpose(w)
           b = tf.get_variable("proj_b", [self.trg_vocab_size])
       output_projection = (w, b)
@@ -107,10 +82,10 @@ class Seq2SeqModel(object):
           return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples, self.trg_vocab_size)
       softmax_loss_function = sampled_loss
 
-    if use_lstm:
-      cell = rnn_cell.BasicLSTMCell(size)
-    else:
-      cell = rnn_cell.GRUCell(size)
+    # if use_lstm:
+    #   cell = rnn_cell.BasicLSTMCell(size)
+    # else:
+    #   cell = rnn_cell.GRUCell(size)
 
     # for now, we only apply dropout to the RNN cell inputs
     # TODO: try dropout at the output of the units, inside the attention mechanism, after the projections
@@ -118,7 +93,7 @@ class Seq2SeqModel(object):
       self.dropout = tf.Variable(1 - dropout_rate, trainable=False, name='dropout_keep_prob')
       self.dropout_off = self.dropout.assign(1.0)
       self.dropout_on = self.dropout.assign(1 - dropout_rate)
-      cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=self.dropout)   # Zaremba applies dropout on the input
+      # cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=self.dropout)   # Zaremba applies dropout on the input
     else:
       self.dropout = None
 
@@ -127,19 +102,19 @@ class Seq2SeqModel(object):
     self.target_weights = []
     self.encoder_input_length = []
 
-    self.extensions = list(src_ext) + [trg_ext]
-    self.encoder_names = list(src_ext)
-    self.decoder_name = trg_ext
-    self.embedding_size = embedding_size
+    self.extensions = [encoder['name'] for encoder in encoders] + [decoder['name']]
+    self.encoder_names = [encoder['name'] for encoder in encoders]
+    self.decoder_name = decoder['name']
+    self.extensions = self.encoder_names + [self.decoder_name]
 
     # last bucket is the largest one
-    src_bucket_size, trg_bucket_size = buckets[-1]
-    for encoder_name, embedding_size_ in zip(self.encoder_names, self.embedding_size):
+    src_bucket_size, trg_bucket_size = buckets[-1]   # TODO
+    for encoder in self.encoders:
       encoder_inputs_ = []
       for i in xrange(src_bucket_size):
-        placeholder_name = "encoder_{}_{}".format(encoder_name, i)
-        if encoder_name in self.binary_input:
-          placeholder = tf.placeholder(tf.float32, shape=[None, embedding_size_], name=placeholder_name)
+        placeholder_name = "encoder_{}_{}".format(encoder.name, i)
+        if encoder.binary:
+          placeholder = tf.placeholder(tf.float32, shape=[None, encoder.embedding_size], name=placeholder_name)
         else:
           placeholder = tf.placeholder(tf.int32, shape=[None], name=placeholder_name)
 
@@ -147,30 +122,22 @@ class Seq2SeqModel(object):
 
       self.encoder_inputs.append(encoder_inputs_)
       self.encoder_input_length.append(
-        tf.placeholder(tf.int32, shape=[None], name="encoder_{}_length".format(encoder_name))
+        tf.placeholder(tf.int32, shape=[None], name="encoder_{}_length".format(encoder.name))
       )
 
     for i in xrange(trg_bucket_size + 1):
       self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
-                                                name="decoder_{}_{}".format(self.decoder_name, i)))
+                                                name="decoder_{}_{}".format(self.decoder.name, i)))
       self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
-                                                name="weight_{}_{}".format(self.decoder_name, i)))
+                                                name="weight_{}_{}".format(self.decoder.name, i)))
 
     # our targets are decoder inputs shifted by one
     targets = [self.decoder_inputs[i + 1] for i in xrange(len(self.decoder_inputs) - 1)]
 
     parameters = dict(
-      encoder_names=self.encoder_names, decoder_name=self.decoder_name,
-      num_encoder_symbols=src_vocab_size, num_decoder_symbols=self.trg_vocab_size,
-      embedding_size=self.embedding_size, embeddings=embeddings, layers=layers, cell=cell,
-      output_projection=output_projection, bidir=bidir, initial_state_attention=True,
-      attention_filters=attention_filters, attention_filter_length=attention_filter_length,
-      pooling_ratios=time_pooling, attention_window_size=attention_window_size,
+      encoders=encoders, decoder=decoder,
+      dropout=self.dropout, output_projection=output_projection, initial_state_attention=True
     )
-
-    # self.attention_states, self.encoder_state = decoders.multi_encoder(
-    #   self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
-    # )
 
     self.attention_states, self.encoder_state = decoders.encoder_with_buckets(
       self.encoder_inputs, buckets, reuse=reuse, encoder_input_length=self.encoder_input_length,
@@ -181,6 +148,7 @@ class Seq2SeqModel(object):
       self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
       reuse=reuse, feed_previous=False, **parameters
     )
+
     # useful only for greedy decoding (beam size = 1)
     self.greedy_outputs, _, _ = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
@@ -380,9 +348,9 @@ class Seq2SeqModel(object):
         lm_score = np.zeros((1, self.trg_vocab_size))
 
       # default LM weight: 0.4
-      weights = self.model_weights
-      if weights is None and ngrams is not None:
-        weights = [0.6 / len(session)] * len(session) + [0.4]
+      lm_weight = self.lm_weight or 0.2
+      if ngrams is not None:
+        weights = [(1 - lm_weight) / len(session)] * len(session) + [lm_weight]
 
       scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output] +
                                              [lm_score],
@@ -472,10 +440,9 @@ class Seq2SeqModel(object):
       src_sentences = sentences[0:-1]
       trg_sentence = sentences[-1] + [utils.EOS_ID]
 
-      for i, (ext, src_sentence, embedding_size_) in enumerate(
-          zip(self.encoder_names, src_sentences, self.embedding_size[:-1])):
-        if ext in self.binary_input:
-          pad = np.zeros([embedding_size_], dtype=np.float32)
+      for i, (encoder, src_sentence) in enumerate(zip(self.encoders, src_sentences)):
+        if encoder.binary:
+          pad = np.zeros([encoder.embedding_size], dtype=np.float32)
         else:
           pad = utils.PAD_ID
 

@@ -25,95 +25,18 @@ from translate.translation_model import TranslationModel
 parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
-parser.add_argument('data_dir', default='data', help='data directory')
-parser.add_argument('train_dir', default='model', help='training directory')
+parser.add_argument('--reset-learning-rate', help='reset learning rate', action='store_true')
 
 # Available actions (exclusive)
 parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
-
-# Model parameters
-parser.add_argument('--debug', action='store_true', help='toy settings for debugging (overrides the program '
-                                                         'parameters)')
-parser.add_argument('--learning-rate', type=float, default=0.5, help='initial learning rate')
-parser.add_argument('--learning-rate-decay-factor', type=float, default=0.99, help='learning rate decay factor')
-parser.add_argument('--max-gradient-norm', type=float, default=5.0, help='clip gradients to this norm')
-parser.add_argument('--dropout-rate', type=float, default=0.0, help='dropout rate applied to the LSTM units')
-parser.add_argument('--no-attention', action='store_true', help='disable the attention mechanism')
-parser.add_argument('--batch-size', type=int, default=64, help='training batch size')
-# TODO: different RNN size for each encoder + decoder
-parser.add_argument('--size', nargs='+', type=int, default=[1024], help='number of units in the RNN')
-parser.add_argument('--embedding-size', nargs='+', type=int, help='size of the embeddings')
-
-parser.add_argument('--layers', nargs='+', type=int, default=[1], help='number of layers in the model')
-parser.add_argument('--bidir', action='store_true', help='use a bidirectional encoder')
-parser.add_argument('--attention-window-size', type=int, default=0, help='size of the attention context window '
-                                                                         '(local attention), default value of 0 '
-                                                                         'means global attention')
-parser.add_argument('--attention-filters', type=int, default=0, help='number of convolution filters in attention '
-                                                                     'mechanism')
-parser.add_argument('--attention-filter-length', type=int, default=10, help='length of convolution filters')
-# TODO: pooling over time with multi-encoder, and non-bidir encoder
-parser.add_argument('--time-pooling', nargs='+', type=int, help='pooling over time between the layers of the '
-                                                                'encoder: 1 out of every n outputs are kept')
-parser.add_argument('--vocab-size', nargs='+', type=int, default=[40000])
-parser.add_argument('--use-lstm', help='use LSTM cells instead of GRU', action='store_true')
-parser.add_argument('--num-samples', type=int, default=512, help='number of samples for sampled softmax (0 for '
-                                                                  'standard softmax')
-parser.add_argument('--max-train-size', type=int, help='maximum size of training data (default: no limit)')
-parser.add_argument('--steps-per-checkpoint', type=int, default=1000, help='number of updates per checkpoint '
-                                                                           '(warning: saving can take a while)')
-parser.add_argument('--steps-per-eval', type=int, default=4000, help='number of updates per BLEU evaluation')
-parser.add_argument('--max-steps', type=int, default=0, help='max number of steps before stopping')
-parser.add_argument('--reset-learning-rate', help='reset learning rate (useful for pre-training)', action='store_true')
-parser.add_argument('--multi-task', help='train each encoder as a separate task', action='store_true')
-parser.add_argument('--task-ratio', type=float, nargs='+', help='ratio of each task')
-parser.add_argument('--output', help='output file for decoding')
-parser.add_argument('--train-prefix', default='train', help='name of the training corpus')
-parser.add_argument('--dev-prefix', default='dev', help='name of the development corpus')
-
-parser.add_argument('--embedding-prefix', default='vectors', help='prefix of the embedding files to use as '
-                                                                  'initialization (won\'t be used if the parameters '
-                                                                  'are loaded from a checkpoint)')
-parser.add_argument('--binary-input', nargs='+', help='list of extensions for which the input file contains '
-                                                      'vector features instead of token ids (useful for '
-                                                      'speech recognition)')
-parser.add_argument('--load-embeddings', nargs='+', help='list of extensions for which to load the embeddings')
-parser.add_argument('--checkpoint-prefix', help='prefix of the checkpoint (if --reset is not specified, '
-                                                'will try to load earlier versions of this checkpoint')
-parser.add_argument('--checkpoints', nargs='+', help='list of checkpoints to load (in loading order)')
-
-parser.add_argument('--ensemble', help='use an ensemble of models while decoding, whose checkpoints '
-                                       'are those specified by the --load-checkpoints parameter'
-                                       '(this changes the semantic of this parameter)', action='store_true')
-
-parser.add_argument('--ext', nargs='+', default=['fr', 'en'], help='file extensions, last extension is the target')
-parser.add_argument('--bleu-script', default='scripts/multi-bleu.perl', help='path to BLEU script')
-parser.add_argument('--log-file', help='log to this file instead of standard output')
-parser.add_argument('--replace-unk', help='replace UNK symbols in the output (requires special pre-processing'
-                                          'and a lookup dict)', action='store_true')
-parser.add_argument('--norm-embeddings', help='normalize embeddings', action='store_true')  # FIXME
-parser.add_argument('--keep-best', type=int, default=4, help='keep the n best models')
-parser.add_argument('--remove-unk', help='remove UNK symbols from the decoder output', action='store_true')
-parser.add_argument('--use-lm', help='use language model', action='store_true')
-parser.add_argument('--lm-order', type=int, default=3, help='n-gram order of the language model')
-parser.add_argument('--lm-prefix', default='train', help='prefix of the language model file (suffix '
-                                                         'is always arpa.trg_ext')
-parser.add_argument('--model-weights', type=float, nargs='+', help='weight of each model: ensemble models and '
-                                                                   'language model (LM weight is last)')
+parser.add_argument('config', help='load a configuration file in the YAML format')
 
 # Tensorflow configuration
-parser.add_argument('--gpu-id', type=int, default=None, help='index of the GPU where to run the computation')
-parser.add_argument('--no-gpu', help='train model on CPU', action='store_true')
-parser.add_argument('--mem-fraction', type=float, help='maximum fraction of GPU memory to use', default=1.0)
-parser.add_argument('--allow-growth', help='allow GPU memory allocation to change during runtime',
-                    action='store_true')
-parser.add_argument('--beam-size', type=int, default=1, help='beam size for decoding (decoder is greedy by default)')
-parser.add_argument('--freeze-variables', nargs='+', help='list of variables to freeze during training')
-parser.add_argument('--character-level', nargs='+', help='list of extensions whose input is at the character level')
-parser.add_argument('--buckets', nargs='+', type=int, help='list of bucket sizes')
-parser.add_argument('--config', help='load a configuration file in the YAML format')
+parser.add_argument('--gpu-id', type=int, help='index of the GPU where to run the computation')
+parser.add_argument('--no-gpu', action='store_true', help='run on CPU')
+
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -125,6 +48,8 @@ Features:
 - AdaDelta, AdaGrad
 - rename scopes to nicer names + do mapping of existing models
 - move to tensorflow 0.9
+- better configuration file management
+- time pooling: concat or sum instead of skipping
 
 Benchmarks:
 - compare our baseline system with vanilla Tensorflow seq2seq, and GroundHog/blocks-examples
@@ -147,69 +72,57 @@ python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
 
 def main(args=None):
   args = parser.parse_args(args)
-  if args.config is not None:
-    with open(args.config) as f:
-      config = yaml.safe_load(f)
-      for k, v in config.items():
-        setattr(args, k, v)
 
-  if not os.path.exists(args.train_dir):
-    os.makedirs(args.train_dir)
+  with open(args.config) as f:
+    config = utils.AttrDict(yaml.safe_load(f))
+    assert 'encoders' in config and 'decoder' in config
+    # easier access to elements (as attributes)
+    config.encoders = [utils.AttrDict(encoder) for encoder in encoders]
+    config.decoder = utils.AttrDict(config.decoder)
+
+  if not os.path.exists(config.model_dir):
+    os.makedirs(config.model_dir)
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO
-  logger = utils.create_logger(args.log_file)
+  logger = utils.create_logger(config.log_file)
   logger.setLevel(logging_level)
 
-  utils.log(' '.join(sys.argv))
-  try:
+  # TODO: copy config file to model dir
+
+  utils.log(' '.join(sys.argv))  # print command line
+  try:                           # print git hash
     commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
     utils.log('commit hash {}'.format(commit_hash))
   except:
     pass
 
   utils.log('program arguments')
-  for k, v in vars(args).items():
+  for k, v in config.items():
     utils.log('  {:<20} {}'.format(k, v))
 
-  # for --vocab-size, --layers and --embedding-size, the user has the choice to
-  # either give a single value, which is applied to each encoder and decoder,
-  # or a different value for each of them
-  if len(args.vocab_size) == 1:
-    args.vocab_size = args.vocab_size * len(args.ext)
-  if len(args.layers) == 1:
-    args.layers = args.layers * len(args.ext)
-  if args.embedding_size is None:
-    args.embedding_size = args.size
-  if len(args.embedding_size) == 1:
-    args.embedding_size = args.embedding_size * len(args.ext)
+  encoders = config.encoders
+  decoder = config.decoder
+  extensions = [encoder.name for encoder in encoders] + [decoder.name]
 
-  # TODO: option to concatenate values in time pooling, instead of skipping them
-  if args.time_pooling is not None:
-    # for each encoder, n layers -> (n - 1) pooling ratios (between each layer)
-    args.time_pooling = [args.time_pooling[i * (layers_ - 1):(i + 1) * (layers_ - 1)]
-                         for i, layers_ in enumerate(args.layers[:-1])]
+  model_parameters = [
+    'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
+    'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic'
+  ]
 
-  args.src_vocab_size = args.vocab_size[:-1]
-  args.trg_vocab_size = args.vocab_size[-1]
-  args.src_ext = args.ext[:-1]
-  args.trg_ext = args.ext[-1]
+  # initialize each parameter that is not defined in config file
+  # to its default value
+  for encoder_or_decoder in encoders + [decoder]:
+    for parameter in model_parameters:
+      # TODO: define default parameters somewhere
+      encoder_or_decoder.setdefault(parameter, config.get(parameter))
 
   # enforce constraints
-  assert args.steps_per_eval % args.steps_per_checkpoint == 0, (
+  assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
     'steps-per-eval should be a multiple of steps-per-checkpoint')
-  assert len(args.ext) == len(args.vocab_size), (
-    '--src-vocab-size takes {} parameter(s)'.format(len(args.src_ext)))
-  assert args.task_ratio is None or len(args.task_ratio) == len(args.src_ext), (
-    '--task-ratio takes {} parameter(s)'.format(len(args.src_ext)))
-  assert len(set(args.ext)) == len(args.ext), (
-    'all extensions need to be unique')
   assert args.decode or args.eval or args.train, (
     'you need to specify at least one action (decode, eval, or train)')
-  assert args.buckets is None or len(args.buckets) % len(args.ext) == 0
-  assert not (args.use_lm and args.character_level and args.trg_ext in args.character_level), (
-    'can\'t use a language model when the output is at the character level')
 
-  filenames = utils.get_filenames(extensions=args.ext, **vars(args))
+  filenames = utils.get_filenames(extensions=extensions, **config)
   utils.debug('filenames')
   for k, v in vars(filenames).items():
     utils.log('  {:<20} {}'.format(k, v))
@@ -217,33 +130,27 @@ def main(args=None):
   # flatten list of files
   all_filenames = [filename for names in filenames if names is not None
     for filename in (names if isinstance(names, list) else [names]) if filename is not None]
-  all_filenames.append(args.bleu_script)
+  all_filenames.append(config.bleu_script)
   # check that those files exist
   for filename in all_filenames:
     if not os.path.exists(filename):
       utils.warn('warning: file {} does not exist'.format(filename))
 
-  if args.buckets is not None:
-    buckets = [tuple(args.buckets[i:i + len(args.ext)])
-               for i in range(0, len(args.buckets), len(args.ext))]
+  if config.buckets is not None:
+    buckets = [tuple(config.buckets[i:i + len(extensions)])
+               for i in range(0, len(config.buckets), len(extensions))]
   else:
     buckets = None
-  embeddings = utils.read_embeddings(filenames, args.ext, args.vocab_size, **vars(args))
+
+  # TODO
+  # embeddings = utils.read_embeddings(filenames, args.ext, args.vocab_size, **vars(args))
  
   utils.debug('embeddings {}'.format(embeddings))
 
-  # NMT model parameters
-  parameters = namedtuple('parameters', ['dropout_rate', 'max_gradient_norm', 'batch_size', 'size', 'layers',
-                                         'src_vocab_size', 'trg_vocab_size', 'embedding_size',
-                                         'bidir', 'freeze_variables', 'num_samples',
-                                         'attention_filters', 'attention_filter_length', 'use_lstm',
-                                         'time_pooling', 'model_weights', 'attention_window_size'])
-  parameter_values = parameters(**{k: v for k, v in vars(args).items() if k in parameters._fields})
-
-  checkpoint_prefix = (args.checkpoint_prefix or
-                       'checkpoints.{}_{}'.format('-'.join(args.ext[:-1]), args.ext[-1]))
-  checkpoint_dir = os.path.join(args.train_dir, checkpoint_prefix)
-  eval_output = os.path.join(args.train_dir, 'eval.out')
+  checkpoint_prefix = (config.checkpoint_prefix or
+                       'checkpoints.{}_{}'.format('-'.join(extensions[:-1]), extensions[-1]))
+  checkpoint_dir = os.path.join(config.model_dir, checkpoint_prefix)
+  eval_output = os.path.join(config.model_dir, 'eval.out')
   
   device = None
   if args.no_gpu:
@@ -255,39 +162,40 @@ def main(args=None):
   utils.log('using device: {}'.format(device))
   
   with tf.device(device):
-    model = TranslationModel(args.ext[:-1], args.ext[-1], parameter_values, embeddings, checkpoint_dir,
-                             args.learning_rate, args.learning_rate_decay_factor, multi_task=args.multi_task,
-                             task_ratio=args.task_ratio, keep_best=args.keep_best, lm_order=args.lm_order,
-                             binary_input=args.binary_input, character_level=args.character_level,
-                             buckets=buckets)
+    model = TranslationModel(encoders, decoder, checkpoint_dir, config.learning_rate,
+                             config.learning_rate_decay_factor, keep_best=config.keep_best, buckets=buckets,
+                             max_gradient_norm=config.max_gradient_norm, batch_size=config.batch_size,
+                             num_samples=config.num_samples, dropout_rate=config.dropout_rate,
+                             freeze_variables=config.freeze_variables, lm_weight=config.lm_weight)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
     utils.log('  {} shape {}'.format(var.name, var.get_shape()))
 
-  config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
-  config.gpu_options.allow_growth = args.allow_growth
-  config.gpu_options.per_process_gpu_memory_fraction = args.mem_fraction
+  tf_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
+  tf_config.gpu_options.allow_growth = config.allow_growth
+  tf_config.gpu_options.per_process_gpu_memory_fraction = config.mem_fraction
 
-  with tf.Session(config=config) as sess:
-    if args.ensemble and (args.eval or args.decode):
+  with tf.Session(config=tf_config) as sess:
+    if config.ensemble and (args.eval or args.decode):
       # create one session for each model in the ensemble
-      sess = [tf.Session() for _ in args.checkpoints]
-      for sess_, checkpoint in zip(sess, args.checkpoints):
+      sess = [tf.Session() for _ in config.checkpoints]
+      for sess_, checkpoint in zip(sess, config.checkpoints):
         model.initialize(sess_, [checkpoint], reset=True)
     else:
-      model.initialize(sess, args.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+      model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
     # TODO: load best checkpoint for eval and decode
     if args.decode:
-      model.decode(sess, filenames, args.beam_size, output=args.output, remove_unk=args.remove_unk)
+      model.decode(sess, filenames, config.beam_size, output=config.output, remove_unk=config.remove_unk)
     elif args.eval:
-      model.evaluate(sess, filenames, args.beam_size, bleu_script=args.bleu_script, output=args.output,
-                     remove_unk=args.remove_unk)
+      model.evaluate(sess, filenames, config.beam_size, bleu_script=config.bleu_script, output=config.output,
+                     remove_unk=config.remove_unk)
     elif args.train:
       try:
-        model.train(sess, filenames, args.beam_size, args.steps_per_checkpoint, args.steps_per_eval, args.bleu_script,
-                    args.max_train_size, eval_output, remove_unk=args.remove_unk, max_steps=args.max_steps)
+        model.train(sess, filenames, config.beam_size, config.steps_per_checkpoint, config.steps_per_eval,
+                    config.bleu_script, config.max_train_size, eval_output, remove_unk=config.remove_unk,
+                    max_steps=config.max_steps)
       except KeyboardInterrupt:
         utils.log('exiting...')
         model.save(sess)

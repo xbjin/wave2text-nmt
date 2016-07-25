@@ -10,18 +10,17 @@ import sys
 import math
 import numpy as np
 import shutil
-from translate import seq2seq_model, utils
+from translate import utils
+from translate.seq2seq_model import Seq2SeqModel
 from collections import OrderedDict
 
 
 class TranslationModel(object):
-  def __init__(self, src_ext, trg_ext, parameters, embeddings, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, multi_task=False, task_ratio=None,
-               keep_best=1, lm_order=3, binary_input=None, character_level=None,
-               buckets=None):
-    self.src_ext = src_ext
-    self.trg_ext = trg_ext
-    self.extensions = src_ext + [trg_ext]
+  def __init__(self, encoders, decoder, checkpoint_dir, learning_rate,
+               learning_rate_decay_factor, keep_best=1, buckets=None, **kwargs):
+    self.src_ext = [encoder.name for encoder in encoders]
+    self.trg_ext = decoder.name
+    self.extensions = self.src_ext + [self.trg_ext]
 
     # TODO: automatically find bucket sizes + handle multi-encoder setting
     # if binary_input:
@@ -39,16 +38,10 @@ class TranslationModel(object):
 
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
-    self.lm_order = lm_order
-    self.multi_task = multi_task
-    self.parameters = parameters
 
     # list of extensions that use vector features instead of text features
-    self.binary_input = binary_input or []
-    self.character_level = character_level or []
-
-    if multi_task:   # TODO
-      raise NotImplementedError
+    self.binary_input = [encoder.name for encoder in encoders if encoder.binary]
+    self.character_level = [encoder.name for encoder in encoders if encoder.character_level]
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
     self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
@@ -57,11 +50,7 @@ class TranslationModel(object):
       self.global_step = tf.Variable(0, trainable=False, name='global_step')
     
     # main model
-    self.model = seq2seq_model.Seq2SeqModel(src_ext, trg_ext, self.buckets, self.learning_rate, self.global_step,
-                                            embeddings, binary_input=self.binary_input, **vars(parameters))
-    self.models = []
-    self.task_ratio = [1.0]
-    self.models.append(self.model)
+    self.model = Seq2SeqModel(encoders, decoder, self.buckets, self.learning_rate, self.global_step, **kwargs)
     self.vocabs = None
 
     self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
@@ -94,7 +83,7 @@ class TranslationModel(object):
     self.trg_vocab = self.vocabs[-1]
 
     self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
-    self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.lm_order, self.trg_vocab.vocab)
+    self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.trg_vocab.vocab)
 
   def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
             max_train_size=None, eval_output=None, remove_unk=False, max_steps=0):
@@ -104,32 +93,26 @@ class TranslationModel(object):
     # check read_data has been called
     previous_losses = []
       
-    losses = [0.0] * len(self.models)
-    times = [0.0] * len(self.models)
-    steps = [0] * len(self.models)
+    loss, time_, steps = 0, 0, 0
     
     utils.log('starting training')
     while True:
-      # pick random task according to task ratios
-      i = np.random.choice(range(len(self.models)), p=self.task_ratio)
-      model = self.models[i]
+      model = self.model
 
       start_time = time.time()
       step_loss = self._train_step(sess, model)
 
-      times[i] += (time.time() - start_time)
-      losses[i] += step_loss
-      steps[i] += 1
+      time_  += (time.time() - start_time)
+      loss += step_loss
+      steps += 1
       
       global_step = self.global_step.eval(sess)
       
-      if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:        
-        loss = sum(losses) / sum(steps)
-        step_time = sum(times) / sum(steps)
+      if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
         perplexity = math.exp(loss) if loss < 300 else float('inf')
 
         utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
-          global_step, self.model.learning_rate.eval(), step_time, perplexity))
+          global_step, self.model.learning_rate.eval(), time_, perplexity))
           
         # decay learning rate when loss is worse than last losses
         if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
@@ -137,10 +120,7 @@ class TranslationModel(object):
           sess.run(self.learning_rate_decay_op)
 
         previous_losses.append(loss)
-        
-        losses = [0.0] * len(self.models)
-        times = [0.0] * len(self.models)
-        steps = [0] * len(self.models)      
+        loss, time_, steps = 0, 0, 0
         
         self._eval_step(sess, self.model)
         self.save(sess)
@@ -173,11 +153,6 @@ class TranslationModel(object):
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
-    # See here: https://github.com/giancds/tsf_nmt/blob/master/tsf_nmt/nmt_models.py
-    # or here: https://github.com/wchan/tensorflow/tree/master/speech4/models
-    # if isinstance(src_sentences[0], basestring):
-    #   utils.debug('translating {}'.format(src_sentences[0].strip()))
-
     # TODO: this should be in utils
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
@@ -194,10 +169,6 @@ class TranslationModel(object):
     else:
       hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
                                                            reverse_vocab=self.trg_vocab.reverse)
-      # for hypothesis, score in zip(hypotheses, scores):
-      #   utils.debug('hypothesis={} | score={}'.format(
-      #     ' '.join(self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK for i in hypothesis),
-      #     score))
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output

@@ -47,6 +47,12 @@ def open_files(names, mode='r'):
       file_.close()
 
 
+class AttrDict(dict):   # magical dict
+  def __init__(self, *args, **kwargs):
+    super(AttrDict, self).__init__(*args, **kwargs)
+    self.__dict__ = self
+
+
 def initialize_vocabulary(vocabulary_path):
   """Initialize vocabulary from file.
 
@@ -97,25 +103,20 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
   return [vocabulary.get(w, UNK_ID) for w in sentence]
 
 
-def get_filenames(data_dir, extensions, train_prefix, dev_prefix, embedding_prefix, lm_prefix,
-                  multi_task=False, replace_unk=False, use_lm=False, **kwargs):
+def get_filenames(data_dir, extensions, train_prefix, dev_prefix, lm_prefix,
+                  use_lm=False, **kwargs):
   """ Last extension is always assumed to be the target """
-  if multi_task:
-    raise NotImplementedError
 
   train_path = os.path.join(data_dir, train_prefix)
   dev_path = os.path.join(data_dir, dev_prefix)
   test_path = kwargs.get('decode')  # `decode` or `eval` or None
   test_path = test_path if test_path is not None else kwargs.get('eval')
-  embedding_path = os.path.join(data_dir, embedding_prefix)
   lm_path = os.path.join(data_dir, "{}.arpa.{}".format(lm_prefix, extensions[-1])) if use_lm else None
 
   train = ['{}.{}'.format(train_path, ext) for ext in extensions]
   dev = ['{}.{}'.format(dev_path, ext) for ext in extensions]
   test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
   vocab = [os.path.join(data_dir, 'vocab.{}'.format(ext)) for ext in extensions]
-  lookup_dict = os.path.join(data_dir, 'lookup_dict') if replace_unk else None
-  embeddings = ['{}.{}'.format(embedding_path, ext) for ext in extensions]
 
   filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lookup_dict', 'lm_path', 'embeddings'])
   return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})
@@ -261,7 +262,7 @@ def initialize_lookup_dict(lookup_dict_path):
     return dict(line.split() for line in f)
 
 
-def read_ngrams(lm_path, lm_order, vocab):
+def read_ngrams(lm_path, vocab):
   ngram_list = []
   with open(lm_path) as f:
     for line in f:
@@ -275,9 +276,7 @@ def read_ngrams(lm_path, lm_order, vocab):
         ngram = arr.pop(1)
         ngram_list[-1][ngram] = list(map(float, arr))
 
-  # FIXME: is the lm_order parameter necessary, since we can infer it from the arpa file?
-  if len(ngram_list) != lm_order:
-    warn("lm_order arg ({}) doesn't match lm order in arpa file ({})".format(lm_order, len(ngram_list)))
+  debug('loaded n-grams, order={}'.format(len(ngram_list)))
 
   ngrams = []
   mappings = {'<s>': _BOS, '</s>': _EOS, '<unk>': _UNK}
