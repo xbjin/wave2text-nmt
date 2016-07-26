@@ -6,7 +6,6 @@ import tensorflow as tf
 import tensorflow.models.rnn
 import functools
 import math
-# from tensorflow.python.ops import rnn, rnn_cell
 from tensorflow.python.ops import rnn_cell
 from translate import rnn
 
@@ -342,16 +341,11 @@ def decoder(decoder_inputs, initial_state, decoder_name,
     return outputs, decoder_states, None
 
 
-# def attention_decoder(decoder_inputs, initial_state, attention_states,
-#                       encoder_names, decoder_name, cell, num_decoder_symbols, embedding_size,
-#                       layers, attention_weights=None,
-#                       feed_previous=False, output_projection=None, embeddings=None,
-#                       initial_state_attention=False,
-#                       attention_filters=0, attention_filter_length=0,
-#                       attention_window_size=0, reuse=None, **kwargs):
-def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder, embeddings=None,
-                      attention_weights=None, output_projection=None, initial_state_attention=False,
-                      reuse=None, dropout=None, feed_previous=False, **kwargs):
+def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder,
+                      embeddings=None, attention_weights=None, output_projection=None,
+                      initial_state_attention=False, reuse=None, dropout=None,
+                      feed_previous=False, **kwargs):
+  encoder_names = [encoder.name for encoder in encoders]
   # TODO: dynamic RNN
   embeddings = embeddings or {}
   embedding_initializer = embeddings.get(decoder.name)
@@ -419,6 +413,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     else:
       attention_ = local_attention
 
+    # FIXME: encoder settings, not decoder settings
     attention_ = functools.partial(attention_, hidden_states=hidden_states,
                                    encoder_names=encoder_names, attn_length=attn_length,
                                    attn_size=attn_size, batch_size=batch_size,

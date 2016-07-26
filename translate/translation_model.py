@@ -81,16 +81,12 @@ class TranslationModel(object):
     ]
     self.src_vocab = self.vocabs[:-1]
     self.trg_vocab = self.vocabs[-1]
-
-    self.lookup_dict = filenames.lookup_dict and utils.initialize_lookup_dict(filenames.lookup_dict)
     self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.trg_vocab.vocab)
 
   def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
             max_train_size=None, eval_output=None, remove_unk=False, max_steps=0):
     utils.log('reading training and development data')
     self._read_data(filenames, max_train_size)
-    
-    # check read_data has been called
     previous_losses = []
       
     loss, time_, steps = 0, 0, 0
@@ -180,9 +176,6 @@ class TranslationModel(object):
 
     if remove_unk:
       trg_tokens = [token for token in trg_tokens if token != utils._UNK]
-
-    if self.lookup_dict is not None:
-      trg_tokens = utils.replace_unk(src_sentences[0].split(), trg_tokens, trg_token_ids, self.lookup_dict)
 
     if self.trg_ext in self.character_level:
       return ''.join(trg_tokens)

@@ -118,7 +118,7 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, lm_prefix,
   test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
   vocab = [os.path.join(data_dir, 'vocab.{}'.format(ext)) for ext in extensions]
 
-  filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lookup_dict', 'lm_path', 'embeddings'])
+  filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lm_path'])
   return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})
 
 

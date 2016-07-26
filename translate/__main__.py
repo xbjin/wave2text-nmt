@@ -77,7 +77,7 @@ def main(args=None):
     config = utils.AttrDict(yaml.safe_load(f))
     assert 'encoders' in config and 'decoder' in config
     # easier access to elements (as attributes)
-    config.encoders = [utils.AttrDict(encoder) for encoder in encoders]
+    config.encoders = [utils.AttrDict(encoder) for encoder in config.encoders]
     config.decoder = utils.AttrDict(config.decoder)
 
   if not os.path.exists(config.model_dir):
@@ -106,7 +106,7 @@ def main(args=None):
 
   model_parameters = [
     'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
-    'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic'
+    'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir'
   ]
 
   # initialize each parameter that is not defined in config file
@@ -144,9 +144,9 @@ def main(args=None):
 
   # TODO
   # embeddings = utils.read_embeddings(filenames, args.ext, args.vocab_size, **vars(args))
- 
-  utils.debug('embeddings {}'.format(embeddings))
+  # utils.debug('embeddings {}'.format(embeddings))
 
+  # TODO: improve checkpoints
   checkpoint_prefix = (config.checkpoint_prefix or
                        'checkpoints.{}_{}'.format('-'.join(extensions[:-1]), extensions[-1]))
   checkpoint_dir = os.path.join(config.model_dir, checkpoint_prefix)
@@ -160,13 +160,9 @@ def main(args=None):
   
   utils.log('creating model')
   utils.log('using device: {}'.format(device))
-  
+
   with tf.device(device):
-    model = TranslationModel(encoders, decoder, checkpoint_dir, config.learning_rate,
-                             config.learning_rate_decay_factor, keep_best=config.keep_best, buckets=buckets,
-                             max_gradient_norm=config.max_gradient_norm, batch_size=config.batch_size,
-                             num_samples=config.num_samples, dropout_rate=config.dropout_rate,
-                             freeze_variables=config.freeze_variables, lm_weight=config.lm_weight)
+    model = TranslationModel(checkpoint_dir=checkpoint_dir, **config)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
