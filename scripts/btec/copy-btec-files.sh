@@ -4,7 +4,7 @@ train_dir=/data1/home/data/collection/tools/getalp/data/BTEC/French-English/trai
 dev_dir=/data1/home/data/collection/tools/getalp/data/BTEC/French-English/dev/TXT/
 test_dir=/data1/home/data/collection/tools/getalp/data/BTEC/French-English/test/TXT/
 
-output_dir=data/raw/btec
+output_dir=data/raw/btec.fr-en
 mkdir -p ${output_dir}
 
 clean() {

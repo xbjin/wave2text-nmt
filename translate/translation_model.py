@@ -100,11 +100,11 @@ class TranslationModel(object):
       global_step = self.global_step.eval(sess)
       
       if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
-        loss /= steps
-        perplexity = math.exp(loss) if loss < 300 else float('inf')
+        loss_ = loss / steps
+        perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
 
         utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
-          global_step, self.model.learning_rate.eval(), time_, perplexity))
+          global_step, self.model.learning_rate.eval(), time_ / steps, perplexity))
           
         # decay learning rate when loss is worse than last losses
         if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):

@@ -9,21 +9,21 @@ if test "$(ls -A "${data_dir}")"; then
     echo "warning: data dir is not empty, skipping data preparation"
 else
 
+btec_dir=data/raw/btec.fr-en
 corpus_train=data/raw/btec.fr-en
 corpus_dev=data/raw/btec-dev.fr-en
-corpus_test=data/raw/btec-test.fr-en
 
 echo "### pre-processing data"
 
 # word-level output (try word-level and subwords)
-./scripts/prepare-data.py ${corpus_train} fr en ${data_dir} \
---verbose \
---lowercase \
---dev-corpus ${corpus_dev} \
---test-corpus ${corpus_test} \
---vocab-size ${vocab_size}
+./scripts/prepare-data.py ${btec_dir}/btec-train fr en ${data_dir} --verbose --lowercase --max 0
+./scripts/prepare-data.py ${btec_dir}/btec-dev-concat fr en ${data_dir} --verbose --lowercase --max 0 --output dev
+./scripts/prepare-data.py ${btec_dir}/btec-test1 fr en ${data_dir} --verbose --lowercase --max 0 --output test1
+./scripts/prepare-data.py ${btec_dir}/btec-test2 fr en ${data_dir} --verbose --lowercase --max 0 --output test2
+--max 0
 fi
 
-cp data/raw/btec.feats ${data_dir}/train.feats
-cp data/raw/btec-dev.feats ${data_dir}/dev.feats
-cp data/raw/btec-test.feats ${data_dir}/test.feats
+cp ${btec_dir}/speech_fr/btec-train.feats ${data_dir}/train.feats
+cp ${btec_dir}/speech_fr/btec-dev-concat.feats ${data_dir}/dev.feats
+cp ${btec_dir}/speech_fr/btec-test1.feats ${data_dir}/test1.feats
+cp ${btec_dir}/speech_fr/btec-test2.feats ${data_dir}/test2.feats

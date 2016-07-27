@@ -5,7 +5,7 @@ learning_rate_decay_factor: 0.95
 max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.5        # dropout rate applied to the RNN units
 max_train_size: 0        # maximum size of the training data (0 for unlimited)
-steps_per_checkpoint: 1000   # number of updates between each checkpoint (saving can take a while)
+steps_per_checkpoint: 1000  # number of updates between each checkpoint (saving can take a while)
 steps_per_eval: 2000     # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping
 keep_best: 4             # number of best checkpoints to keep
@@ -49,12 +49,14 @@ no_gpu: False            # don't use any GPU
 allow_growth: True       # allow GPU memory allocation to change during runtim
 mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
-log_file: models/btec/log.txt   # log to this file instead of standard output
+log_file: models/btec/log.txt  # log to this file instead of standard output
 
 encoders:
   - name: fr
+    vocab_size: 9156
     buckets: [ 5, 10, 20, 51]
 
 decoder:
     name: en
+    vocab_size: 7140
     buckets: [10, 15, 25, 51]

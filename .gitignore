@@ -65,6 +65,7 @@ data/
 #experiments/
 tmp/
 .idea/
+models/
 model/
 .spyderproject
 wsclient.cred
