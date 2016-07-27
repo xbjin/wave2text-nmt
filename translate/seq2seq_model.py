@@ -47,9 +47,7 @@ class Seq2SeqModel(object):
   """
 
   def __init__(self, encoders, decoder, buckets, learning_rate, global_step, max_gradient_norm, batch_size,
-               num_samples=512, reuse=None, dropout_rate=0.0, freeze_variables=None, lm_weight=None,
-               embeddings=None, **kwargs):
-    # size = size[0]   # for now, only one size (TODO)
+               num_samples=512, reuse=None, dropout_rate=0.0, freeze_variables=None, lm_weight=None, **kwargs):
     self.buckets = buckets
     self.batch_size = batch_size
     self.lm_weight = lm_weight
@@ -60,9 +58,9 @@ class Seq2SeqModel(object):
     self.global_step = global_step
 
     self.encoder_count = len(encoders)
-    self.trg_vocab_size = decoder['vocab_size']
-    self.trg_cell_size = decoder['cell_size']
-    self.binary_input = [encoder['name'] for encoder in encoders if encoder['binary']]
+    self.trg_vocab_size = decoder.vocab_size
+    self.trg_cell_size = decoder.cell_size
+    self.binary_input = [encoder.name for encoder in encoders if encoder.binary]
 
     # if we use sampled softmax, we need an output projection
     output_projection = None
@@ -82,18 +80,10 @@ class Seq2SeqModel(object):
           return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples, self.trg_vocab_size)
       softmax_loss_function = sampled_loss
 
-    # if use_lstm:
-    #   cell = rnn_cell.BasicLSTMCell(size)
-    # else:
-    #   cell = rnn_cell.GRUCell(size)
-
-    # for now, we only apply dropout to the RNN cell inputs
-    # TODO: try dropout at the output of the units, inside the attention mechanism, after the projections
     if dropout_rate > 0:
       self.dropout = tf.Variable(1 - dropout_rate, trainable=False, name='dropout_keep_prob')
       self.dropout_off = self.dropout.assign(1.0)
       self.dropout_on = self.dropout.assign(1 - dropout_rate)
-      # cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=self.dropout)   # Zaremba applies dropout on the input
     else:
       self.dropout = None
 
@@ -102,16 +92,18 @@ class Seq2SeqModel(object):
     self.target_weights = []
     self.encoder_input_length = []
 
-    self.extensions = [encoder['name'] for encoder in encoders] + [decoder['name']]
-    self.encoder_names = [encoder['name'] for encoder in encoders]
-    self.decoder_name = decoder['name']
+    self.extensions = [encoder.name for encoder in encoders] + [decoder.name]
+    self.encoder_names = [encoder.name for encoder in encoders]
+    self.decoder_name = decoder.name
     self.extensions = self.encoder_names + [self.decoder_name]
 
     # last bucket is the largest one
-    src_bucket_size, trg_bucket_size = buckets[-1]   # TODO
-    for encoder in self.encoders:
+    last_bucket = buckets[-1]
+    src_bucket_sizes, trg_bucket_size = last_bucket[:-1], last_bucket[-1]
+
+    for encoder, bucket_size in zip(self.encoders, src_bucket_sizes):
       encoder_inputs_ = []
-      for i in xrange(src_bucket_size):
+      for i in xrange(bucket_size):
         placeholder_name = "encoder_{}_{}".format(encoder.name, i)
         if encoder.binary:
           placeholder = tf.placeholder(tf.float32, shape=[None, encoder.embedding_size], name=placeholder_name)
@@ -196,14 +188,15 @@ class Seq2SeqModel(object):
     if self.dropout is not None:
       session.run(self.dropout_on)
 
-    encoder_size, decoder_size = self.buckets[bucket_id]
+    bucket = self.buckets[bucket_id]
+    encoder_sizes, decoder_size = bucket[:-1], bucket[-1]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch(data,
                                                                                           bucket_id)
 
     # check if the sizes match
-    if len(encoder_inputs[0]) != encoder_size:
+    if len(encoder_inputs[0]) != encoder_sizes[0]:
       raise ValueError("Encoder length must be equal to the one in bucket,"
-                       " %d != %d." % (len(encoder_inputs[0]), encoder_size))
+                       " %d != %d." % (len(encoder_inputs[0]), encoder_sizes[0]))
     if len(decoder_inputs) != decoder_size:
       raise ValueError("Decoder length must be equal to the one in bucket,"
                        " %d != %d." % (len(decoder_inputs), decoder_size))
@@ -216,7 +209,7 @@ class Seq2SeqModel(object):
 
     for i in xrange(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
-      for l in xrange(encoder_size):
+      for l in xrange(encoder_sizes[0]):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
     for l in xrange(decoder_size):
@@ -238,8 +231,9 @@ class Seq2SeqModel(object):
     if self.dropout is not None:
       session.run(self.dropout_off)
 
-    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    encoder_size, decoder_size = self.buckets[bucket_id]
+    bucket_id, bucket = next((bucket_id, bucket) for bucket_id, bucket in enumerate(self.buckets)
+                             if all(bucket_size > len(ids_) for bucket_size, ids_ in zip(bucket, token_ids)))
+    encoder_sizes, decoder_size = bucket[:-1], bucket[-1]
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch({bucket_id: data},
                                                                                           bucket_id, batch_size=1)
@@ -247,7 +241,7 @@ class Seq2SeqModel(object):
     input_feed = {}
     for i in xrange(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
-      for l in xrange(encoder_size):
+      for l in xrange(encoder_sizes[i]):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
     for l in xrange(decoder_size):
@@ -272,8 +266,9 @@ class Seq2SeqModel(object):
       for session_ in session:
         session_.run(self.dropout_off)
 
-    bucket_id = min(b for b in xrange(len(self.buckets)) if all(self.buckets[b][0] > len(ids_) for ids_ in token_ids))
-    encoder_size, _ = self.buckets[bucket_id]
+    bucket_id, bucket = next((bucket_id, bucket) for bucket_id, bucket in enumerate(self.buckets)
+                             if all(bucket_size > len(ids_) for bucket_size, ids_ in zip(bucket, token_ids)))
+    encoder_sizes, decoder_size = bucket[:-1], bucket[-1]
 
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch({bucket_id: data}, bucket_id,
@@ -281,7 +276,7 @@ class Seq2SeqModel(object):
     input_feed = {}
     for i in xrange(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
-      for l in xrange(encoder_size):
+      for l in xrange(encoder_sizes[i]):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
     output_feed = [self.encoder_state[bucket_id]] + self.attention_states[bucket_id]
@@ -289,7 +284,7 @@ class Seq2SeqModel(object):
     state, attention_states = zip(*[(res_[0], res_[1:]) for res_ in res])
 
     max_len = self.buckets[bucket_id][1]
-    attention_weights = [[np.zeros([1, encoder_size]) for _ in self.encoder_names] for _ in session]
+    attention_weights = [[np.zeros([1, size]) for size in encoder_sizes] for _ in session]
     decoder_input = decoder_inputs[0]  # GO symbol
 
     finished_hypotheses = []
@@ -424,7 +419,8 @@ class Seq2SeqModel(object):
       The triple (encoder_inputs, decoder_inputs, target_weights) for
       the constructed batch that has the proper format to call step(...) later.
     """
-    encoder_size, decoder_size = self.buckets[bucket_id]
+    bucket = self.buckets[bucket_id]
+    encoder_sizes, decoder_size = bucket[:-1], bucket[-1]
     decoder_inputs = []
     batch_size = batch_size or self.batch_size
 
@@ -446,7 +442,7 @@ class Seq2SeqModel(object):
         else:
           pad = utils.PAD_ID
 
-        encoder_pad = [pad] * (encoder_size - len(src_sentence))
+        encoder_pad = [pad] * (encoder_sizes[i] - len(src_sentence))
         # reverse THEN pad (better for early stopping...)
         # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
         reversed_sentence = list(reversed(src_sentence + encoder_pad))
@@ -465,7 +461,7 @@ class Seq2SeqModel(object):
     encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
 
     for i, ext in enumerate(self.encoder_names):
-      for length_idx in xrange(encoder_size):
+      for length_idx in xrange(encoder_sizes[i]):
         dtype = np.float32 if ext in self.binary_input else np.int32
 
         batch_encoder_inputs[i].append(

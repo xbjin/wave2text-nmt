@@ -17,6 +17,7 @@ import subprocess
 import tensorflow as tf
 import yaml
 
+from operator import itemgetter
 from translate import utils
 from collections import namedtuple
 from translate.translation_model import TranslationModel
@@ -37,6 +38,13 @@ parser.add_argument('config', help='load a configuration file in the YAML format
 parser.add_argument('--gpu-id', type=int, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', action='store_true', help='run on CPU')
 
+# Decoding options (to avoid having to edit the config file)
+parser.add_argument('--beam-size', type=int)
+parser.add_argument('--ensemble', action='store_const', const=True)
+parser.add_argument('--lm-file')
+parser.add_argument('--checkpoints', nargs='+')
+parser.add_argument('--lm-weight', type=float)
+
 
 """
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
@@ -48,7 +56,6 @@ Features:
 - AdaDelta, AdaGrad
 - rename scopes to nicer names + do mapping of existing models
 - move to tensorflow 0.9
-- better configuration file management
 - time pooling: concat or sum instead of skipping
 
 Benchmarks:
@@ -73,10 +80,21 @@ python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
 def main(args=None):
   args = parser.parse_args(args)
 
+  with open('translate/config/default.yaml') as f:
+    default_config = utils.AttrDict(yaml.safe_load(f))
+
   with open(args.config) as f:
     config = utils.AttrDict(yaml.safe_load(f))
-    assert 'encoders' in config and 'decoder' in config
-    # easier access to elements (as attributes)
+    # command-line parameters have higher precedence than config file
+    for k, v in vars(args).items():
+      if k in default_config:
+        config[k] = v
+
+    # set default values for parameters that are not defined
+    for k, v in default_config.items():
+      config.setdefault(k, v)
+
+    # AttrDict: easier access to elements (as attributes)
     config.encoders = [utils.AttrDict(encoder) for encoder in config.encoders]
     config.decoder = utils.AttrDict(config.decoder)
 
@@ -86,7 +104,6 @@ def main(args=None):
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   logger = utils.create_logger(config.log_file)
   logger.setLevel(logging_level)
-
   # TODO: copy config file to model dir
 
   utils.log(' '.join(sys.argv))  # print command line
@@ -95,10 +112,6 @@ def main(args=None):
     utils.log('commit hash {}'.format(commit_hash))
   except:
     pass
-
-  utils.log('program arguments')
-  for k, v in config.items():
-    utils.log('  {:<20} {}'.format(k, v))
 
   encoders = config.encoders
   decoder = config.decoder
@@ -109,12 +122,14 @@ def main(args=None):
     'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir'
   ]
 
-  # initialize each parameter that is not defined in config file
-  # to its default value
   for encoder_or_decoder in encoders + [decoder]:
     for parameter in model_parameters:
-      # TODO: define default parameters somewhere
       encoder_or_decoder.setdefault(parameter, config.get(parameter))
+
+  utils.log('program arguments')
+  for k, v in sorted(config.items(), key=itemgetter(0)):
+    if k not in model_parameters:
+      utils.log('  {:<20} {}'.format(k, v))
 
   # enforce constraints
   assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
@@ -130,17 +145,13 @@ def main(args=None):
   # flatten list of files
   all_filenames = [filename for names in filenames if names is not None
     for filename in (names if isinstance(names, list) else [names]) if filename is not None]
-  all_filenames.append(config.bleu_script)
+
+  filenames_ = sum([names if isinstance(names, list) else [names] for names in filenames if names is not None], [])
+  filenames_.append(config.bleu_script)
   # check that those files exist
-  for filename in all_filenames:
+  for filename in filenames_:
     if not os.path.exists(filename):
       utils.warn('warning: file {} does not exist'.format(filename))
-
-  if config.buckets is not None:
-    buckets = [tuple(config.buckets[i:i + len(extensions)])
-               for i in range(0, len(config.buckets), len(extensions))]
-  else:
-    buckets = None
 
   # TODO
   # embeddings = utils.read_embeddings(filenames, args.ext, args.vocab_size, **vars(args))

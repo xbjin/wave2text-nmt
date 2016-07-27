@@ -144,7 +144,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
 def compute_energy(hidden, state, name, **kwargs):
   attn_size = hidden.get_shape()[3].value
 
-  y = rnn_cell.linear(state, attn_size, True)
+  y = unsafe_linear(state, attn_size, True)
   y = tf.reshape(y, [-1, 1, 1, attn_size])
 
   k = tf.get_variable('W_{}'.format(name), [1, 1, attn_size, attn_size])
@@ -514,9 +514,9 @@ def encoder_with_buckets(encoder_inputs, buckets, reuse=None, **kwargs):
       reuse_ = reuse or (True if j > 0 else None)
 
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
-        encoder_size, _ = bucket
+        encoder_sizes = bucket[:-1]
 
-        encoder_inputs_trunc = [v[:encoder_size] for v in encoder_inputs]
+        encoder_inputs_trunc = [v[:size] for size, v in zip(encoder_sizes, encoder_inputs)]
 
         bucket_attention_states, bucket_encoder_state = multi_encoder(
           encoder_inputs_trunc, **kwargs)
@@ -541,7 +541,8 @@ def decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
       reuse_ = reuse or (True if bucket is not buckets[0] else None)
 
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
-        _, decoder_size = bucket
+        decoder_size = bucket[-1]
+
         # decoder_inputs, initial_state, attention_states
         bucket_outputs, bucket_states, bucket_attention_weights = decoder_(
           decoder_inputs=decoder_inputs[:decoder_size],
@@ -564,7 +565,7 @@ def loss_with_buckets(outputs, targets, weights, buckets, softmax_loss_function=
       reuse_ = reuse or (True if bucket is not buckets[0] else None)
 
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
-        _, decoder_size = bucket
+        decoder_size = bucket[-1]
 
         losses.append(tf.models.rnn.seq2seq.sequence_loss(
           bucket_outputs, targets[:decoder_size], weights[:decoder_size],

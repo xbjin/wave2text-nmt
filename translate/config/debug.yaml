@@ -29,7 +29,7 @@ dynamic: False
 
 # data
 data_dir: data/btec
-model_dir: model/btec
+model_dir: models/btec
 train_prefix: train      # name of the training corpus
 dev_prefix: dev          # name of the development corpus
 checkpoint_prefix: null  # prefix of the checkpoint directory
@@ -38,8 +38,7 @@ checkpoints: []          # list of checkpoints to load (in this specific order) 
 # decoding
 bleu_script: scripts/multi-bleu.perl  # path to BLEU script
 remove_unk: False        # remove UNK symbols from the decoder output
-use_lm: False            # use external language model during decoding
-lm_prefix: train         # prefix of the language model file (suffix is arpa.<target ext>)
+lm_file: null            # path to a language model file (in arpa format) to use during decoding
 lm_weight: 0.2           # weight of the language model in the log-linear model
 beam_size: 1             # beam size for decoding (decoder is greedy by default)
 ensemble: False          # use an ensemble of models while decoding (specified by the --checkpoint parameter)
@@ -50,13 +49,14 @@ no_gpu: False            # don't use any GPU
 allow_growth: True       # allow GPU memory allocation to change during runtim
 mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
-buckets: null            # list of bucket sizes: TODO
 log_file: null           # log to this file instead of standard output
 
 encoders:
   - name: fr
     vocab_size: 9156
+    buckets: [ 5, 10, 20, 51]
 
 decoder:
-  name: en
-  vocab_size: 7140
+    name: en
+    vocab_size: 7140
+    buckets: [10, 15, 25, 51]

@@ -24,17 +24,12 @@ class TranslationModel(object):
 
     # TODO: automatically find bucket sizes + handle multi-encoder setting
     # if binary_input:
-    #   # dirty hack, for now we assume that binary input means speech recognition,
-    #   # means longer frames
     #   self.buckets = [(120, 10), (160, 10), (200, 15), (240, 15), (280, 15), (340, 20), (400, 20)]
     # elif character_level:
     #   self.buckets = [(20, 20), (40, 40), (60, 60), (100, 100)]  # quick fix
     # else:
     #   self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
-    if buckets is None:
-      self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
-    else:
-      self.buckets = buckets
+    self.buckets = zip(*([encoder.buckets for encoder in encoders] + [decoder.buckets]))
 
     self.checkpoint_dir = checkpoint_dir
     self.keep_best = keep_best
@@ -105,6 +100,7 @@ class TranslationModel(object):
       global_step = self.global_step.eval(sess)
       
       if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
+        loss /= steps
         perplexity = math.exp(loss) if loss < 300 else float('inf')
 
         utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
@@ -153,7 +149,7 @@ class TranslationModel(object):
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence in zip(self.vocabs, src_sentences)]
-    max_len = self.buckets[-1][0] - 1
+    max_len = self.buckets[-1][0] - 1  # TODO
 
     if any(len(ids_) > max_len for ids_ in token_ids):
       len_ = max(map(len, token_ids))
@@ -230,22 +226,17 @@ class TranslationModel(object):
     best_scores = sorted(scores, reverse=True)[:self.keep_best]
 
     if any(score_ < score for score_, _ in best_scores) or not best_scores:
-      # TODO: check that best-* files are not deleted by saver
       shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}'.format(step)),
                   os.path.join(self.checkpoint_dir, 'best-{}'.format(step)))
-      shutil.copy(os.path.join(self.checkpoint_dir, 'translate-{}.meta'.format(step)),
-                  os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step)))
 
       if all(score_ < score for score_, _ in best_scores):
         path = os.path.abspath(os.path.join(self.checkpoint_dir, 'best'))
         try:  # remove old links
           os.remove(path)
-          os.remove('{}.meta'.format(path))
         except OSError:
           pass
         # make symbolic links to best model
         os.symlink('{}-{}'.format(path, step), path)
-        os.symlink('{}-{}.meta'.format(path, step), '{}.meta'.format(path))
 
       best_scores = sorted(best_scores + [(score, step)], reverse=True)
 
@@ -253,7 +244,6 @@ class TranslationModel(object):
         # remove checkpoints that are not in the top anymore
         try:
           os.remove(os.path.join(self.checkpoint_dir, 'best-{}'.format(step_)))
-          os.remove(os.path.join(self.checkpoint_dir, 'best-{}.meta'.format(step_)))
         except OSError:
           pass
 
@@ -328,5 +318,5 @@ def save_checkpoint(sess, saver, checkpoint_dir, step=None, name=None):
   
   utils.log('saving model to {}'.format(checkpoint_dir))
   checkpoint_path = os.path.join(checkpoint_dir, name)
-  saver.save(sess, checkpoint_path, step)
+  saver.save(sess, checkpoint_path, step, write_meta_graph=False)
   utils.log('finished saving model')

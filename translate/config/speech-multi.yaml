@@ -5,22 +5,22 @@ learning_rate_decay_factor: 0.99
 max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.0        # dropout rate applied to the RNN units
 max_train_size: 0        # maximum size of the training data (0 for unlimited)
-steps_per_checkpoint: 1000   # number of updates between each checkpoint (saving can take a while)
-steps_per_eval: 4000     # number of updates between each BLEU eval (on dev set)
+steps_per_checkpoint: 50 # number of updates between each checkpoint (saving can take a while)
+steps_per_eval: 100      # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping
-keep_best: 4             # number of best checkpoints to keep
+keep_best: 1             # number of best checkpoints to keep
 
 # model (each one of these settings can be defined specifically in `encoders` and `decoder`, or generally here)
 attention: True          # use an attention mechanism
-batch_size: 64           # training batch size
-cell_size: 1024          # size of the RNN cells
-embedding_size: 1024     # size of the embeddings
+batch_size: 16           # training batch size
+cell_size: 128           # size of the RNN cells
+embedding_size: 128      # size of the embeddings, same as cell_size by default
 layers: 1                # number of RNN layers per encoder and decoder
 bidir: False             # use bidirectional encoders
 attention_window_size: 0 # if positive, use a local attention mechanism with this window size
 attention_filters: 0     # number of convolution filters to use in the attention mechanism
 attention_filter_length: 0  # length of the convolution filters
-vocab_size: 40000        # number of symbols of each encoder and decoder
+vocab_size: 10000        # number of symbols of each encoder and decoder
 use_lstm: False          # use LSTM units instead of GRU units
 num_samples: 512         # number of samples for sampled softmax (0 for standard softmax)
 binary: False            # input file is binary (contains vector features)
@@ -28,8 +28,8 @@ character_level: False   # input sequence is at the character level
 dynamic: False
 
 # data
-data_dir: data
-model_dir: model
+data_dir: data/btec_multi
+model_dir: models/btec_multi
 train_prefix: train      # name of the training corpus
 dev_prefix: dev          # name of the development corpus
 checkpoint_prefix: null  # prefix of the checkpoint directory
@@ -38,8 +38,7 @@ checkpoints: []          # list of checkpoints to load (in this specific order) 
 # decoding
 bleu_script: scripts/multi-bleu.perl  # path to BLEU script
 remove_unk: False        # remove UNK symbols from the decoder output
-use_lm: False            # use external language model during decoding
-lm_prefix: train         # prefix of the language model file (suffix is arpa.<target ext>)
+lm_file: null            # path to a language model file (in arpa format) to use during decoding
 lm_weight: 0.2           # weight of the language model in the log-linear model
 beam_size: 1             # beam size for decoding (decoder is greedy by default)
 ensemble: False          # use an ensemble of models while decoding (specified by the --checkpoint parameter)
@@ -50,30 +49,23 @@ no_gpu: False            # don't use any GPU
 allow_growth: True       # allow GPU memory allocation to change during runtim
 mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
-buckets: null            # list of bucket sizes: TODO
 log_file: null           # log to this file instead of standard output
 
 encoders:
   - name: fr
-    cell_size: 1024
-    embedding_size: 1024
-    time_pooling: null            # skip states between RNN layers (list of length `layers - 1`)
-    vocab_size: 40000
-    bidir: False
-    use_lstm: False
-    attention_filters: 0
-    attention_filter_length: 0
-    attention_window_size: 0
-    layers: 1
-    character_level: False
-    binary: False
-    embedding_file: null          # load existing embeddings from this file
+    vocab_size: 9156
+    buckets: [  5,  10,  20,  51]
+  - name: feats
+    embedding_size: 143
+    vocab_size: 7140
+    buckets: [120, 160, 240, 400]
+    layers: 3
+    time_pooling: [2, 2]
+    bidir: True
+
 
 decoder:
-  name: en
-  cell_size: 1024
-  embedding_size: 1024
-  vocab_size: 40000
-  use_lstm: False
-  layers: 1
-  character_level: False
+    name: en
+    vocab_size: 7140
+    buckets: [ 10,  15,  25,  51]
+    layers: 2
