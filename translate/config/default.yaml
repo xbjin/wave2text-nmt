@@ -43,6 +43,7 @@ lm_file: null            # path to a language model file (in arpa format) to use
 lm_weight: 0.2           # weight of the language model in the log-linear model
 beam_size: 1             # beam size for decoding (decoder is greedy by default)
 ensemble: False          # use an ensemble of models while decoding (specified by the --checkpoint parameter)
+output: null             # output file for decoding (writes to standard output by default)
 
 # general
 gpu_id: 0                # index of the GPU to use

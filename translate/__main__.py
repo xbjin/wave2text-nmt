@@ -44,6 +44,7 @@ parser.add_argument('--ensemble', action='store_const', const=True)
 parser.add_argument('--lm-file')
 parser.add_argument('--checkpoints', nargs='+')
 parser.add_argument('--lm-weight', type=float)
+parser.add_argument('--output')
 
 
 """
