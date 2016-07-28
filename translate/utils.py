@@ -238,29 +238,6 @@ def read_lines(paths, extensions, binary_input=None):
   return izip(*iterators)
 
 
-def replace_unk(src_tokens, trg_tokens, trg_token_ids, lookup_dict):
-  trg_tokens = list(trg_tokens)
-
-  for trg_pos, trg_id in enumerate(trg_token_ids):
-    if not 4 <= trg_id <= 19:  # UNK symbols range
-      continue
-
-    src_pos = trg_pos + trg_id - 11   # aligned source position (symbol 4 is UNK-7, symbol 19 is UNK+7)
-    if 0 <= src_pos < len(src_tokens):
-      src_word = src_tokens[src_pos]
-      # look for a translation, otherwise take the source word itself (e.g. name or number)
-      trg_tokens[trg_pos] = lookup_dict.get(src_word, src_word)
-    else:   # aligned position is outside of source sentence, nothing we can do.
-      trg_tokens[trg_pos] = _UNK
-
-  return trg_tokens
-
-
-def initialize_lookup_dict(lookup_dict_path):
-  with open(lookup_dict_path) as f:
-    return dict(line.split() for line in f)
-
-
 def read_ngrams(lm_path, vocab):
   ngram_list = []
   with open(lm_path) as f:
@@ -311,7 +288,7 @@ def debug(msg): log(msg, level=logging.DEBUG)
 def warn(msg): log(msg, level=logging.WARN)
 
 
-def estimate_lm_probability(sequence, ngrams):
+def estimate_lm_score(sequence, ngrams):
   """
   P(w_3 | w_1, w_2) =
       log_prob(w_1 w_2 w_3)             } if (w_1 w_2 w_3) in language model
@@ -328,4 +305,4 @@ def estimate_lm_probability(sequence, ngrams):
   else:
     weights = ngrams[order - 2].get(sequence[:-1])
     backoff_weight = weights[1] if weights is not None and len(weights) > 1 else 0.0
-    return estimate_lm_probability(sequence[1:], ngrams) + backoff_weight
+    return estimate_lm_score(sequence[1:], ngrams) + backoff_weight

@@ -1,3 +1,5 @@
+# Best config so far on BTEC fr->en
+# Works best when used in an ensemble of models
 
 # training
 learning_rate: 0.5       # initial learning rate

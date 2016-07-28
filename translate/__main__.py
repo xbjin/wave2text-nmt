@@ -117,6 +117,7 @@ def main(args=None):
   decoder = config.decoder
   extensions = [encoder.name for encoder in encoders] + [decoder.name]
 
+  # list of parameters that can be unique to each encoder and decoder
   model_parameters = [
     'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
     'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir'

@@ -1,3 +1,5 @@
+# BTEC (fr + fr speech -> en) attempt
+# try (fr + fr speech + POS -> en) or (fr + POS -> en)
 
 # training
 learning_rate: 0.5       # initial learning rate

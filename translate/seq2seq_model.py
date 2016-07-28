@@ -209,12 +209,15 @@ class Seq2SeqModel(object):
 
     for i in xrange(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
-      for l in xrange(encoder_sizes[0]):
+      for l in xrange(encoder_sizes[i]):
         input_feed[self.encoder_inputs[i][l].name] = encoder_inputs[i][l]
 
     for l in xrange(decoder_size):
       input_feed[self.decoder_inputs[l].name] = decoder_inputs[l]
       input_feed[self.target_weights[l].name] = target_weights[l]
+
+    # output_feed = [self.encoder_state[bucket_id]] + self.attention_states[bucket_id]
+    # res = session.run(output_feed, input_feed)
 
     # since our targets are decoder inputs shifted by one, we need one more
     last_target = self.decoder_inputs[decoder_size].name
@@ -334,7 +337,7 @@ class Seq2SeqModel(object):
             elif token_id == utils.BOS_ID:
               prob = float('-inf')
             else:
-              prob = utils.estimate_lm_probability(history + [token_id], ngrams)
+              prob = utils.estimate_lm_score(history + [token_id], ngrams)
             score_.append(prob)
 
           lm_score.append(score_)
