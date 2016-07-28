@@ -98,12 +98,18 @@ def main(args=None):
     config.encoders = [utils.AttrDict(encoder) for encoder in config.encoders]
     config.decoder = utils.AttrDict(config.decoder)
 
+  # enforce constraints
+  assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
+    'steps-per-eval should be a multiple of steps-per-checkpoint')
+  assert args.decode or args.eval or args.train, (
+    'you need to specify at least one action (decode, eval, or train)')
+
   if not os.path.exists(config.model_dir):
     os.makedirs(config.model_dir)
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   # always log to stdout in decoding and eval modes (to avoid overwriting precious train logs)
-  logger = utils.create_logger(config.log_file if config.train else None)
+  logger = utils.create_logger(config.log_file if args.train else None)
   logger.setLevel(logging_level)
   # TODO: copy config file to model dir
 
@@ -132,12 +138,6 @@ def main(args=None):
   for k, v in sorted(config.items(), key=itemgetter(0)):
     if k not in model_parameters:
       utils.log('  {:<20} {}'.format(k, v))
-
-  # enforce constraints
-  assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
-    'steps-per-eval should be a multiple of steps-per-checkpoint')
-  assert args.decode or args.eval or args.train, (
-    'you need to specify at least one action (decode, eval, or train)')
 
   filenames = utils.get_filenames(extensions=extensions, **config)
   utils.debug('filenames')
