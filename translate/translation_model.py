@@ -145,16 +145,14 @@ class TranslationModel(object):
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
-    # TODO: this should be in utils
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence in zip(self.vocabs, src_sentences)]
-    max_len = self.buckets[-1][0] - 1  # TODO
 
-    if any(len(ids_) > max_len for ids_ in token_ids):
-      len_ = max(map(len, token_ids))
-      utils.warn("line is too long ({} tokens), truncating".format(len_))
-      token_ids = [ids_[:max_len] for ids_ in token_ids]
+    for ids_, max_len in zip(token_ids, self.buckets[-1][:-1]):
+      if len(ids_) > max_len:
+        utils.warn("line is too long ({} tokens), truncating".format(len(ids_)))
+        ids_[:] = ids_[:max_len]
 
     if beam_size <= 1 and not isinstance(sess, list):
       trg_token_ids = self.model.greedy_decoding(sess, token_ids)
