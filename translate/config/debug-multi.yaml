@@ -53,7 +53,7 @@ log_file: null           # log to this file instead of standard output
 
 encoders:
   - name: fr
-    vocab_size: 9156
+    vocab_size: 9218
     buckets: [ 5, 10, 20, 51]
   - name: mt
     vocab_size: 7140
@@ -61,5 +61,5 @@ encoders:
 
 decoder:
     name: en
-    vocab_size: 7140
+    vocab_size: 7186
     buckets: [10, 15, 25, 51]

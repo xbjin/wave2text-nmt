@@ -1,5 +1,6 @@
 # Best config so far on BTEC fr->en
 # Works best when used in an ensemble of models
+# Legacy config (compatible with older models)
 
 # training
 learning_rate: 0.5       # initial learning rate
@@ -55,10 +56,10 @@ log_file: models/btec/log.txt  # log to this file instead of standard output
 
 encoders:
   - name: fr
-    vocab_size: 9218
+    vocab_size: 10000
     buckets: [ 5, 10, 20, 51]
 
 decoder:
     name: en
-    vocab_size: 7186
+    vocab_size: 10000
     buckets: [10, 15, 25, 51]

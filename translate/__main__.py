@@ -102,7 +102,8 @@ def main(args=None):
     os.makedirs(config.model_dir)
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO
-  logger = utils.create_logger(config.log_file)
+  # always log to stdout in decoding and eval modes (to avoid overwriting precious train logs)
+  logger = utils.create_logger(config.log_file if config.train else None)
   logger.setLevel(logging_level)
   # TODO: copy config file to model dir
 
