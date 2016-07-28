@@ -66,7 +66,7 @@ encoders:
     time_pooling: [2, 2]
     binary: True
     attention_filters: 1
-    attention_filter_length: 40
+    attention_filter_length: 10
 
 
 decoder:
