@@ -135,9 +135,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
         encoder_outputs.append(encoder_outputs_)
         encoder_states.append(encoder_state_)
 
-    # encoder_state = tf.add_n(encoder_states)
     encoder_state = tf.concat(1, encoder_states)
-
     return encoder_outputs, encoder_state
 
 
@@ -308,6 +306,8 @@ def decoder(decoder_inputs, initial_state, decoder_name,
 
     loop_function = extract_argmax_and_embed if feed_previous else None
     decoder_inputs = [tf.nn.embedding_lookup(embedding, i) for i in decoder_inputs]
+    # new parameter: allows encoders and decoder of different sizes,
+    # and concatenation of encoders' last states (instead of a sum)
     state = unsafe_linear(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     outputs = []

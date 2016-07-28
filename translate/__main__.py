@@ -140,7 +140,7 @@ def main(args=None):
     if k not in model_parameters:
       utils.log('  {:<20} {}'.format(k, v))
 
-  filenames = utils.get_filenames(extensions=extensions, **config)
+  filenames = utils.get_filenames(extensions=extensions, decode=args.decode, eval=args.eval, **config)
   utils.debug('filenames')
   for k, v in vars(filenames).items():
     utils.log('  {:<20} {}'.format(k, v))

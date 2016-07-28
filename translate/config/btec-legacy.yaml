@@ -31,8 +31,8 @@ character_level: False   # input sequence is at the character level
 dynamic: False
 
 # data
-data_dir: data/btec
-model_dir: models/btec
+data_dir: data/btec_legacy
+model_dir: models/btec_legacy
 train_prefix: train      # name of the training corpus
 dev_prefix: dev          # name of the development corpus
 checkpoint_prefix: null  # prefix of the checkpoint directory
