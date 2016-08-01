@@ -235,7 +235,7 @@ class Seq2SeqModel(object):
       session.run(self.dropout_off)
 
     bucket_id, bucket = next((bucket_id, bucket) for bucket_id, bucket in enumerate(self.buckets)
-                             if all(bucket_size > len(ids_) for bucket_size, ids_ in zip(bucket, token_ids)))
+                             if all(bucket_size >= len(ids_) for bucket_size, ids_ in zip(bucket, token_ids)))
     encoder_sizes, decoder_size = bucket[:-1], bucket[-1]
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, target_weights, encoder_input_length = self.get_batch({bucket_id: data},
@@ -270,7 +270,7 @@ class Seq2SeqModel(object):
         session_.run(self.dropout_off)
 
     bucket_id, bucket = next((bucket_id, bucket) for bucket_id, bucket in enumerate(self.buckets)
-                             if all(bucket_size > len(ids_) for bucket_size, ids_ in zip(bucket, token_ids)))
+                             if all(bucket_size >= len(ids_) for bucket_size, ids_ in zip(bucket, token_ids)))
     encoder_sizes, decoder_size = bucket[:-1], bucket[-1]
 
     data = [token_ids + [[]]]

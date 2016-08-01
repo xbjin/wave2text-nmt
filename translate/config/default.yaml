@@ -55,8 +55,8 @@ log_file: null           # log to this file instead of standard output
 
 encoders:
   - name: fr
-    buckets: [ 5, 10, 20, 51]
+    buckets: [ 5, 10, 20, 50]
 
 decoder:
     name: en
-    buckets: [10, 15, 25, 51]
+    buckets: [10, 15, 25, 50]
