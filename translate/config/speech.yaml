@@ -1,5 +1,4 @@
-# BTEC (fr + fr speech -> en) attempt
-# try (fr + fr speech + POS -> en) or (fr + POS -> en)
+# BTEC (fr speech -> fr) attempt
 
 # training
 learning_rate: 0.5       # initial learning rate
@@ -31,7 +30,7 @@ dynamic: False
 
 # data
 data_dir: data/btec_speech
-model_dir: models/speech_multi
+model_dir: models/speech
 train_prefix: train      # name of the training corpus
 dev_prefix: dev          # name of the development corpus
 checkpoint_prefix: null  # prefix of the checkpoint directory
@@ -51,13 +50,9 @@ no_gpu: False            # don't use any GPU
 allow_growth: True       # allow GPU memory allocation to change during runtim
 mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
-log_file: models/speech_multi/log.txt  # log to this file instead of standard output
+log_file: models/speech/log.txt  # log to this file instead of standard output
 
 encoders:
-  - name: fr
-    vocab_size: 9218
-    buckets: [  5,  10,  20,  50]
-
   - name: feats
     embedding_size: 123
     vocab_size: 0
@@ -68,8 +63,7 @@ encoders:
     attention_filters: 1
     attention_filter_length: 10
 
-
 decoder:
-    name: en
-    vocab_size: 7186
+    name: fr
+    vocab_size: 9218
     buckets: [ 10,  15,  25,  50]
