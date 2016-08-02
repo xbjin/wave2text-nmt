@@ -199,12 +199,13 @@ def local_attention(state, prev_weights, hidden_states, encoder, reuse=None, **k
   Local attention of Luong et al. (http://arxiv.org/abs/1508.04025)
   """
   attn_length = hidden_states.get_shape()[1].value
-  attn_size = hidden_states.get_shape()[3].value
+  state_size = state.get_shape()[1].value
 
   with tf.variable_scope('attention', reuse):
     S = hidden_states.get_shape()[1].value   # source length
-    wp = tf.get_variable('Wp_{}'.format(encoder.name), [attn_size, attn_size])
-    vp = tf.get_variable('vp_{}'.format(encoder.name), [attn_size, 1])
+    wp = tf.get_variable('Wp_{}'.format(encoder.name), [state_size, state_size])
+    vp = tf.get_variable('vp_{}'.format(encoder.name), [state_size, 1])
+
     pt = tf.nn.sigmoid(tf.matmul(tf.nn.tanh(tf.matmul(state, wp)), vp))
     pt = tf.floor(S * tf.reshape(pt, [-1, 1]))  # aligned position in the source sentence
 
