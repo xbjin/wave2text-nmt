@@ -81,7 +81,7 @@ python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
 def main(args=None):
   args = parser.parse_args(args)
 
-  with open('translate/config/default.yaml') as f:
+  with open('config/default.yaml') as f:
     default_config = utils.AttrDict(yaml.safe_load(f))
 
   with open(args.config) as f:

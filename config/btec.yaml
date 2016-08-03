@@ -1,5 +1,4 @@
-# Best config so far on BTEC fr->en
-# Works best when used in an ensemble of models
+# BTEC (fr -> en) baseline
 
 # training
 learning_rate: 0.5       # initial learning rate
@@ -7,8 +6,8 @@ learning_rate_decay_factor: 0.95
 max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.5        # dropout rate applied to the RNN units
 max_train_size: 0        # maximum size of the training data (0 for unlimited)
-steps_per_checkpoint: 1000  # number of updates between each checkpoint (saving can take a while)
-steps_per_eval: 2000     # number of updates between each BLEU eval (on dev set)
+steps_per_checkpoint: 500  # number of updates between each checkpoint (saving can take a while)
+steps_per_eval: 4000     # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping
 keep_best: 4             # number of best checkpoints to keep
 
@@ -30,7 +29,7 @@ character_level: False   # input sequence is at the character level
 dynamic: False
 
 # data
-data_dir: data/btec
+data_dir: data/btec_speech
 model_dir: models/btec
 train_prefix: train      # name of the training corpus
 dev_prefix: dev          # name of the development corpus
@@ -56,9 +55,9 @@ log_file: models/btec/log.txt  # log to this file instead of standard output
 encoders:
   - name: fr
     vocab_size: 9218
-    buckets: [ 5, 10, 20, 51]
+    buckets: [  6,   8,  10,  12,  14,  16,  18,  23]
 
 decoder:
     name: en
     vocab_size: 7186
-    buckets: [10, 15, 25, 51]
+    buckets: [  7,   8,  10,  12,  13,  15,  17,  23]
