@@ -6,7 +6,7 @@ learning_rate_decay_factor: 0.99
 max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.0        # dropout rate applied to the RNN units
 max_train_size: 0        # maximum size of the training data (0 for unlimited)
-steps_per_checkpoint: 1000   # number of updates between each checkpoint (saving can take a while)
+steps_per_checkpoint: 500   # number of updates between each checkpoint (saving can take a while)
 steps_per_eval: 4000     # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping
 keep_best: 4             # number of best checkpoints to keep
@@ -32,7 +32,8 @@ dynamic: False
 data_dir: data
 model_dir: model
 train_prefix: train      # name of the training corpus
-dev_prefix: dev          # name of the development corpus
+dev_prefix: dev          # name of the development cor
+vocab_prefix: vocab      # name of the vocabulary filespus
 checkpoint_prefix: null  # prefix of the checkpoint directory
 checkpoints: []          # list of checkpoints to load (in this specific order) after main checkpoint
 

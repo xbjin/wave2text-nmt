@@ -1,57 +1,17 @@
 # BTEC translation from French to English with speech (speech + text to text)
 # TODO: try adding POS tags
 
-# training
-learning_rate: 0.5       # initial learning rate
 learning_rate_decay_factor: 0.95
-max_gradient_norm: 5.0   # clip gradients to this norm
-dropout_rate: 0.5        # dropout rate applied to the RNN units
-max_train_size: 0        # maximum size of the training data (0 for unlimited)
-steps_per_checkpoint: 500  # number of updates between each checkpoint (saving can take a while)
-steps_per_eval: 4000     # number of updates between each BLEU eval (on dev set)
-max_steps: 0             # max number of updates before stopping
-keep_best: 4             # number of best checkpoints to keep
-
-# model (each one of these settings can be defined specifically in `encoders` and `decoder`, or generally here)
-attention: True          # use an attention mechanism
-batch_size: 64           # training batch size
-cell_size: 256           # size of the RNN cells
-embedding_size: 256      # size of the embeddings
-layers: 2                # number of RNN layers per encoder and decoder
-bidir: True              # use bidirectional encoders
-attention_window_size: 0 # if positive, use a local attention mechanism with this window size
-attention_filters: 0     # number of convolution filters to use in the attention mechanism
-attention_filter_length: 0  # length of the convolution filters
-vocab_size: 10000        # number of symbols of each encoder and decoder
-use_lstm: True           # use LSTM units instead of GRU units
-num_samples: 512         # number of samples for sampled softmax (0 for standard softmax)
-binary: False            # input file is binary (contains vector features)
-character_level: False   # input sequence is at the character level
-dynamic: False
-
-# data
+dropout_rate: 0.5
+cell_size: 256
+embedding_size: 256
+layers: 2
+bidir: True
+use_lstm: True
 data_dir: data/btec_speech
+
 model_dir: models/speech_multi
-train_prefix: train      # name of the training corpus
-dev_prefix: dev          # name of the development corpus
-checkpoint_prefix: null  # prefix of the checkpoint directory
-checkpoints: []          # list of checkpoints to load (in this specific order) after main checkpoint
-
-# decoding
-bleu_script: scripts/multi-bleu.perl  # path to BLEU script
-remove_unk: False        # remove UNK symbols from the decoder output
-lm_file: null            # path to a language model file (in arpa format) to use during decoding
-lm_weight: 0.2           # weight of the language model in the log-linear model
-beam_size: 1             # beam size for decoding (decoder is greedy by default)
-ensemble: False          # use an ensemble of models while decoding (specified by the --checkpoint parameter)
-
-# general
-gpu_id: 0                # index of the GPU to use
-no_gpu: False            # don't use any GPU
-allow_growth: True       # allow GPU memory allocation to change during runtim
-mem_fraction: 1.0        # maximum fraction of GPU memory to use
-freeze_variables: []     # list of variables to freeze during training
-log_file: models/speech_multi/log.txt  # log to this file instead of standard output
+log_file: models/speech_multi/log.txt
 
 encoders:
   - name: fr

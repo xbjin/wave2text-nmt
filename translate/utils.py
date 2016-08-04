@@ -103,19 +103,20 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
   return [vocabulary.get(w, UNK_ID) for w in sentence]
 
 
-def get_filenames(data_dir, extensions, train_prefix, dev_prefix, lm_file=None, **kwargs):
+def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix, lm_file=None, **kwargs):
   """ Last extension is always assumed to be the target """
 
   train_path = os.path.join(data_dir, train_prefix)
   dev_path = os.path.join(data_dir, dev_prefix)
+  vocab_path = os.path.join(data_dir, vocab_prefix)
   test_path = kwargs.get('decode')  # `decode` or `eval` or None
   test_path = test_path if test_path is not None else kwargs.get('eval')
   lm_path = lm_file
 
   train = ['{}.{}'.format(train_path, ext) for ext in extensions]
   dev = ['{}.{}'.format(dev_path, ext) for ext in extensions]
+  vocab = ['{}.{}'.format(vocab_path, ext) for ext in extensions]
   test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
-  vocab = [os.path.join(data_dir, 'vocab.{}'.format(ext)) for ext in extensions]
 
   filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lm_path'])
   return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})

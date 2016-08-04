@@ -22,13 +22,6 @@ class TranslationModel(object):
     self.trg_ext = decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
 
-    # TODO: automatically find bucket sizes + handle multi-encoder setting
-    # if binary_input:
-    #   self.buckets = [(120, 10), (160, 10), (200, 15), (240, 15), (280, 15), (340, 20), (400, 20)]
-    # elif character_level:
-    #   self.buckets = [(20, 20), (40, 40), (60, 60), (100, 100)]  # quick fix
-    # else:
-    #   self.buckets = [(5, 10), (10, 15), (20, 25), (51, 51)]
     self.buckets = zip(*([encoder.buckets for encoder in encoders] + [decoder.buckets]))
 
     self.checkpoint_dir = checkpoint_dir
