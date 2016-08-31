@@ -47,7 +47,7 @@ class Seq2SeqModel(object):
   """
 
   def __init__(self, encoders, decoder, buckets, learning_rate, global_step, max_gradient_norm, batch_size,
-               num_samples=512, reuse=None, dropout_rate=0.0, freeze_variables=None, lm_weight=None, **kwargs):
+               num_samples=512, dropout_rate=0.0, freeze_variables=None, lm_weight=None, **kwargs):
     self.buckets = buckets
     self.batch_size = batch_size
     self.lm_weight = lm_weight
@@ -66,12 +66,13 @@ class Seq2SeqModel(object):
     output_projection = None
     softmax_loss_function = None
     # sampled softmax only makes sense if we sample less than vocabulary size.
+    # TODO: parameter dependent on decoder
     if 0 < num_samples < self.trg_vocab_size:
       with tf.device("/cpu:0"):
-        with variable_scope.variable_scope(variable_scope.get_variable_scope(), reuse=reuse):
-          w = tf.get_variable("proj_w", [self.trg_cell_size, self.trg_vocab_size])
+        with variable_scope.variable_scope('decoder_{}'.format(decoder.name)):
+          w = decoders.get_variable_unsafe("proj_w", [self.trg_cell_size, self.trg_vocab_size])
           w_t = tf.transpose(w)
-          b = tf.get_variable("proj_b", [self.trg_vocab_size])
+          b = decoders.get_variable_unsafe("proj_b", [self.trg_vocab_size])
       output_projection = (w, b)
 
       def sampled_loss(inputs, labels):
@@ -132,23 +133,23 @@ class Seq2SeqModel(object):
     )
 
     self.attention_states, self.encoder_state = decoders.encoder_with_buckets(
-      self.encoder_inputs, buckets, reuse=reuse, encoder_input_length=self.encoder_input_length,
+      self.encoder_inputs, buckets, encoder_input_length=self.encoder_input_length,
       **parameters
     )
 
     self.outputs, self.decoder_states, self.attention_weights = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
-      reuse=reuse, feed_previous=False, **parameters
+      feed_previous=False, **parameters
     )
 
     # useful only for greedy decoding (beam size = 1)
     self.greedy_outputs, _, _ = decoders.decoder_with_buckets(
       self.attention_states, self.encoder_state, self.decoder_inputs, buckets,
-      reuse=True, feed_previous=True, **parameters
+      feed_previous=True, **parameters
     )
 
     self.losses = decoders.loss_with_buckets(self.outputs, targets, self.target_weights,
-                                             buckets, softmax_loss_function, reuse)
+                                             buckets, softmax_loss_function)
 
     # gradients and SGD update operation for training the model
     if freeze_variables is None:

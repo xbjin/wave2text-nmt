@@ -105,7 +105,6 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
 
 def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix, lm_file=None, **kwargs):
   """ Last extension is always assumed to be the target """
-
   train_path = os.path.join(data_dir, train_prefix)
   dev_path = os.path.join(data_dir, dev_prefix)
   vocab_path = os.path.join(data_dir, vocab_prefix)
@@ -119,7 +118,7 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix, 
   test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
 
   filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lm_path'])
-  return filenames(**{k: v for k, v in vars().items() if k in filenames._fields})
+  return filenames(train, dev, test, vocab, lm_path)
 
 
 def bleu_score(bleu_script, hypotheses, references):
@@ -272,6 +271,9 @@ def read_ngrams(lm_path, vocab):
 def create_logger(log_file=None):                
   formatter = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%m/%d %H:%M:%S')
   if log_file is not None:
+    log_dir = os.path.dirname(log_file)
+    if not os.path.exists(log_dir):
+      os.makedirs(log_dir)
     handler = logging.FileHandler(log_file)
   else:
     handler = logging.StreamHandler()

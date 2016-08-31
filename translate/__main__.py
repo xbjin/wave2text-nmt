@@ -17,10 +17,10 @@ import subprocess
 import tensorflow as tf
 import yaml
 
+from pprint import pformat
 from operator import itemgetter
 from translate import utils
-from collections import namedtuple
-from translate.translation_model import TranslationModel
+from translate.multitask_model import MultiTaskModel
 
 
 parser = argparse.ArgumentParser()
@@ -81,6 +81,7 @@ python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
 def main(args=None):
   args = parser.parse_args(args)
 
+  # read config file and default config
   with open('config/default.yaml') as f:
     default_config = utils.AttrDict(yaml.safe_load(f))
 
@@ -95,24 +96,18 @@ def main(args=None):
     for k, v in default_config.items():
       config.setdefault(k, v)
 
-    # AttrDict: easier access to elements (as attributes)
-    config.encoders = [utils.AttrDict(encoder) for encoder in config.encoders]
-    config.decoder = utils.AttrDict(config.decoder)
-
-  # enforce constraints
+  # enforce parameter constraints
   assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
     'steps-per-eval should be a multiple of steps-per-checkpoint')
   assert args.decode or args.eval or args.train, (
     'you need to specify at least one action (decode, eval, or train)')
-
-  if not os.path.exists(config.model_dir):
-    os.makedirs(config.model_dir)
+  assert args.train or len(args.tasks) == 1, (
+    'you cannot set multiple tasks in decode and eval modes')
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   # always log to stdout in decoding and eval modes (to avoid overwriting precious train logs)
   logger = utils.create_logger(config.log_file if args.train else None)
   logger.setLevel(logging_level)
-  # TODO: copy config file to model dir
 
   utils.log(' '.join(sys.argv))  # print command line
   try:                           # print git hash
@@ -121,50 +116,44 @@ def main(args=None):
   except:
     pass
 
-  encoders = config.encoders
-  decoder = config.decoder
-  extensions = [encoder.name for encoder in encoders] + [decoder.name]
-
-  # list of parameters that can be unique to each encoder and decoder
+  # list of encoder and decoder parameter names (each encoder and decoder can have a different value
+  # for those parameters)
   model_parameters = [
     'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
     'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir'
   ]
+  # TODO: independent model dir for each task
+  task_parameters = ['data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio',
+                     'lm_file', 'learning_rate', 'learning_rate_decay_factor']
 
-  for encoder_or_decoder in encoders + [decoder]:
-    for parameter in model_parameters:
-      encoder_or_decoder.setdefault(parameter, config.get(parameter))
+  # in case no task is defined (standard mono-task settings), define a "main" task
+  config.setdefault('tasks', [{'encoders': config.encoders, 'decoder': config.decoder, 'name': 'main', 'ratio': 1.0}])
+  config.tasks = [utils.AttrDict(task) for task in config.tasks]
 
+  for task in config.tasks:
+    # convert dicts to AttrDicts for convenience
+    task.encoders = [utils.AttrDict(encoder) for encoder in task.encoders]
+    task.decoder = utils.AttrDict(task.decoder)
+
+    for parameter in task_parameters:
+      task.setdefault(parameter, config.get(parameter))
+    for encoder_or_decoder in task.encoders + [task.decoder]:
+      # move parameters all the way up from base level to encoder/decoder level:
+      # default values for encoder/decoder parameters can be defined at the task level and base level
+      # default values for tasks can be defined at the base level
+      for parameter in model_parameters:
+        if parameter in encoder_or_decoder:
+          continue
+        elif parameter in task:
+          encoder_or_decoder[parameter] = task[parameter]
+        else:
+          encoder_or_decoder[parameter] = config.get(parameter)
+
+  # log parameters
   utils.log('program arguments')
   for k, v in sorted(config.items(), key=itemgetter(0)):
     if k not in model_parameters:
-      utils.log('  {:<20} {}'.format(k, v))
-
-  filenames = utils.get_filenames(extensions=extensions, decode=args.decode, eval=args.eval, **config)
-  utils.debug('filenames')
-  for k, v in vars(filenames).items():
-    utils.log('  {:<20} {}'.format(k, v))
-
-  # flatten list of files
-  all_filenames = [filename for names in filenames if names is not None
-    for filename in (names if isinstance(names, list) else [names]) if filename is not None]
-
-  filenames_ = sum([names if isinstance(names, list) else [names] for names in filenames if names is not None], [])
-  filenames_.append(config.bleu_script)
-  # check that those files exist
-  for filename in filenames_:
-    if not os.path.exists(filename):
-      utils.warn('warning: file {} does not exist'.format(filename))
-
-  # TODO
-  # embeddings = utils.read_embeddings(filenames, args.ext, args.vocab_size, **vars(args))
-  # utils.debug('embeddings {}'.format(embeddings))
-
-  # TODO: improve checkpoints
-  checkpoint_prefix = (config.checkpoint_prefix or
-                       'checkpoints.{}_{}'.format('-'.join(extensions[:-1]), extensions[-1]))
-  checkpoint_dir = os.path.join(config.model_dir, checkpoint_prefix)
-  eval_output = os.path.join(config.model_dir, 'eval.out')
+      utils.log('  {:<20} {}'.format(k, pformat(v)))
   
   device = None
   if args.no_gpu:
@@ -176,9 +165,10 @@ def main(args=None):
   utils.log('using device: {}'.format(device))
 
   with tf.device(device):
-    model = TranslationModel(checkpoint_dir=checkpoint_dir, **config)
+    checkpoint_dir = os.path.join(config.model_dir, 'checkpoints')
+    model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, **config)
 
-    utils.log('model parameters ({})'.format(len(tf.all_variables())))
+  utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
     utils.log('  {} shape {}'.format(var.name, var.get_shape()))
 
@@ -195,17 +185,15 @@ def main(args=None):
     else:
       model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
-    # TODO: load best checkpoint for eval and decode
+    # # TODO: load best checkpoint for eval and decode
     if args.decode:
-      model.decode(sess, filenames, config.beam_size, output=config.output, remove_unk=config.remove_unk)
+      model.decode(sess, **config)
     elif args.eval:
-      model.evaluate(sess, filenames, config.beam_size, bleu_script=config.bleu_script, output=config.output,
-                     remove_unk=config.remove_unk)
+      model.evaluate(sess, **config)
     elif args.train:
+      eval_output = os.path.join(config.model_dir, 'eval')
       try:
-        model.train(sess, filenames, config.beam_size, config.steps_per_checkpoint, config.steps_per_eval,
-                    config.bleu_script, config.max_train_size, eval_output, remove_unk=config.remove_unk,
-                    max_steps=config.max_steps)
+        model.train(sess, eval_output=eval_output, **config)
       except KeyboardInterrupt:
         utils.log('exiting...')
         model.save(sess)

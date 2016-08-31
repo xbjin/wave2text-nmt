@@ -12,199 +12,16 @@ import numpy as np
 import shutil
 from translate import utils
 from translate.seq2seq_model import Seq2SeqModel
-from collections import OrderedDict
 
 
-class TranslationModel(object):
-  def __init__(self, encoders, decoder, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, keep_best=1, buckets=None, **kwargs):
-    self.src_ext = [encoder.name for encoder in encoders]
-    self.trg_ext = decoder.name
-    self.extensions = self.src_ext + [self.trg_ext]
-
-    self.buckets = zip(*([encoder.buckets for encoder in encoders] + [decoder.buckets]))
-
-    self.checkpoint_dir = checkpoint_dir
+class BaseTranslationModel(object):
+  def __init__(self, name, checkpoint_dir, keep_best=1):
+    self.name = name
     self.keep_best = keep_best
-
-    # list of extensions that use vector features instead of text features
-    self.binary_input = [encoder.name for encoder in encoders if encoder.binary]
-    self.character_level = [encoder.name for encoder in encoders if encoder.character_level]
-    
-    self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
-    self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
-    
-    with tf.device('/cpu:0'):
-      self.global_step = tf.Variable(0, trainable=False, name='global_step')
-    
-    # main model
-    self.model = Seq2SeqModel(encoders, decoder, self.buckets, self.learning_rate, self.global_step, **kwargs)
-    self.vocabs = None
-
+    self.checkpoint_dir = checkpoint_dir
     self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
 
-  def _read_data(self, filenames, max_train_size):
-    utils.debug('reading vocabularies')
-    self._read_vocab(filenames)
-
-    utils.debug('reading training data')
-    train_set = utils.read_dataset(filenames.train, self.extensions, self.vocabs, self.buckets,
-                                   max_size=max_train_size, binary_input=self.binary_input,
-                                   character_level=self.character_level)
-    self.model.assign_data_set(train_set)
-    
-    utils.debug('reading development data')
-    dev_set = utils.read_dataset(filenames.dev, self.extensions, self.vocabs, self.buckets,
-                                 binary_input=self.binary_input, character_level=self.character_level)
-    self.model.dev_set = dev_set
-
-  def _read_vocab(self, filenames):
-    if self.vocabs is not None:
-      return
-
-    # don't try reading vocabulary for encoders that take pre-computed features
-    self.vocabs = [
-      utils.initialize_vocabulary(vocab_path) if ext not in self.binary_input else None
-      for ext, vocab_path in zip(self.extensions, filenames.vocab)
-    ]
-    self.src_vocab = self.vocabs[:-1]
-    self.trg_vocab = self.vocabs[-1]
-    self.ngrams = filenames.lm_path and utils.read_ngrams(filenames.lm_path, self.trg_vocab.vocab)
-
-  def train(self, sess, filenames, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
-            max_train_size=None, eval_output=None, remove_unk=False, max_steps=0):
-    utils.log('reading training and development data')
-    self._read_data(filenames, max_train_size)
-    previous_losses = []
-      
-    loss, time_, steps = 0, 0, 0
-    
-    utils.log('starting training')
-    while True:
-      model = self.model
-
-      start_time = time.time()
-      step_loss = self._train_step(sess, model)
-
-      time_  += (time.time() - start_time)
-      loss += step_loss
-      steps += 1
-      
-      global_step = self.global_step.eval(sess)
-      
-      if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
-        loss_ = loss / steps
-        perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
-
-        utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
-          global_step, self.model.learning_rate.eval(), time_ / steps, perplexity))
-          
-        # decay learning rate when loss is worse than last losses
-        if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-          utils.debug('decreasing learning rate')
-          sess.run(self.learning_rate_decay_op)
-
-        previous_losses.append(loss)
-        loss, time_, steps = 0, 0, 0
-        
-        self._eval_step(sess, self.model)
-        self.save(sess)
-        
-      if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
-        utils.log('starting BLEU eval')
-        output = '{}.{}'.format(eval_output, global_step)
-        score = self.evaluate(sess, filenames, beam_size, bleu_script, on_dev=True, output=output,
-                              remove_unk=remove_unk)
-        self._manage_best_checkpoints(global_step, score)
-
-      if 0 < max_steps < global_step:
-        utils.log('finished training')
-        return
-
-  def _train_step(self, sess, model):
-    r = np.random.random_sample()
-    bucket_id = min(i for i in xrange(len(model.train_bucket_scales)) if model.train_bucket_scales[i] > r)
-    return model.step(sess, model.train_set, bucket_id)
-
-  def _eval_step(self, sess, model):
-    # compute perplexity on dev set
-    for bucket_id in xrange(len(self.buckets)):
-      if not model.dev_set[bucket_id]:
-        utils.log("  eval: empty bucket {}".format(bucket_id))
-        continue
-
-      eval_loss = model.step(sess, model.dev_set, bucket_id, forward_only=True)
-      perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-      utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
-
-  def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
-    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
-                 if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
-                 for vocab, sentence in zip(self.vocabs, src_sentences)]
-
-    for ids_, max_len in zip(token_ids, self.buckets[-1][:-1]):
-      if len(ids_) > max_len:
-        utils.warn("line is too long ({} tokens), truncating".format(len(ids_)))
-        ids_[:] = ids_[:max_len]
-
-    if beam_size <= 1 and not isinstance(sess, list):
-      trg_token_ids = self.model.greedy_decoding(sess, token_ids)
-    else:
-      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
-                                                           reverse_vocab=self.trg_vocab.reverse)
-      trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
-
-    # remove EOS symbols from output
-    if utils.EOS_ID in trg_token_ids:
-      trg_token_ids = trg_token_ids[:trg_token_ids.index(utils.EOS_ID)]
-
-    trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
-                  for i in trg_token_ids]
-
-    if remove_unk:
-      trg_tokens = [token for token in trg_tokens if token != utils._UNK]
-
-    if self.trg_ext in self.character_level:
-      return ''.join(trg_tokens)
-    else:
-      return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
-
-  def decode(self, sess, filenames, beam_size, output=None, remove_unk=False):
-    self._read_vocab(filenames)
-
-    output_file = None
-    try:
-      output_file = sys.stdout if output is None else open(output, 'w')
-
-      for lines in utils.read_lines(filenames.test[:-1], self.src_ext, self.binary_input):
-        trg_sentence = self._decode_sentence(sess, lines, beam_size, remove_unk)
-        output_file.write(trg_sentence + '\n')
-        output_file.flush()
-    finally:
-      if output_file is not None:
-        output_file.close()
-
-  def evaluate(self, sess, filenames, beam_size, bleu_script, on_dev=False, output=None, remove_unk=False):
-    self._read_vocab(filenames)
-    if self.ngrams is not None:
-      utils.debug('using external language model')
-
-    filenames_ = filenames.dev if on_dev else filenames.test
-    lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
-
-    hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
-                  for lines_ in lines]
-    references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
-
-    bleu = utils.bleu_score(bleu_script, hypotheses, references)
-    utils.log(bleu)
-    if output is not None:
-      with open(output, 'w') as f:
-        f.writelines(line + '\n' for line in hypotheses)
-
-    return bleu.score
-
-  def _manage_best_checkpoints(self, step, score):
+  def manage_best_checkpoints(self, step, score):
     score_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
     # try loading previous scores
     try:
@@ -258,6 +75,187 @@ class TranslationModel(object):
 
   def save(self, sess):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
+
+
+class TranslationModel(BaseTranslationModel):
+  def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
+               learning_rate_decay_factor, keep_best=1, **kwargs):
+    self.src_ext = [encoder.name for encoder in encoders]
+    self.trg_ext = decoder.name
+    self.extensions = self.src_ext + [self.trg_ext]
+
+    self.buckets = zip(*([encoder.buckets for encoder in encoders] + [decoder.buckets]))
+
+    # list of extensions that use vector features instead of text features
+    self.binary_input = [encoder.name for encoder in encoders if encoder.binary]
+    self.character_level = [encoder.name for encoder in encoders if encoder.character_level]
+    
+    self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
+    self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
+
+    with tf.device('/cpu:0'):
+      self.global_step = tf.Variable(0, trainable=False, name='global_step')
+    
+    # main model
+    self.model = Seq2SeqModel(encoders, decoder, self.buckets, self.learning_rate, self.global_step, **kwargs)
+    self.vocabs = None
+
+    # TODO: check that filenames exist
+    self.filenames = utils.get_filenames(extensions=self.extensions, **kwargs)
+    utils.debug('reading vocabularies')
+    self._read_vocab()
+    super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
+
+  def read_data(self, max_train_size):
+    utils.debug('reading training data')
+    train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, self.buckets,
+                                   max_size=max_train_size, binary_input=self.binary_input,
+                                   character_level=self.character_level)
+    self.model.assign_data_set(train_set)
+    
+    utils.debug('reading development data')
+    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs, self.buckets,
+                                 binary_input=self.binary_input, character_level=self.character_level)
+    self.model.dev_set = dev_set
+
+  def _read_vocab(self):
+    # don't try reading vocabulary for encoders that take pre-computed features
+    self.vocabs = [
+      utils.initialize_vocabulary(vocab_path) if ext not in self.binary_input else None
+      for ext, vocab_path in zip(self.extensions, self.filenames.vocab)
+    ]
+    self.src_vocab = self.vocabs[:-1]
+    self.trg_vocab = self.vocabs[-1]
+    self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
+
+  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
+            max_train_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
+    utils.log('reading training and development data')
+    self.read_data(max_train_size)
+    previous_losses = []
+
+    loss, time_, steps = 0, 0, 0
+
+    utils.log('starting training')
+    while True:
+      start_time = time.time()
+      step_loss = self.train_step(sess)
+
+      time_  += (time.time() - start_time)
+      loss += step_loss
+      steps += 1
+
+      global_step = self.global_step.eval(sess)
+
+      if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
+        loss_ = loss / steps
+        perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
+
+        utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
+          global_step, self.model.learning_rate.eval(), time_ / steps, perplexity))
+
+        # decay learning rate when loss is worse than last losses
+        if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+          utils.debug('decreasing learning rate')
+          sess.run(self.learning_rate_decay_op)
+
+        previous_losses.append(loss)
+        loss, time_, steps = 0, 0, 0
+
+        self.eval_step(sess)
+        self.save(sess)
+
+      if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
+        output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
+        score = self.evaluate(sess, beam_size, bleu_script, on_dev=True, output=output,
+                              remove_unk=remove_unk)
+        self.manage_best_checkpoints(global_step, score)
+
+      if 0 < max_steps < global_step:
+        utils.log('finished training')
+        return
+
+  def train_step(self, sess):
+    r = np.random.random_sample()
+    bucket_id = min(i for i in xrange(len(self.model.train_bucket_scales)) if self.model.train_bucket_scales[i] > r)
+    return self.model.step(sess, self.model.train_set, bucket_id)
+
+  def eval_step(self, sess):
+    # compute perplexity on dev set
+    for bucket_id in xrange(len(self.buckets)):
+      if not self.model.dev_set[bucket_id]:
+        utils.log("  eval: empty bucket {}".format(bucket_id))
+        continue
+
+      eval_loss = self.model.step(sess, self.model.dev_set, bucket_id, forward_only=True)
+      perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+      utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
+
+  def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
+    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
+                 if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
+                 for vocab, sentence in zip(self.vocabs, src_sentences)]
+
+    for ids_, max_len in zip(token_ids, self.buckets[-1][:-1]):
+      if len(ids_) > max_len:
+        utils.warn("line is too long ({} tokens), truncating".format(len(ids_)))
+        ids_[:] = ids_[:max_len]
+
+    if beam_size <= 1 and not isinstance(sess, list):
+      trg_token_ids = self.model.greedy_decoding(sess, token_ids)
+    else:
+      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
+                                                           reverse_vocab=self.trg_vocab.reverse)
+      trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
+
+    # remove EOS symbols from output
+    if utils.EOS_ID in trg_token_ids:
+      trg_token_ids = trg_token_ids[:trg_token_ids.index(utils.EOS_ID)]
+
+    trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
+                  for i in trg_token_ids]
+
+    if remove_unk:
+      trg_tokens = [token for token in trg_tokens if token != utils._UNK]
+
+    if self.trg_ext in self.character_level:
+      return ''.join(trg_tokens)
+    else:
+      return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
+
+  def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
+    output_file = None
+    try:
+      output_file = sys.stdout if output is None else open(output, 'w')
+
+      for lines in utils.read_lines(self.filenames.test[:-1], self.src_ext, self.binary_input):
+        trg_sentence = self._decode_sentence(sess, lines, beam_size, remove_unk)
+        output_file.write(trg_sentence + '\n')
+        output_file.flush()
+    finally:
+      if output_file is not None:
+        output_file.close()
+
+  def evaluate(self, sess, beam_size, bleu_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+    if self.ngrams is not None:
+      utils.debug('using external language model')
+
+    filenames_ = self.filenames.dev if on_dev else self.filenames.test
+    lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
+
+    hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
+                  for lines_ in lines]
+    references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
+
+    bleu = utils.bleu_score(bleu_script, hypotheses, references)
+    summary = bleu if self.name is None else '{} {}'.format(self.name, bleu)
+    utils.log(summary)
+
+    if output is not None:
+      with open(output, 'w') as f:
+        f.writelines(line + '\n' for line in hypotheses)
+
+    return bleu.score
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):

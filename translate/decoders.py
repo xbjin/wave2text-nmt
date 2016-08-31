@@ -10,48 +10,29 @@ from tensorflow.python.ops import rnn_cell
 from translate import rnn
 
 
-def unsafe_get_variable(name, *args, **kwargs):
-  """ Gets a variable without worrying about the reuse parameter """
-  try:
-    return tf.get_variable(name, *args, **kwargs)
-  except ValueError:
-    with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-      return tf.get_variable(name, *args, **kwargs)
+def unsafe_decorator(fun):
+  def fun_(*args, **kwargs):
+    try:
+      return fun(*args, **kwargs)
+    except ValueError as e:
+      if 'reuse' in e.message:
+        with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+          return fun(*args, **kwargs)
+      else:
+        raise e
+  return fun_
 
 
-def unsafe_linear(args, output_size, bias, bias_start=0.0, scope=None):
-  if args is None or (isinstance(args, (list, tuple)) and not args):
-    raise ValueError("`args` must be specified")
-  if not isinstance(args, (list, tuple)):
-    args = [args]
-
-  # Calculate the total size of arguments on dimension 1.
-  total_arg_size = 0
-  shapes = [a.get_shape().as_list() for a in args]
-  for shape in shapes:
-    if len(shape) != 2:
-      raise ValueError("Linear is expecting 2D arguments: %s" % str(shapes))
-    if not shape[1]:
-      raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
-    else:
-      total_arg_size += shape[1]
-
-  # Now the computation.
-  with tf.variable_scope(scope or "Linear"):
-    matrix = unsafe_get_variable("Matrix", [total_arg_size, output_size])
-    if len(args) == 1:
-      res = tf.matmul(args[0], matrix)
-    else:
-      res = tf.matmul(tf.concat(1, args), matrix)
-    if not bias:
-      return res
-    bias_term = unsafe_get_variable(
-        "Bias", [output_size],
-        initializer=tf.constant_initializer(bias_start))
-  return res + bias_term
+# remove this cumbersome reuse/not reuse stuff
+get_variable_unsafe = unsafe_decorator(tf.get_variable)
+GRUCell_unsafe = unsafe_decorator(rnn_cell.GRUCell)
+BasicLSTMCell_unsafe = unsafe_decorator(rnn_cell.BasicLSTMCell)
+rnn_unsafe = unsafe_decorator(rnn.rnn)
+dynamic_rnn_unsafe = unsafe_decorator(rnn.dynamic_rnn)
+linear_unsafe = unsafe_decorator(rnn_cell.linear)
 
 
-def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=None, reuse=None, **kwargs):
+def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=None, **kwargs):
   assert len(encoder_inputs) == len(encoders)
 
   # convert embeddings to tensors
@@ -63,9 +44,6 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
   encoder_outputs = []
 
   with tf.variable_scope('multi_encoder'):
-    if reuse:
-      tf.get_variable_scope().reuse_variables()
-
     if encoder_input_length is None:
       encoder_input_length = [None] * len(encoders)
 
@@ -75,16 +53,16 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
       encoder_input_length_ = encoder_input_length[i]
 
       if encoder.use_lstm:
-        cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
+        cell = BasicLSTMCell_unsafe(encoder.cell_size)
       else:
-        cell = rnn_cell.GRUCell(encoder.cell_size)
+        cell = GRUCell_unsafe(encoder.cell_size)
 
       if dropout is not None:
         cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
       with tf.variable_scope('encoder_{}'.format(encoder.name)):
         # inputs are token ids, which need to be mapped to vectors (embeddings)
-        if encoder_inputs_[0].dtype == tf.int32:
+        if not encoder.binary:
           initializer = embeddings.get(encoder.name)
           if initializer is None:
             initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
@@ -93,8 +71,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
             embedding_shape = None
 
           with tf.device('/cpu:0'):
-            embedding = tf.get_variable('embedding', shape=embedding_shape,
-                                        initializer=initializer)
+            embedding = get_variable_unsafe('embedding', shape=embedding_shape,
+                                            initializer=initializer)
 
           encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
         else:  # do nothing: inputs are already vectors
@@ -110,11 +88,11 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
           )
           encoder_state_ = encoder_state_bw
           # same as Bahdanau et al.:
-          # encoder_state_ = unsafe_linear(encoder_state_bw, cell.state_size, True,
+          # encoder_state_ = linear_unsafe(encoder_state_bw, cell.state_size, True,
           #                                scope='bidir_final_state')
           # slightly different (they do projection later):
           encoder_outputs_ = [
-            unsafe_linear(outputs_, cell.output_size, False,
+            linear_unsafe(outputs_, cell.output_size, False,
                           scope='bidir_projection') for outputs_ in encoder_outputs_]
         elif encoder.dynamic:
           encoder_inputs_ = tf.transpose(
@@ -125,8 +103,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
                                                              dtype=tf.float32, parallel_iterations=1)
         else:
           encoder_input_length_ = None   # TODO: check impact of this parameter
-          encoder_outputs_, encoder_state_ = rnn.rnn(cell, encoder_inputs_, sequence_length=encoder_input_length_,
-                                                     dtype=tf.float32)
+          encoder_outputs_, encoder_state_ = rnn_unsafe(cell, encoder_inputs_, sequence_length=encoder_input_length_,
+                                                        dtype=tf.float32)
 
         if encoder.bidir or not encoder.dynamic:  # FIXME
           encoder_outputs_ = [tf.reshape(e, [-1, 1, cell.output_size]) for e in encoder_outputs_]
@@ -142,13 +120,13 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
 def compute_energy(hidden, state, name, **kwargs):
   attn_size = hidden.get_shape()[3].value
 
-  y = unsafe_linear(state, attn_size, True, scope=name)
+  y = linear_unsafe(state, attn_size, True, scope=name)
   y = tf.reshape(y, [-1, 1, 1, attn_size])
 
-  k = tf.get_variable('W_{}'.format(name), [1, 1, attn_size, attn_size])
+  k = get_variable_unsafe('W_{}'.format(name), [1, 1, attn_size, attn_size])
   f = tf.nn.conv2d(hidden, k, [1, 1, 1, 1], 'SAME')   # same as a dot product
 
-  v = tf.get_variable('V_{}'.format(name), [attn_size])
+  v = get_variable_unsafe('V_{}'.format(name), [attn_size])
   s = f + y
   return tf.reduce_sum(v * tf.tanh(s), [2, 3])
 
@@ -160,8 +138,8 @@ def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filt
   batch_size = tf.shape(hidden)[0]
 
   filter_shape = [attention_filter_length * 2 + 1, 1, 1, attention_filters]
-  filter_ = tf.get_variable('filter_{}'.format(name), filter_shape)
-  u = tf.get_variable('U_{}'.format(name), [attention_filters, attn_size])
+  filter_ = get_variable_unsafe('filter_{}'.format(name), filter_shape)
+  u = get_variable_unsafe('U_{}'.format(name), [attention_filters, attn_size])
   prev_weights = tf.reshape(prev_weights, [-1, attn_length, 1, 1])
   conv = tf.nn.conv2d(prev_weights, filter_, [1, 1, 1, 1], 'SAME')
   shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
@@ -169,21 +147,21 @@ def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filt
   z = tf.matmul(conv, u)
   z = tf.reshape(z, [-1, attn_length, 1, attn_size])
 
-  y = rnn_cell.linear(state, attn_size, True)
+  y = linear_unsafe(state, attn_size, True)
   y = tf.reshape(y, [-1, 1, 1, attn_size])
 
-  k = tf.get_variable('W_{}'.format(name), [1, 1, attn_size, attn_size])
+  k = get_variable_unsafe('W_{}'.format(name), [1, 1, attn_size, attn_size])
   f = tf.nn.conv2d(hidden, k, [1, 1, 1, 1], 'SAME')  # same as a dot product
 
-  v = tf.get_variable('V_{}'.format(name), [attn_size])
+  v = get_variable_unsafe('V_{}'.format(name), [attn_size])
   s = f + y + z
   return tf.reduce_sum(v * tf.tanh(s), [2, 3])
 
 
-def global_attention(state, prev_weights, hidden_states, encoder, reuse=None, **kwargs):
+def global_attention(state, prev_weights, hidden_states, encoder, **kwargs):
   attn_length = hidden_states.get_shape()[1].value
 
-  with tf.variable_scope('attention', reuse):
+  with tf.variable_scope('attention'):
 
     compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy
     e = compute_energy_(hidden_states, state, encoder.name,
@@ -194,17 +172,17 @@ def global_attention(state, prev_weights, hidden_states, encoder, reuse=None, **
     return weighted_average, weights
 
 
-def local_attention(state, prev_weights, hidden_states, encoder, reuse=None, **kwargs):
+def local_attention(state, prev_weights, hidden_states, encoder, **kwargs):
   """
   Local attention of Luong et al. (http://arxiv.org/abs/1508.04025)
   """
   attn_length = hidden_states.get_shape()[1].value
   state_size = state.get_shape()[1].value
 
-  with tf.variable_scope('attention', reuse):
+  with tf.variable_scope('attention'):
     S = hidden_states.get_shape()[1].value   # source length
-    wp = tf.get_variable('Wp_{}'.format(encoder.name), [state_size, state_size])
-    vp = tf.get_variable('vp_{}'.format(encoder.name), [state_size, 1])
+    wp = get_variable_unsafe('Wp_{}'.format(encoder.name), [state_size, state_size])
+    vp = get_variable_unsafe('vp_{}'.format(encoder.name), [state_size, 1])
 
     pt = tf.nn.sigmoid(tf.matmul(tf.nn.tanh(tf.matmul(state, wp)), vp))
     pt = tf.floor(S * tf.reshape(pt, [-1, 1]))  # aligned position in the source sentence
@@ -243,7 +221,7 @@ def local_attention(state, prev_weights, hidden_states, encoder, reuse=None, **k
     return weighted_average, weights
 
 
-def attention(state, prev_weights, hidden_states, encoder, reuse=None, **kwargs):
+def attention(state, prev_weights, hidden_states, encoder, **kwargs):
   """
   Proxy for `local_attention` and `global_attention`
   """
@@ -252,15 +230,15 @@ def attention(state, prev_weights, hidden_states, encoder, reuse=None, **kwargs)
   else:
     attention_ = global_attention
 
-  return attention_(state, prev_weights, hidden_states, encoder, reuse=reuse, **kwargs)
+  return attention_(state, prev_weights, hidden_states, encoder, **kwargs)
 
 
-def multi_attention(state, prev_weights, hidden_states, encoders, reuse=None, **kwargs):
+def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
   """
   Same as `attention` except that prev_weights, hidden_states and encoders
   are lists whose length is the number of encoders.
   """
-  ds, weights = zip(*[attention(state, weights_, hidden, encoder, reuse)
+  ds, weights = zip(*[attention(state, weights_, hidden, encoder)
                       for weights_, hidden, encoder in zip(prev_weights, hidden_states, encoders)])
 
   return tf.concat(1, ds), weights
@@ -269,8 +247,9 @@ def multi_attention(state, prev_weights, hidden_states, encoders, reuse=None, **
 def decoder(decoder_inputs, initial_state, decoder_name,
             cell, num_decoder_symbols, embedding_size, layers,
             feed_previous=False, output_projection=None, embeddings=None,
-            reuse=None, **kwargs):
+            **kwargs):
   """ Decoder without attention """
+  # FIXME, not the same paramters as `attention_decoder`
   embedding_initializer = embeddings.get(decoder_name)
   if embedding_initializer is None:
     embedding_initializer = None
@@ -290,13 +269,10 @@ def decoder(decoder_inputs, initial_state, decoder_name,
     proj_biases = tf.convert_to_tensor(output_projection[1], dtype=tf.float32)
     proj_biases.get_shape().assert_is_compatible_with([num_decoder_symbols])
 
-  with tf.variable_scope('attention_decoder'):
-    if reuse:
-      tf.get_variable_scope().reuse_variables()
-
+  with tf.variable_scope('decoder_{}'.format(decoder_name)):
     with tf.device('/cpu:0'):
-      embedding = tf.get_variable('embedding', shape=embedding_shape,
-                                  initializer=embedding_initializer)
+      embedding = get_variable_unsafe('embedding', shape=embedding_shape,
+                                      initializer=embedding_initializer)
 
     def extract_argmax_and_embed(prev):
       if output_projection is not None:
@@ -309,20 +285,18 @@ def decoder(decoder_inputs, initial_state, decoder_name,
     decoder_inputs = [tf.nn.embedding_lookup(embedding, i) for i in decoder_inputs]
     # new parameter: allows encoders and decoder of different sizes,
     # and concatenation of encoders' last states (instead of a sum)
-    state = unsafe_linear(initial_state, cell.state_size, False, scope='initial_state_projection')
+    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     outputs = []
     prev = None
     decoder_states = []
 
     for i, inputs in enumerate(decoder_inputs):
-      if i > 0: tf.get_variable_scope().reuse_variables()
-
       if loop_function is not None and prev is not None:
-        with tf.variable_scope('loop_function', reuse=True):
+        with tf.variable_scope('loop_function'):
           inputs = tf.stop_gradient(loop_function(prev))
 
-      cell_output, state = cell(inputs, state)
+      cell_output, state = unsafe_decorator(cell)(inputs, state)
       decoder_states.append(state)
       outputs.append(cell_output)
 
@@ -334,7 +308,7 @@ def decoder(decoder_inputs, initial_state, decoder_name,
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder,
                       embeddings=None, attention_weights=None, output_projection=None,
-                      initial_state_attention=False, reuse=None, dropout=None,
+                      initial_state_attention=False, dropout=None,
                       feed_previous=False, **kwargs):
   # TODO: dynamic RNN
   embeddings = embeddings or {}
@@ -369,13 +343,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     proj_biases = tf.convert_to_tensor(output_projection[1], dtype=tf.float32)
     proj_biases.get_shape().assert_is_compatible_with([decoder.vocab_size])
 
-  with tf.variable_scope('attention_decoder'):
-    if reuse:
-      tf.get_variable_scope().reuse_variables()
-
+  with tf.variable_scope('decoder_{}'.format(decoder.name)):
     with tf.device('/cpu:0'):
-      embedding = tf.get_variable('embedding', shape=embedding_shape,
-                                  initializer=embedding_initializer)
+      embedding = get_variable_unsafe('embedding', shape=embedding_shape,
+                                      initializer=embedding_initializer)
 
     def extract_argmax_and_embed(prev):
       """ Loop_function that extracts the symbol from prev and embeds it """
@@ -398,7 +369,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     # decoder's first state is the encoder's last state
     # however, their shapes don't necessarily match (multiple encoders, non-matching layers, etc.)
-    state = unsafe_linear(initial_state, cell.state_size, False, scope='initial_state_projection')
+    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    # TODO: should be a parameter of the encoder rather than the decoder
 
     outputs = []
     all_attention_weights = []
@@ -417,32 +389,29 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       attns.set_shape([None, attn_size])
 
     for i, inputs in enumerate(decoder_inputs):
-      if i > 0: tf.get_variable_scope().reuse_variables()
-
       # if loop_function is set, we use it instead of decoder_inputs
       if loop_function is not None and prev is not None:
-        with tf.variable_scope('loop_function', reuse=True):
+        with tf.variable_scope('loop_function'):
           inputs = tf.stop_gradient(loop_function(prev))
 
       # merge input and previous attentions into one vector of the right size
       input_size = inputs.get_shape().with_rank(2)[1]
-      x = rnn_cell.linear([inputs, attns], input_size, True)
+      x = linear_unsafe([inputs, attns], input_size, True)
 
       # run the RNN
-      cell_output, state = cell(x, state)
+      cell_output, state = unsafe_decorator(cell)(x, state)
       all_attention_weights.append(attention_weights)
       decoder_states.append(state)
 
       # run the attention mechanism
-      attns, attention_weights = attention_(state, prev_weights=attention_weights,
-                                            reuse=initial_state_attention)
+      attns, attention_weights = attention_(state, prev_weights=attention_weights)
 
       if output_projection is None:
         output = cell_output
       else:
         with tf.variable_scope('attention_output_projection'):
           # FIXME: where does this come from?
-          output = rnn_cell.linear([cell_output, attns], output_size, True)
+          output = linear_unsafe([cell_output, attns], output_size, True)
 
       outputs.append(output)
 
@@ -454,16 +423,16 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
 
 def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
-                       buckets, softmax_loss_function=None, reuse=None, **kwargs):
-  attention_states, encoder_state = encoder_with_buckets(encoder_inputs, buckets, reuse, **kwargs)
+                       buckets, softmax_loss_function=None, **kwargs):
+  attention_states, encoder_state = encoder_with_buckets(encoder_inputs, buckets, **kwargs)
   outputs, _, _ = decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
-                                       buckets, reuse, **kwargs)
+                                       buckets, **kwargs)
   losses = loss_with_buckets(outputs, targets, weights, buckets,
-                             softmax_loss_function, reuse)
+                             softmax_loss_function)
   return outputs, losses
 
 
-def encoder_with_buckets(encoder_inputs, buckets, reuse=None, **kwargs):
+def encoder_with_buckets(encoder_inputs, buckets, **kwargs):
   encoder_inputs_concat = [v for inputs in encoder_inputs for v in inputs]
 
   attention_states = []
@@ -471,9 +440,7 @@ def encoder_with_buckets(encoder_inputs, buckets, reuse=None, **kwargs):
 
   with tf.op_scope(encoder_inputs_concat, 'model_with_buckets'):
     for j, bucket in enumerate(buckets):
-      reuse_ = reuse or (True if j > 0 else None)
-
-      with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
+      with tf.variable_scope(tf.get_variable_scope()):
         encoder_sizes = bucket[:-1]
 
         encoder_inputs_trunc = [v[:size] for size, v in zip(encoder_sizes, encoder_inputs)]
@@ -487,7 +454,7 @@ def encoder_with_buckets(encoder_inputs, buckets, reuse=None, **kwargs):
 
 
 def decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
-                         buckets, reuse=None, no_attention=False, **kwargs):
+                         buckets, no_attention=False, **kwargs):
   outputs = []
   states = []
   attention_weights = []
@@ -498,9 +465,7 @@ def decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
     for bucket, bucket_attention_states, bucket_encoder_state in zip(buckets,
                                                                      attention_states,
                                                                      encoder_state):
-      reuse_ = reuse or (True if bucket is not buckets[0] else None)
-
-      with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
+      with tf.variable_scope(tf.get_variable_scope(), ):
         decoder_size = bucket[-1]
 
         # decoder_inputs, initial_state, attention_states
@@ -516,15 +481,12 @@ def decoder_with_buckets(attention_states, encoder_state, decoder_inputs,
   return outputs, states, attention_weights
 
 
-def loss_with_buckets(outputs, targets, weights, buckets, softmax_loss_function=None,
-                      reuse=None):
+def loss_with_buckets(outputs, targets, weights, buckets, softmax_loss_function=None):
   losses = []
 
   with tf.op_scope(targets + weights, 'model_with_buckets'):
     for bucket, bucket_outputs in zip(buckets, outputs):
-      reuse_ = reuse or (True if bucket is not buckets[0] else None)
-
-      with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_):
+      with tf.variable_scope(tf.get_variable_scope()):
         decoder_size = bucket[-1]
 
         losses.append(tf.models.rnn.seq2seq.sequence_loss(
