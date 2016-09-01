@@ -20,7 +20,7 @@ def unsafe_decorator(fun):
     try:
       return fun(*args, **kwargs)
     except ValueError as e:
-      if 'reuse' in e.message:
+      if 'reuse' in str(e):
         with tf.variable_scope(tf.get_variable_scope(), reuse=True):
           return fun(*args, **kwargs)
       else:
