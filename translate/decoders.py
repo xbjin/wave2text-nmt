@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow.models.rnn
 import functools
 import math
-from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell, seq2seq
 from translate import rnn
 
 
@@ -34,7 +34,10 @@ BasicLSTMCell_unsafe = unsafe_decorator(rnn_cell.BasicLSTMCell)
 MultiRNNCell_unsafe = unsafe_decorator(rnn_cell.MultiRNNCell)
 rnn_unsafe = unsafe_decorator(rnn.rnn)
 dynamic_rnn_unsafe = unsafe_decorator(rnn.dynamic_rnn)
-linear_unsafe = unsafe_decorator(rnn_cell.linear)
+try:
+  linear_unsafe = unsafe_decorator(rnn_cell.linear)
+except AttributeError:
+  linear_unsafe = unsafe_decorator(rnn_cell._linear)
 multi_bidirectional_rnn_unsafe = unsafe_decorator(rnn.multi_bidirectional_rnn)
 
 
@@ -474,7 +477,7 @@ def loss_with_buckets(outputs, targets, weights, buckets, softmax_loss_function=
       with tf.variable_scope(tf.get_variable_scope()):
         decoder_size = bucket[-1]
 
-        losses.append(tf.models.rnn.seq2seq.sequence_loss(
+        losses.append(seq2seq.sequence_loss(
           bucket_outputs, targets[:decoder_size], weights[:decoder_size],
           softmax_loss_function=softmax_loss_function))
 
