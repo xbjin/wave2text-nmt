@@ -7,7 +7,7 @@ embedding_size: 256
 layers: 2
 bidir: True
 use_lstm: True
-data_dir: data/btec_speech
+data_dir: data/btec
 
 model_dir: models/speech_translation
 log_file: models/speech_translation/log.txt

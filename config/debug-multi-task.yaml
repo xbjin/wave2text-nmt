@@ -15,8 +15,6 @@ data_dir: data/btec_multi
 model_dir: models/debug-multi-task
 log_file: null
 
-# share_embeddings: False   # TODO: share embeddings between encoder and decoder
-
 # encoders and decoders with the same names are shared across tasks
 # their parameters should be the same (vocab_size, cell_size, etc.)
 tasks:
@@ -27,7 +25,6 @@ tasks:
     ratio: 0.5
     encoders:
       - name: fr
-        shared_name: fr
         vocab_size: 9218
         buckets: [ 5, 10, 20, 50]
     decoder:
@@ -42,13 +39,12 @@ tasks:
     ratio: 0.5
     encoders:
       - name: fr
-        shared_name: fr
         vocab_size: 9218
         buckets: [ 5, 10, 20, 50]
     decoder:
-        name: fr  # same name?  FIXME
-        shared_name: fr
+        name: fr
         vocab_size: 9218
         buckets: [10, 15, 25, 50]
 
 main_task: task1    # task that matters (checkpoints are sorted according to this task's scores)
+load_embeddings: fr

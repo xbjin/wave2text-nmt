@@ -7,17 +7,17 @@ embedding_size: 256
 layers: 2
 bidir: True
 use_lstm: True
-data_dir: data/btec_speech
+data_dir: experiments/btec/data
 
-model_dir: models/btec
-log_file: models/btec/log.txt
+model_dir: experiments/btec/ensemble/models/model3
+log_file: experiments/btec/ensemble/models/model3/log.txt
 
 encoders:
   - name: fr
     vocab_size: 9218
-    buckets: [  6,   8,  10,  12,  14,  16,  18,  23]
+    buckets: [ 5, 10, 20, 51]
 
 decoder:
     name: en
     vocab_size: 7186
-    buckets: [  7,   8,  10,  12,  13,  15,  17,  23]
+    buckets: [10, 15, 25, 51]

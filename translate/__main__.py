@@ -56,25 +56,17 @@ Features:
 - train dir/data dir should be optional
 - AdaDelta, AdaGrad
 - rename scopes to nicer names + do mapping of existing models
-- move to tensorflow 0.9
 - time pooling: concat or sum instead of skipping
 
 Benchmarks:
 - compare our baseline system with vanilla Tensorflow seq2seq, and GroundHog/blocks-examples
-- try replicating Jean et al. (2015)'s results
+- replicate Jean et al. (2015)'s results
 - analyze the impact of this initial_state_attention parameter
-- try reproducing the experiments of the WMT paper on neural post-editing
+- replicate the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
 
 Evaluation:
-scripts/scoring/score.rb --ref {ref} --hyp-detok {hyp} --print
 java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
-
-BTEC baseline configuration:
-python2 -m translate data/btec/ models/btec --size 256 --vocab-size 10000 \
---num-layers 2 --dropout-rate 0.5 --steps-per-checkpoint 1000 --steps-per-eval 2000 \
---learning-rate-decay-factor 0.95 --use-lstm --bidir -v --train --gpu-id 0 --allow-growth \
---src-ext fr --trg-ext en --log-file models/btec/log.txt
 """
 
 
@@ -120,7 +112,8 @@ def main(args=None):
   # for those parameters)
   model_parameters = [
     'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
-    'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir'
+    'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir',
+    'load_embeddings'
   ]
   # TODO: independent model dir for each task
   task_parameters = ['data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio',

@@ -1,0 +1,23 @@
+# BTEC (fr -> en) baseline
+
+learning_rate_decay_factor: 0.95
+dropout_rate: 0.5
+cell_size: 256
+embedding_size: 256
+layers: 2
+bidir: True
+use_lstm: True
+data_dir: experiments/btec/data
+
+model_dir: experiments/btec/ensemble/models/model1
+log_file: experiments/btec/ensemble/models/model1/log.txt
+
+encoders:
+  - name: fr
+    vocab_size: 9218
+    buckets: [ 5, 10, 20, 51]
+
+decoder:
+    name: en
+    vocab_size: 7186
+    buckets: [10, 15, 25, 51]

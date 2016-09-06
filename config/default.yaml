@@ -27,13 +27,15 @@ num_samples: 512         # number of samples for sampled softmax (0 for standard
 binary: False            # input file is binary (contains vector features)
 character_level: False   # input sequence is at the character level
 dynamic: False
+load_embeddings: []
 
 # data
 data_dir: data
 model_dir: model
 train_prefix: train      # name of the training corpus
 dev_prefix: dev          # name of the development cor
-vocab_prefix: vocab      # name of the vocabulary filespus
+vocab_prefix: vocab      # name of the vocabulary files
+embedding_prefix: vectors  # name of the embeddings files
 checkpoint_prefix: null  # prefix of the checkpoint directory
 checkpoints: []          # list of checkpoints to load (in this specific order) after main checkpoint
 

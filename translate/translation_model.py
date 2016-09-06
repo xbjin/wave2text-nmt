@@ -79,7 +79,7 @@ class BaseTranslationModel(object):
 
 class TranslationModel(BaseTranslationModel):
   def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, keep_best=1, **kwargs):
+               learning_rate_decay_factor, keep_best=1, load_embeddings=None, **kwargs):
     self.src_ext = [encoder.name for encoder in encoders]
     self.trg_ext = decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
@@ -95,15 +95,19 @@ class TranslationModel(BaseTranslationModel):
 
     with tf.device('/cpu:0'):
       self.global_step = tf.Variable(0, trainable=False, name='global_step')
-    
-    # main model
-    self.model = Seq2SeqModel(encoders, decoder, self.buckets, self.learning_rate, self.global_step, **kwargs)
-    self.vocabs = None
 
-    # TODO: check that filenames exist
     self.filenames = utils.get_filenames(extensions=self.extensions, **kwargs)
+    # TODO: check that filenames exist
     utils.debug('reading vocabularies')
     self._read_vocab()
+
+    # this adds an `embedding' attribute to each encoder and decoder
+    utils.read_embeddings(self.filenames.embeddings, encoders + [decoder], load_embeddings, self.vocabs)
+
+    # main model
+    utils.debug('creating model {}'.format(name))
+    self.model = Seq2SeqModel(encoders, decoder, self.buckets, self.learning_rate, self.global_step, **kwargs)
+
     super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
 
   def read_data(self, max_train_size):

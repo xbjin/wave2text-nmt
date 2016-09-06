@@ -1,16 +1,26 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
+
+from __future__ import absolute_import
 from __future__ import division
+from __future__ import print_function
+
 import argparse
 import subprocess
 import os
 
-parser = argparse.ArgumentParser()
-parser.add_argument('hyp')
-parser.add_argument('ref', nargs='+')
+"""
+Proxy for `score.rb` scoring script.
+Handles the multi-reference setting by default, and files are
+assumed to be tokenized.
+"""
 
-parser.add_argument('--no-case', dest='cased', action='store_false')
-parser.add_argument('--script-path', default='bin/scoring/score.rb')
+parser = argparse.ArgumentParser()
+parser.add_argument('hyp', help='path to hypothesis file')
+parser.add_argument('ref', nargs='+', help='path to one or several reference files')
+
+parser.add_argument('--no-case', dest='cased', action='store_false', help='case insensitive scores')
+parser.add_argument('--script-path', default='bin/scoring/score.rb', help='path to scoring script')
 
 
 if __name__ == '__main__':
@@ -30,4 +40,4 @@ if __name__ == '__main__':
   output = subprocess.check_output(parameters, stderr=devnull)
   scores = output.split()
 
-  print 'BLEU={} NIST={} TER={} RATIO={}'.format(*scores)
+  print('BLEU={} NIST={} TER={} RATIO={}'.format(*scores))

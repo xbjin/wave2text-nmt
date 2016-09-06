@@ -65,8 +65,7 @@ class Seq2SeqModel(object):
     # if we use sampled softmax, we need an output projection
     output_projection = None
     softmax_loss_function = None
-    # sampled softmax only makes sense if we sample less than vocabulary size.
-    # TODO: parameter dependent on decoder
+    # sampled softmax only makes sense if we sample less than vocabulary size
     if 0 < num_samples < self.trg_vocab_size:
       with tf.device("/cpu:0"):
         with variable_scope.variable_scope('decoder_{}'.format(decoder.name)):

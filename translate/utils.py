@@ -103,11 +103,13 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
   return [vocabulary.get(w, UNK_ID) for w in sentence]
 
 
-def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix, lm_file=None, **kwargs):
+def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
+                  embedding_prefix, lm_file=None, **kwargs):
   """ Last extension is always assumed to be the target """
   train_path = os.path.join(data_dir, train_prefix)
   dev_path = os.path.join(data_dir, dev_prefix)
   vocab_path = os.path.join(data_dir, vocab_prefix)
+  embedding_path = os.path.join(data_dir, embedding_prefix)
   test_path = kwargs.get('decode')  # `decode` or `eval` or None
   test_path = test_path if test_path is not None else kwargs.get('eval')
   lm_path = lm_file
@@ -115,10 +117,11 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix, 
   train = ['{}.{}'.format(train_path, ext) for ext in extensions]
   dev = ['{}.{}'.format(dev_path, ext) for ext in extensions]
   vocab = ['{}.{}'.format(vocab_path, ext) for ext in extensions]
+  embeddings = ['{}.{}'.format(embedding_path, ext) for ext in extensions]
   test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
 
-  filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lm_path'])
-  return filenames(train, dev, test, vocab, lm_path)
+  filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lm_path', 'embeddings'])
+  return filenames(train, dev, test, vocab, lm_path, embeddings)
 
 
 def bleu_score(bleu_script, hypotheses, references):
@@ -137,7 +140,7 @@ def bleu_score(bleu_script, hypotheses, references):
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
 
 
-def read_embeddings(filenames, extensions, vocab_sizes, embedding_size,
+def read_embeddings_old(filenames, extensions, vocab_sizes, embedding_size,
                     load_embeddings=None, norm_embeddings=None, **kwargs):
   embeddings = {}  
 
@@ -168,6 +171,36 @@ def read_embeddings(filenames, extensions, vocab_sizes, embedding_size,
     embeddings[ext] = embedding
 
   return embeddings
+
+
+def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
+                    vocabs, norm_embeddings=False):
+  for encoder_or_decoder, vocab, filename in zip(encoders_and_decoder,
+                                                 vocabs,
+                                                 embedding_filenames):
+    name = encoder_or_decoder.name
+    if not load_embeddings or name not in load_embeddings:
+      encoder_or_decoder.embedding = None
+      continue
+
+    with open(filename) as file_:
+      lines = (line.split() for line in file_)
+      _, size_ = next(lines)
+      assert int(size_) == encoder_or_decoder.embedding_size, 'wrong embedding size'
+      embedding = np.zeros((encoder_or_decoder.vocab_size, size_), dtype="float32")
+
+      d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
+
+    for word, index in vocab.iteritems():
+      if word in d:
+        embedding[index] = d[word]
+      else:
+        embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size_)
+
+    if norm_embeddings:  # FIXME
+      embedding /= np.linalg.norm(embedding)
+
+    encoder_or_decoder.embedding = embedding
 
 
 def read_binary_features(filename):

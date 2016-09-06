@@ -11,7 +11,7 @@ layers: 1
 bidir: False
 use_lstm: False
 
-data_dir: data/btec_speech
+data_dir: data/btec
 model_dir: models/debug
 log_file: null
 

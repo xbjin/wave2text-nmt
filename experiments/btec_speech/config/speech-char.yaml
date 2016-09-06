@@ -1,0 +1,31 @@
+
+learning_rate_decay_factor: 0.95
+dropout_rate: 0.5
+cell_size: 256
+embedding_size: 256
+layers: 2
+bidir: True
+use_lstm: True
+data_dir: data/btec
+
+model_dir: models/speech_char
+log_file: models/speech_char/log.txt
+
+vocab_prefix: vocab.char
+
+encoders:
+  - name: feats
+    embedding_size: 123
+    vocab_size: 0
+    buckets: [120, 180, 220, 260, 310, 360, 420, 600]
+    layers: 3
+    time_pooling: [2, 2]
+    binary: True
+    attention_filters: 1
+    attention_filter_length: 10
+
+decoder:
+    name: fr
+    vocab_size: 56
+    buckets: [ 30,  40,  50,  60,  70,  80,  90, 110]
+    character-level: True

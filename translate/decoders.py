@@ -46,6 +46,26 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
   encoder_states = []
   encoder_outputs = []
 
+  # create embeddings in the global scope (allows sharing between encoder and decoder)
+  embedding_variables = []
+  for encoder in encoders:
+    # inputs are token ids, which need to be mapped to vectors (embeddings)
+    if not encoder.binary:
+      if encoder.get('embedding') is not None:
+        initializer = encoder.embedding
+        embedding_shape = None
+      else:
+        initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+        embedding_shape = [encoder.vocab_size, encoder.embedding_size]
+
+      # TODO: shared name
+      with tf.device('/cpu:0'):
+        embedding = get_variable_unsafe('embedding_{}'.format(encoder.name), shape=embedding_shape,
+                                        initializer=initializer)
+        embedding_variables.append(embedding)
+    else:  # do nothing: inputs are already vectors
+      embedding_variables.append(None)
+
   with tf.variable_scope('multi_encoder'):
     if encoder_input_length is None:
       encoder_input_length = [None] * len(encoders)
@@ -62,19 +82,9 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
       if dropout is not None:
           cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
-      with tf.variable_scope('encoder_{}'.format(encoder.name)):
-        # inputs are token ids, which need to be mapped to vectors (embeddings)
-        if not encoder.binary:
-          initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
-          embedding_shape = [encoder.vocab_size, encoder.embedding_size]
-
-          with tf.device('/cpu:0'):
-            embedding = get_variable_unsafe('embedding', shape=embedding_shape,
-                                            initializer=initializer)
-
-          encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
-        else:  # do nothing: inputs are already vectors
-          pass
+      embedding = embedding_variables[i]
+      if embedding is not None:
+        encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
 
         if not encoder.bidir and encoder.layers > 1:  # bidir requires custom multi-rnn
           cell = rnn_cell.MultiRNNCell([cell] * encoder.layers)
@@ -247,8 +257,20 @@ def decoder(decoder_inputs, initial_state, decoder_name,
             **kwargs):
   """ Decoder without attention """
   # FIXME, not the same parameters as `attention_decoder`
-  embedding_initializer = None
-  embedding_shape = [num_decoder_symbols, embedding_size[-1]]
+  # embeddings = embeddings or {}
+  embeddings = {}
+  embedding_name = decoder_name
+  if embedding_name in embeddings:
+    embedding_initializer = embeddings[embedding_name]
+    embedding_shape = None
+  else:
+    embedding_initializer = None
+    embedding_shape = [num_decoder_symbols, embedding_size[-1]]
+
+  with tf.device('/cpu:0'):
+    embedding = get_variable_unsafe('embedding_{}'.format(decoder_name),
+                                    shape=embedding_shape,
+                                    initializer=embedding_initializer)
 
   if layers[-1] > 1:
       cell = rnn_cell.MultiRNNCell([cell] * layers[-1])
@@ -263,10 +285,6 @@ def decoder(decoder_inputs, initial_state, decoder_name,
     proj_biases.get_shape().assert_is_compatible_with([num_decoder_symbols])
 
   with tf.variable_scope('decoder_{}'.format(decoder_name)):
-    with tf.device('/cpu:0'):
-      embedding = get_variable_unsafe('embedding', shape=embedding_shape,
-                                      initializer=embedding_initializer)
-
     def extract_argmax_and_embed(prev):
       if output_projection is not None:
         prev = tf.nn.xw_plus_b(prev, output_projection[0], output_projection[1])
@@ -304,9 +322,18 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                       initial_state_attention=False, dropout=None,
                       feed_previous=False, **kwargs):
   # TODO: dynamic RNN
-  # embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
-  embedding_initializer = None
-  embedding_shape = [decoder.vocab_size, decoder.embedding_size]
+  if decoder.get('embedding') is not None:
+    embedding_initializer = decoder.embedding
+    embedding_shape = None
+  else:
+    # embedding_initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+    embedding_initializer = None
+    embedding_shape = [decoder.vocab_size, decoder.embedding_size]
+
+  with tf.device('/cpu:0'):
+    embedding = get_variable_unsafe('embedding_{}'.format(decoder.name),
+                                    shape=embedding_shape,
+                                    initializer=embedding_initializer)
 
   if decoder.use_lstm:
     cell = rnn_cell.BasicLSTMCell(decoder.cell_size)
@@ -332,10 +359,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     proj_biases.get_shape().assert_is_compatible_with([decoder.vocab_size])
 
   with tf.variable_scope('decoder_{}'.format(decoder.name)):
-    with tf.device('/cpu:0'):
-      embedding = get_variable_unsafe('embedding', shape=embedding_shape,
-                                      initializer=embedding_initializer)
-
     def extract_argmax_and_embed(prev):
       """ Loop_function that extracts the symbol from prev and embeds it """
       if output_projection is not None:
