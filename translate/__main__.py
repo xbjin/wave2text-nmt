@@ -45,6 +45,7 @@ parser.add_argument('--lm-file')
 parser.add_argument('--checkpoints', nargs='+')
 parser.add_argument('--lm-weight', type=float)
 parser.add_argument('--output')
+parser.add_argument('--max-steps', type=int)
 
 
 """
@@ -81,7 +82,7 @@ def main(args=None):
     config = utils.AttrDict(yaml.safe_load(f))
     # command-line parameters have higher precedence than config file
     for k, v in vars(args).items():
-      if k in default_config:
+      if v is not None and k in default_config:
         config[k] = v
 
     # set default values for parameters that are not defined
@@ -93,7 +94,7 @@ def main(args=None):
     'steps-per-eval should be a multiple of steps-per-checkpoint')
   assert args.decode or args.eval or args.train, (
     'you need to specify at least one action (decode, eval, or train)')
-  assert args.train or len(args.tasks) == 1, (
+  assert args.train or 'tasks' not in args or len(args.tasks) == 1, (
     'you cannot set multiple tasks in decode and eval modes')
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO

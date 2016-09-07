@@ -24,7 +24,7 @@ Prepare a parallel corpus for Neural Machine Translation.
 If a single corpus is specified, it will be split into train/dev/test corpora
 according to the given train/dev/test sizes.
 
-Additional pre-processing can be applied to these files, using external (Moses)
+Additional pre-training can be applied to these files, using external (Moses)
 scripts, such as tokenization, punctuation normalization or lowercasing.
 The corpus can be shuffled, and too long or too short sentences removed.
 

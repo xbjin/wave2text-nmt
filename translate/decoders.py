@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-import tensorflow.models.rnn
 import functools
 import math
 from tensorflow.python.ops import rnn_cell, seq2seq
@@ -75,6 +74,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
       encoder_input_length_ = encoder_input_length[i]
 
       if encoder.use_lstm:
+        # FIXME: state_is_tuple=False
         cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
       else:
         cell = rnn_cell.GRUCell(encoder.cell_size)
@@ -380,7 +380,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     # decoder's first state is the encoder's last state
     # however, their shapes don't necessarily match (multiple encoders, non-matching layers, etc.)
-    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    state = initial_state  # FIXME (projection seems to give worse results)
+    # state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
     # TODO: should be a parameter of the encoder rather than the decoder
 
     outputs = []
@@ -416,6 +417,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
       # run the attention mechanism
       attns, attention_weights = attention_(state, prev_weights=attention_weights)
+      # FIXME: attention should use output instead of state (same for decoder_states)
 
       if output_projection is None:
         output = cell_output
