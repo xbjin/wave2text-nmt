@@ -140,39 +140,6 @@ def bleu_score(bleu_script, hypotheses, references):
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
 
 
-def read_embeddings_old(filenames, extensions, vocab_sizes, embedding_size,
-                    load_embeddings=None, norm_embeddings=None, **kwargs):
-  embeddings = {}  
-
-  for ext, vocab_size, vocab_path, filename, embedding_size_ in zip(extensions,
-      vocab_sizes, filenames.vocab, filenames.embeddings, embedding_size):
-    if load_embeddings is None or ext not in load_embeddings:
-      continue
-
-    with open(filename) as file_:
-      lines = (line.split() for line in file_)
-      _, size_ = next(lines)
-      assert int(size_) == embedding_size_, 'wrong embedding size'
-      embedding = np.zeros((vocab_size, size_), dtype="float32")
-
-      d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
-
-    vocab = initialize_vocabulary(vocab_path).vocab
-
-    for word, index in vocab.iteritems():
-      if word in d:
-        embedding[index] = d[word]
-      else:
-        embedding[index] = np.random.uniform(-math.sqrt(3), math.sqrt(3), size_)
-
-    if norm_embeddings:   # FIXME
-      embedding /= np.linalg.norm(embedding)
-
-    embeddings[ext] = embedding
-
-  return embeddings
-
-
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
                     vocabs, norm_embeddings=False):
   for encoder_or_decoder, vocab, filename in zip(encoders_and_decoder,
@@ -186,12 +153,13 @@ def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
     with open(filename) as file_:
       lines = (line.split() for line in file_)
       _, size_ = next(lines)
+      size_ = int(size_)
       assert int(size_) == encoder_or_decoder.embedding_size, 'wrong embedding size'
       embedding = np.zeros((encoder_or_decoder.vocab_size, size_), dtype="float32")
 
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
 
-    for word, index in vocab.iteritems():
+    for word, index in vocab.vocab.iteritems():
       if word in d:
         embedding[index] = d[word]
       else:

@@ -249,10 +249,10 @@ def process_corpora(args, corpora, output_corpora, sizes):
         logging.info('splitting files')
         split_corpora = split_corpus(corpora[-1], sizes)
 
-        # union of `filenames` and `split_filenames`
-        for corpus, split_corpus_ in zip(corpora, split_corpora):
+        # union of `filenames` and `split_filenames`_
+        for i, split_corpus_ in enumerate(split_corpora):
             if split_corpus_ is not None:
-                corpus[:] = split_corpus_
+                corpora[i] = split_corpus_
 
     # filter corpora by line length
     # TODO: character-level filtering

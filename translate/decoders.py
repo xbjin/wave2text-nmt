@@ -380,9 +380,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     # decoder's first state is the encoder's last state
     # however, their shapes don't necessarily match (multiple encoders, non-matching layers, etc.)
-    state = initial_state  # FIXME (projection seems to give worse results)
-    # state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
     # TODO: should be a parameter of the encoder rather than the decoder
+    if initial_state.get_shape()[1] == decoder.cell_size:
+      state = initial_state
+    else:   # FIXME (projection seems to give worse results)
+      # TODO: see other methods (e.g. summing)
+      state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     outputs = []
     all_attention_weights = []

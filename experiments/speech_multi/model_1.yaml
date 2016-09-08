@@ -8,10 +8,10 @@ embedding_size: 256
 layers: 2
 bidir: True
 use_lstm: True
-data_dir: data/btec
+data_dir: experiments/speech/data
 
-model_dir: models/speech_multi
-log_file: models/speech_multi/log.txt
+model_dir: experiments/speech_multi/model_1
+log_file: experiments/speech_multi/model_1/log.txt
 
 encoders:
   - name: fr
@@ -20,7 +20,6 @@ encoders:
 
   - name: feats
     embedding_size: 123
-    vocab_size: 0
     buckets: [120, 180, 220, 260, 310, 360, 420, 600]
     layers: 3
     time_pooling: [2, 2]
