@@ -1,16 +1,16 @@
 # BTEC direct translation of speech (speech to text)
 
-learning_rate_decay_factor: 0.95
+learning_rate_decay_factor: 0.99
 dropout_rate: 0.5
-cell_size: 256
-embedding_size: 256
-layers: 2
+cell_size: 512
+embedding_size: 512
+layers: 3
 bidir: True
 use_lstm: True
-data_dir: data/btec
+data_dir: experiments/speech/data
 
-model_dir: models/speech_translation
-log_file: models/speech_translation/log.txt
+model_dir: experiments/speech_translation/model_1
+log_file: experiments/speech_translation/model_1/log.txt
 
 encoders:
   - name: feats
@@ -20,9 +20,9 @@ encoders:
     layers: 3
     time_pooling: [2, 2]
     binary: True
-    # attention_filters: 1
-    # attention_filter_length: 10
-    # attention_window_size: 20
+    attention_filters: 1
+    attention_filter_length: 10
+    attention_window_size: 20
 
 decoder:
     name: en
