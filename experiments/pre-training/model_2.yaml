@@ -11,14 +11,15 @@ model_dir: experiments/pre-training/model_2
 log_file: experiments/pre-training/model_2/log.txt
 
 
-task1:
-  data_dir: experiments/pre-training/data
-  train_prefix: btec
-  encoders:
-    - name: fr
-      vocab_size: 33598
-      buckets: [ 5, 10, 20, 50]
-  decoder:
-      name: en
-      vocab_size: 32313
-      buckets: [10, 15, 25, 50]
+tasks:
+  - name: task1
+    data_dir: experiments/pre-training/data
+    train_prefix: btec
+    encoders:
+      - name: fr
+        vocab_size: 33598
+        buckets: [ 5, 10, 20, 50]
+    decoder:
+        name: en
+        vocab_size: 32313
+        buckets: [10, 15, 25, 50]

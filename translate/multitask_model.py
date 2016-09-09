@@ -29,7 +29,7 @@ class MultiTaskModel(BaseTranslationModel):
       model = TranslationModel(checkpoint_dir=None, keep_best=keep_best, **kwargs_)
 
       self.models.append(model)
-      self.ratios.append(task.ratio)
+      self.ratios.append(task.ratio if task.ratio is not None else 1)
 
     self.ratios = [ratio / sum(self.ratios) for ratio in self.ratios]   # unit normalization
 
@@ -51,7 +51,7 @@ class MultiTaskModel(BaseTranslationModel):
 
     utils.log('starting training')
     while True:
-      i = np.random.choice(len(self.models), 1, self.ratios)[0]
+      i = np.random.choice(len(self.models), 1, p=self.ratios)[0]
       model = self.models[i]
 
       start_time = time.time()
