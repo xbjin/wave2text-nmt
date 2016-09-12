@@ -128,7 +128,7 @@ class Seq2SeqModel(object):
 
     parameters = dict(
       encoders=encoders, decoder=decoder,
-      dropout=self.dropout, output_projection=output_projection, initial_state_attention=True
+      dropout=self.dropout, output_projection=output_projection, initial_state_attention=False   # FIXME
     )
 
     self.attention_states, self.encoder_state = decoders.encoder_with_buckets(

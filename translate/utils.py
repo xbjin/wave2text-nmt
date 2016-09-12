@@ -140,6 +140,25 @@ def bleu_score(bleu_script, hypotheses, references):
   return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
 
 
+def scoring(scoring_script, hypotheses, references):
+  with tempfile.NamedTemporaryFile(delete=False) as f1, \
+       tempfile.NamedTemporaryFile(delete=False) as f2:
+    for ref in references:
+      f1.write(ref + '\n')
+    for hyp in hypotheses:
+      f2.write(hyp + '\n')
+
+  p = subprocess.Popen([scoring_script, f2.name, f1.name],
+                       stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
+
+  output, _ = p.communicate('\n'.join(hypotheses))
+
+  m = re.match(r'BLEU=(.*) NIST=(.*) TER=(.*) RATIO=(.*)', output)
+  values = [float(m.group(i)) for i in range(1, 5)]
+
+  return namedtuple('BLEU', ['bleu', 'nist', 'ter', 'ratio'])(*values)
+
+
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
                     vocabs, norm_embeddings=False):
   for encoder_or_decoder, vocab, filename in zip(encoders_and_decoder,

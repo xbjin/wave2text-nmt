@@ -41,6 +41,7 @@ checkpoints: []          # list of checkpoints to load (in this specific order) 
 
 # decoding
 bleu_script: scripts/multi-bleu.perl  # path to BLEU script
+scoring_script: scripts/score.py
 remove_unk: False        # remove UNK symbols from the decoder output
 lm_file: null            # path to a language model file (in arpa format) to use during decoding
 lm_weight: 0.2           # weight of the language model in the log-linear model

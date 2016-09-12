@@ -240,7 +240,7 @@ class TranslationModel(BaseTranslationModel):
       if output_file is not None:
         output_file.close()
 
-  def evaluate(self, sess, beam_size, bleu_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+  def evaluate(self, sess, beam_size, scoring_script, on_dev=True, output=None, remove_unk=False, **kwargs):
     if self.ngrams is not None:
       utils.debug('using external language model')
 
@@ -251,15 +251,16 @@ class TranslationModel(BaseTranslationModel):
                   for lines_ in lines]
     references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
 
-    bleu = utils.bleu_score(bleu_script, hypotheses, references)
-    summary = bleu if self.name is None else '{} {}'.format(self.name, bleu)
+    # score = utils.bleu_score(bleu_script, hypotheses, references)
+    score = utils.scoring(scoring_script, hypotheses, references)
+    summary = score if self.name is None else '{} {}'.format(self.name, score)
     utils.log(summary)
 
     if output is not None:
       with open(output, 'w') as f:
         f.writelines(line + '\n' for line in hypotheses)
 
-    return bleu.score
+    return score.bleu
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):

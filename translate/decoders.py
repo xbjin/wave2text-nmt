@@ -70,56 +70,57 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
       encoder_input_length = [None] * len(encoders)
 
     for i, encoder in enumerate(encoders):
-      encoder_inputs_ = encoder_inputs[i]
-      encoder_input_length_ = encoder_input_length[i]
+      with tf.variable_scope(encoder.name):
+        encoder_inputs_ = encoder_inputs[i]
+        encoder_input_length_ = encoder_input_length[i]
 
-      if encoder.use_lstm:
-        # FIXME: state_is_tuple=False
-        cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
-      else:
-        cell = rnn_cell.GRUCell(encoder.cell_size)
-
-      if dropout is not None:
-          cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
-
-      embedding = embedding_variables[i]
-      if embedding is not None:
-        encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
-
-        if not encoder.bidir and encoder.layers > 1:  # bidir requires custom multi-rnn
-          cell = rnn_cell.MultiRNNCell([cell] * encoder.layers)
-
-        # TODO: pooling over time for non-bidir encoders
-        if encoder.bidir:  # FIXME: not compatible with `dynamic`
-          encoder_outputs_, encoder_state_fw, encoder_state_bw = multi_bidirectional_rnn_unsafe(
-            [(cell, cell)] * encoder.layers, encoder_inputs_, time_pooling=encoder.time_pooling, dtype=tf.float32
-          )
-          encoder_state_ = encoder_state_bw
-          # same as Bahdanau et al.:
-          # encoder_state_ = linear_unsafe(encoder_state_bw, cell.state_size, True,
-          #                                scope='bidir_final_state')
-          # slightly different (they do projection later):
-          encoder_outputs_ = [
-            linear_unsafe(outputs_, cell.output_size, False,
-                          scope='bidir_projection') for outputs_ in encoder_outputs_]
-        elif encoder.dynamic:
-          encoder_inputs_ = tf.transpose(
-            tf.reshape(tf.concat(0, encoder_inputs_), [len(encoder_inputs_), -1, encoder.embedding_size]),
-            perm=[1, 0, 2])
-          encoder_outputs_, encoder_state_ = dynamic_rnn_unsafe(cell, encoder_inputs_,
-                                                                sequence_length=encoder_input_length_,
-                                                                dtype=tf.float32, parallel_iterations=1)
+        if encoder.use_lstm:
+          # FIXME: state_is_tuple=False
+          cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
         else:
-          encoder_input_length_ = None   # TODO: check impact of this parameter
-          encoder_outputs_, encoder_state_ = rnn_unsafe(cell, encoder_inputs_, sequence_length=encoder_input_length_,
-                                                        dtype=tf.float32)
+          cell = rnn_cell.GRUCell(encoder.cell_size)
 
-        if encoder.bidir or not encoder.dynamic:
-          encoder_outputs_ = [tf.reshape(e, [-1, 1, cell.output_size]) for e in encoder_outputs_]
-          encoder_outputs_ = tf.concat(1, encoder_outputs_)
+        if dropout is not None:
+            cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
-        encoder_outputs.append(encoder_outputs_)
-        encoder_states.append(encoder_state_)
+        embedding = embedding_variables[i]
+        if embedding is not None:
+          encoder_inputs_ = [tf.nn.embedding_lookup(embedding, i) for i in encoder_inputs_]
+
+          if not encoder.bidir and encoder.layers > 1:  # bidir requires custom multi-rnn
+            cell = rnn_cell.MultiRNNCell([cell] * encoder.layers)
+
+          # TODO: pooling over time for non-bidir encoders
+          if encoder.bidir:  # FIXME: not compatible with `dynamic`
+            encoder_outputs_, encoder_state_fw, encoder_state_bw = multi_bidirectional_rnn_unsafe(
+              [(cell, cell)] * encoder.layers, encoder_inputs_, time_pooling=encoder.time_pooling, dtype=tf.float32
+            )
+            encoder_state_ = encoder_state_bw
+            # same as Bahdanau et al.:
+            # encoder_state_ = linear_unsafe(encoder_state_bw, cell.state_size, True,
+            #                                scope='bidir_final_state')
+            # slightly different (they do projection later):
+            encoder_outputs_ = [
+              linear_unsafe(outputs_, cell.output_size, False,
+                            scope='bidir_projection') for outputs_ in encoder_outputs_]
+          elif encoder.dynamic:
+            encoder_inputs_ = tf.transpose(
+              tf.reshape(tf.concat(0, encoder_inputs_), [len(encoder_inputs_), -1, encoder.embedding_size]),
+              perm=[1, 0, 2])
+            encoder_outputs_, encoder_state_ = dynamic_rnn_unsafe(cell, encoder_inputs_,
+                                                                  sequence_length=encoder_input_length_,
+                                                                  dtype=tf.float32, parallel_iterations=1)
+          else:
+            encoder_input_length_ = None   # TODO: check impact of this parameter
+            encoder_outputs_, encoder_state_ = rnn_unsafe(cell, encoder_inputs_, sequence_length=encoder_input_length_,
+                                                          dtype=tf.float32)
+
+          if encoder.bidir or not encoder.dynamic:
+            encoder_outputs_ = [tf.reshape(e, [-1, 1, cell.output_size]) for e in encoder_outputs_]
+            encoder_outputs_ = tf.concat(1, encoder_outputs_)
+
+          encoder_outputs.append(encoder_outputs_)
+          encoder_states.append(encoder_state_)
 
     encoder_state = tf.concat(1, encoder_states)
     return encoder_outputs, encoder_state
@@ -360,7 +361,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
   with tf.variable_scope('decoder_{}'.format(decoder.name)):
     def extract_argmax_and_embed(prev):
-      """ Loop_function that extracts the symbol from prev and embeds it """
+      # loop_function that extracts the symbol from prev and embeds it
+      # TODO: check that this does right by the beam-search decoder
       if output_projection is not None:
         prev = tf.nn.xw_plus_b(prev, output_projection[0], output_projection[1])
       prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
@@ -381,10 +383,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     # decoder's first state is the encoder's last state
     # however, their shapes don't necessarily match (multiple encoders, non-matching layers, etc.)
     # TODO: should be a parameter of the encoder rather than the decoder
-    if initial_state.get_shape()[1] == decoder.cell_size:
+    if initial_state.get_shape()[1] == cell.state_size:
       state = initial_state
-    else:   # FIXME (projection seems to give worse results)
+    else:
+      # FIXME (projection seems to give worse results)
       # TODO: see other methods (e.g. summing)
+      # does it make sense that the first state of the decoder is the last state of the encoder?
       state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     outputs = []
@@ -398,6 +402,14 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     if initial_state_attention:
       # for beam-search decoder (feed_dict substitution)
       all_attention_weights.append(attention_weights)
+      # 09/09: attention model using cell output instead of full state
+      # just getting the last output of each encoder and concatenating them
+      # TODO: projection
+      # FIXME: this won't work with the beam-search decoder (as it substitutes the initial_state parameter)
+      # cell_output = tf.concat(2, [tf.slice(states, (0, length - 1, 0), (-1, 1, -1))
+      #                             for length, states in zip(attn_lengths, attention_states)])
+      # cell_output = tf.reshape(cell_output, [-1, cell.output_size])
+      # attns, attention_weights = attention_(cell_output, prev_weights=attention_weights)
       attns, attention_weights = attention_(state, prev_weights=attention_weights)
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
@@ -405,7 +417,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     for i, inputs in enumerate(decoder_inputs):
       # if loop_function is set, we use it instead of decoder_inputs
-      if loop_function is not None and prev is not None:
+      if loop_function is not None and prev is not None:  # TODO: check this
         with tf.variable_scope('loop_function'):
           inputs = tf.stop_gradient(loop_function(prev))
 
@@ -419,14 +431,15 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       decoder_states.append(state)
 
       # run the attention mechanism
+      # attns, attention_weights = attention_(cell_output, prev_weights=attention_weights)
       attns, attention_weights = attention_(state, prev_weights=attention_weights)
-      # FIXME: attention should use output instead of state (same for decoder_states)
 
+      # 09/09: removed this bullshit projection
       if output_projection is None:
         output = cell_output
       else:
         with tf.variable_scope('attention_output_projection'):
-          # FIXME: where does this come from?
+          # FIXME: where does this come from? This greatly impacts performance
           output = linear_unsafe([cell_output, attns], output_size, True)
 
       outputs.append(output)
