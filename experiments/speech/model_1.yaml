@@ -7,22 +7,27 @@ embedding_size: 256
 layers: 2
 bidir: True
 use_lstm: True
-data_dir: experiments/btec/data
+data_dir: experiments/speech/data
 steps_per_checkpoint: 1000
 steps_per_eval: 2000
 max_steps: 50000
 
-model_dir: experiments/btec/baseline
-log_file: experiments/btec/baseline/log.txt
+model_dir: experiments/speech/model_1
+log_file: experiments/speech/model_1/log.txt
 
 encoders:
-  - name: fr
-    vocab_size: 9218
-    buckets: [ 5, 10, 20, 50]
-    # buckets: [  6,   8,  10,  12,  14,  16,  18,  23]
+  - name: feats
+    embedding_size: 123
+    vocab_size: 0
+    buckets: [120, 180, 220, 260, 310, 360, 420, 600]
+    layers: 4
+    time_pooling: [2, 2, 1]
+    binary: True
+    attention_filters: 1
+    attention_filter_length: 10
+    attention_window_size: 20
 
 decoder:
     name: en
     vocab_size: 7186
-    buckets: [10, 15, 25, 50]
-    # buckets: [  7,   8,  10,  12,  13,  15,  17,  23]
+    buckets: [  7,   8,  10,  12,  13,  15,  17,  23]

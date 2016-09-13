@@ -16,14 +16,16 @@ encoders:
     embedding_size: 123
     vocab_size: 0
     buckets: [120, 180, 220, 260, 310, 360, 420, 600]
-    layers: 3
-    time_pooling: [2, 2]
+    layers: 4
+    time_pooling: [2, 2, 1]
     binary: True
     attention_filters: 1
     attention_filter_length: 10
     attention_window_size: 20
 
+
 decoder:
     name: en
-    vocab_size: 7186
-    buckets: [  7,   8,  10,  12,  13,  15,  17,  23]
+    vocab_size: 39
+    buckets: [ 30,  35,  44,  52,  58,  65,  74, 100]
+    character_level: True
