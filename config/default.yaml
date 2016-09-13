@@ -52,10 +52,13 @@ output: null             # output file for decoding (writes to standard output b
 # general
 gpu_id: 0                # index of the GPU to use
 no_gpu: False            # don't use any GPU
-allow_growth: True       # allow GPU memory allocation to change during runtim
+allow_growth: True       # allow GPU memory allocation to change during runtime
 mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
 log_file: null           # log to this file instead of standard output
+
+time_pooling: null       # ratios of time steps to skip between layers
+pooling_avg: False       # average previous steps instead of skipping them
 
 encoders:
   - name: fr

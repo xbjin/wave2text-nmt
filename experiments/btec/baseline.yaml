@@ -8,6 +8,9 @@ layers: 2
 bidir: True
 use_lstm: True
 data_dir: experiments/btec/data
+steps_per_checkpoint: 1000
+steps_per_eval: 2000
+max_steps: 50000
 
 model_dir: experiments/btec/baseline
 log_file: experiments/btec/baseline/log.txt

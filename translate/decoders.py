@@ -93,7 +93,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
           # TODO: pooling over time for non-bidir encoders
           if encoder.bidir:  # FIXME: not compatible with `dynamic`
             encoder_outputs_, encoder_state_fw, encoder_state_bw = multi_bidirectional_rnn_unsafe(
-              [(cell, cell)] * encoder.layers, encoder_inputs_, time_pooling=encoder.time_pooling, dtype=tf.float32
+              [(cell, cell)] * encoder.layers, encoder_inputs_, time_pooling=encoder.time_pooling,
+              pooling_avg=encoder.pooling_avg, dtype=tf.float32
             )
             encoder_state_ = encoder_state_bw
             # same as Bahdanau et al.:
@@ -249,7 +250,7 @@ def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
   ds, weights = zip(*[attention(state, weights_, hidden, encoder)
                       for weights_, hidden, encoder in zip(prev_weights, hidden_states, encoders)])
 
-  return tf.concat(1, ds), weights
+  return tf.concat(1, ds), list(weights)
 
 
 def decoder(decoder_inputs, initial_state, decoder_name,

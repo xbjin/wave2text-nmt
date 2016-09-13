@@ -82,7 +82,7 @@ def main(args=None):
     config = utils.AttrDict(yaml.safe_load(f))
     # command-line parameters have higher precedence than config file
     for k, v in vars(args).items():
-      if v is not None and k in default_config:
+      if v is not None and (k in default_config or k in ('decode', 'eval', 'output')):
         config[k] = v
 
     # set default values for parameters that are not defined
@@ -114,7 +114,7 @@ def main(args=None):
   model_parameters = [
     'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
     'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir',
-    'load_embeddings'
+    'load_embeddings', 'pooling_avg'
   ]
   # TODO: independent model dir for each task
   task_parameters = ['data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio',
@@ -160,7 +160,11 @@ def main(args=None):
 
   with tf.device(device):
     checkpoint_dir = os.path.join(config.model_dir, 'checkpoints')
-    model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, **config)
+    initializer = None  # default initializer
+    # all parameters except source embeddings and bias variables are initialized with this
+    # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
+    with tf.variable_scope('seq2seq', initializer=initializer):
+      model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, **config)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
@@ -171,19 +175,28 @@ def main(args=None):
   tf_config.gpu_options.per_process_gpu_memory_fraction = config.mem_fraction
 
   with tf.Session(config=tf_config) as sess:
+    best_checkpoint = os.path.join(checkpoint_dir, 'best')
+
     if config.ensemble and (args.eval or args.decode):
       # create one session for each model in the ensemble
       sess = [tf.Session() for _ in config.checkpoints]
       for sess_, checkpoint in zip(sess, config.checkpoints):
         model.initialize(sess_, [checkpoint], reset=True)
+    elif not config.checkpoints and not args.reset and (args.eval or args.decode) and os.path.isfile(best_checkpoint):
+      # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
+      # try to load the best checkpoint)
+      model.initialize(sess, [best_checkpoint], reset=True)
     else:
+      # loads last checkpoint, unless `reset` is true
       model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
-    # # TODO: load best checkpoint for eval and decode
+    # tf.get_variable_scope().reuse_variables()
+
+    # TODO: load best checkpoint for eval and decode
     if args.decode:
       model.decode(sess, **config)
     elif args.eval:
-      model.evaluate(sess, **config)
+      model.evaluate(sess, on_dev=False, **config)
     elif args.train:
       eval_output = os.path.join(config.model_dir, 'eval')
       try:

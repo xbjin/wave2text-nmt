@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import time
 import math
 import numpy as np
@@ -37,7 +36,7 @@ class MultiTaskModel(BaseTranslationModel):
     self.global_step = 0  # steps of all tasks combined
     super(MultiTaskModel, self).__init__(name, checkpoint_dir, keep_best)
 
-  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
+  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
             max_train_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
     utils.log('reading training and development data')
 
@@ -82,13 +81,13 @@ class MultiTaskModel(BaseTranslationModel):
 
         self.save(sess)
 
-      if steps_per_eval and bleu_script and self.global_step % steps_per_eval == 0:
+      if steps_per_eval and scoring_script and self.global_step % steps_per_eval == 0:
         score = 0
 
         for ratio, model_ in zip(self.ratios, self.models):
           output = None if eval_output is None else '{}.{}.{}'.format(eval_output, model_.name,
                                                                       model_.global_step.eval(sess))
-          score_ = model_.evaluate(sess, beam_size, bleu_script, on_dev=True, output=output,
+          score_ = model_.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
                                    remove_unk=remove_unk)
 
           # if there is a main task, pick best checkpoint according to its score
@@ -110,8 +109,8 @@ class MultiTaskModel(BaseTranslationModel):
     else:
       raise NotImplementedError
 
-  def evaluate(self, sess, beam_size, bleu_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+  def evaluate(self, sess, beam_size, scoring_script, on_dev=True, output=None, remove_unk=False, **kwargs):
     if len(self.models) == 1:
-      return self.models[0].evaluate(sess, beam_size, bleu_script, on_dev, output, remove_unk)
+      return self.models[0].evaluate(sess, beam_size, scoring_script, on_dev, output, remove_unk)
     else:
       raise NotImplementedError

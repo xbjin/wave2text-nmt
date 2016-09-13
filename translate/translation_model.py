@@ -132,7 +132,7 @@ class TranslationModel(BaseTranslationModel):
     self.trg_vocab = self.vocabs[-1]
     self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
 
-  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, bleu_script=None,
+  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
             max_train_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
     utils.log('reading training and development data')
     self.read_data(max_train_size)
@@ -169,9 +169,9 @@ class TranslationModel(BaseTranslationModel):
         self.eval_step(sess)
         self.save(sess)
 
-      if steps_per_eval and bleu_script and global_step % steps_per_eval == 0:
+      if steps_per_eval and scoring_script and global_step % steps_per_eval == 0:
         output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
-        score = self.evaluate(sess, beam_size, bleu_script, on_dev=True, output=output,
+        score = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
                               remove_unk=remove_unk)
         self.manage_best_checkpoints(global_step, score)
 

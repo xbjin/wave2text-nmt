@@ -583,16 +583,17 @@ def multi_bidirectional_rnn(cells, inputs, time_pooling=None, pooling_avg=False,
     # a ratio of 2 keeps 1 out of every 2 outputs for the next layer
     ratio = time_pooling[i]
 
-    # inputs = inputs[::ratio]
-    inputs_ = []
-    for j in range(0, len(inputs), ratio):
-      if pooling_avg:
+    if ratio == 1:
+      pass
+    elif not pooling_avg:
+      inputs = inputs[::ratio]
+    else:
+      inputs_ = []
+      for j in range(0, len(inputs), ratio):
         slice_ = inputs[j:(j + ratio)]
-        input_ = math_ops.add_n(slice_) / float(len(slice))
-      else:
-        input_ = inputs[j]
-      inputs_.append(input_)
-    inputs = inputs_
+        input_ = math_ops.add_n(slice_) / float(len(slice_))
+        inputs_.append(input_)
+      inputs = inputs_
 
     output_states_fw.append(output_state_fw)
     output_states_bw.append(output_state_bw)

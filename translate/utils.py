@@ -148,15 +148,13 @@ def scoring(scoring_script, hypotheses, references):
     for hyp in hypotheses:
       f2.write(hyp + '\n')
 
-  p = subprocess.Popen([scoring_script, f2.name, f1.name],
-                       stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
-
-  output, _ = p.communicate('\n'.join(hypotheses))
+  output = subprocess.check_output([scoring_script, f2.name, f1.name],
+                                   stderr=open('/dev/null', 'w'))
 
   m = re.match(r'BLEU=(.*) NIST=(.*) TER=(.*) RATIO=(.*)', output)
   values = [float(m.group(i)) for i in range(1, 5)]
 
-  return namedtuple('BLEU', ['bleu', 'nist', 'ter', 'ratio'])(*values)
+  return namedtuple('score', ['bleu', 'nist', 'ter', 'ratio'])(*values)
 
 
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
@@ -236,7 +234,7 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
       continue
 
     for bucket_id, bucket in enumerate(buckets):
-      if all(len(input_) < bucket_size for input_, bucket_size in zip(inputs, bucket)):
+      if all(len(input_) <= bucket_size for input_, bucket_size in zip(inputs, bucket)):
         data_set[bucket_id].append(inputs)
         break
 
