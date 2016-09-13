@@ -1,0 +1,26 @@
+
+learning_rate_decay_factor: 0.95
+dropout_rate: 0.5
+cell_size: 256
+embedding_size: 256
+layers: 2
+bidir: True
+use_lstm: True
+data_dir: experiments/character_level/data
+steps_per_checkpoint: 500
+steps_per_eval: 1000
+max_steps: 50000
+
+model_dir: experiments/character_level/model
+log_file: experiments/character_level/model/log.txt
+
+encoders:
+  - name: fr
+    vocab_size: 9218
+    buckets: [ 5, 10, 20, 50]
+
+decoder:
+    name: en
+    vocab_size: 39
+    buckets: [44, 65, 109, 218]
+    character_level: True
