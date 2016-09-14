@@ -84,11 +84,10 @@ class TranslationModel(BaseTranslationModel):
     self.trg_ext = decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
 
-    self.buckets = zip(*([encoder.buckets for encoder in encoders] + [decoder.buckets]))
-
-    # list of extensions that use vector features instead of text features
-    self.binary_input = [encoder.name for encoder in encoders if encoder.binary]
-    self.character_level = [encoder.name for encoder in encoders if encoder.character_level]
+    encoders_and_decoder = encoders + [decoder]
+    self.buckets = zip(*[encoder_or_decoder.buckets for encoder_or_decoder in encoders_and_decoder])
+    self.binary_input = [encoder_or_decoder.binary for encoder_or_decoder in encoders_and_decoder]
+    self.character_level = [encoder_or_decoder.character_level for encoder_or_decoder in encoders_and_decoder]
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
     self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
@@ -196,9 +195,10 @@ class TranslationModel(BaseTranslationModel):
       utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
 
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
-    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab)
+    # TODO: merge this with read_dataset
+    token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
-                 for vocab, sentence in zip(self.vocabs, src_sentences)]
+                 for vocab, sentence, char_level in zip(self.vocabs, src_sentences, self.character_level)]
 
     for ids_, max_len in zip(token_ids, self.buckets[-1][:-1]):
       if len(ids_) > max_len:
@@ -222,7 +222,7 @@ class TranslationModel(BaseTranslationModel):
     if remove_unk:
       trg_tokens = [token for token in trg_tokens if token != utils._UNK]
 
-    if self.trg_ext in self.character_level:
+    if self.character_level[-1]:
       return ''.join(trg_tokens)
     else:
       return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units

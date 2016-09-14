@@ -46,6 +46,7 @@ parser.add_argument('--checkpoints', nargs='+')
 parser.add_argument('--lm-weight', type=float)
 parser.add_argument('--output')
 parser.add_argument('--max-steps', type=int)
+parser.add_argument('--remove-unk', action='store_const', const=True)
 
 
 """
@@ -146,7 +147,9 @@ def main(args=None):
   # log parameters
   utils.log('program arguments')
   for k, v in sorted(config.items(), key=itemgetter(0)):
-    if k not in model_parameters:
+    if k == 'tasks':
+      utils.log('  {:<20}\n{}'.format(k, pformat(v)))
+    elif k not in model_parameters and k not in task_parameters:
       utils.log('  {:<20} {}'.format(k, pformat(v)))
   
   device = None

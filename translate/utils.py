@@ -215,7 +215,7 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
   data_set = [[] for _ in buckets]
 
   line_reader = read_lines(paths, extensions, binary_input=binary_input)
-  character_level = character_level or []
+  character_level = character_level or [False] * len(extensions)
 
   for counter, inputs in enumerate(line_reader, 1):
     if max_size and counter >= max_size:
@@ -224,10 +224,10 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
       log("  reading data line {}".format(counter))
 
     inputs = [
-      sentence_to_token_ids(input_, vocab.vocab, character_level=(ext in character_level))
+      sentence_to_token_ids(input_, vocab.vocab, character_level=char_level)
       if vocab is not None and isinstance(input_, basestring)
       else input_
-      for input_, vocab, ext in zip(inputs, vocabs, extensions)
+      for input_, vocab, ext, char_level in zip(inputs, vocabs, extensions, character_level)
     ]
 
     if not all(inputs):  # skip empty inputs
@@ -246,11 +246,11 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
 
 
 def read_lines(paths, extensions, binary_input=None):
-  binary_input = binary_input or []
+  binary_input = binary_input or [False] * len(extensions)
 
   iterators = [
-    read_binary_features(filename) if ext in binary_input else open(filename)
-    for ext, filename in zip(extensions, paths)
+    read_binary_features(filename) if binary else open(filename)
+    for ext, filename, binary in zip(extensions, paths, binary_input)
   ]
 
   return izip(*iterators)

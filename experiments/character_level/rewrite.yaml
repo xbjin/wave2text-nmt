@@ -1,3 +1,4 @@
+# rewrite English from word-level to character-level
 
 learning_rate_decay_factor: 0.95
 dropout_rate: 0.5
@@ -11,12 +12,12 @@ steps_per_checkpoint: 1000
 steps_per_eval: 2000
 max_steps: 50000
 
-model_dir: experiments/character_level/model
-log_file: experiments/character_level/model/log.txt
+model_dir: experiments/character_level/rewrite
+log_file: experiments/character_level/rewrite/log.txt
 
 encoders:
-  - name: fr
-    vocab_size: 9218
+  - name: wen
+    vocab_size: 7186
     buckets: [ 5, 10, 20, 50]
 
 decoder:

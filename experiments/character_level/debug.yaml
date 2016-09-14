@@ -1,0 +1,28 @@
+
+learning_rate_decay_factor: 0.95
+dropout_rate: 0.0
+batch_size: 16
+cell_size: 128
+embedding_size: 128
+layers: 1
+bidir: False
+use_lstm: False
+data_dir: experiments/character_level/data
+steps_per_checkpoint: 50
+steps_per_eval: 100
+max_steps: 2000
+
+model_dir: experiments/character_level/debug_rewrite
+log_file: null
+dev_prefix: dev.100
+
+encoders:
+  - name: wen
+    vocab_size: 7186
+    buckets: [ 5, 10, 20, 50]
+
+decoder:
+    name: en
+    vocab_size: 39
+    buckets: [44, 65, 109, 218]
+    character_level: True

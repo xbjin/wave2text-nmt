@@ -447,6 +447,7 @@ class Seq2SeqModel(object):
 
         encoder_pad = [pad] * (encoder_sizes[i] - len(src_sentence))
         # reverse THEN pad (better for early stopping...)
+        # TODO: see which one is better (do we even need to reverse?)
         # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
         reversed_sentence = list(reversed(src_sentence + encoder_pad))
 
