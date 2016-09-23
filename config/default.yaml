@@ -11,7 +11,7 @@ steps_per_eval: 2000     # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping
 keep_best: 4             # number of best checkpoints to keep
 feed_previous: 0.0       # randomly feed previous output instead of groundtruth to decoder during training
-training_algorithm: 'sgd'  # 'sgd', 'adadelta' or 'adagrad'
+optimizer: 'sgd'         # 'sgd', 'adadelta' or 'adagrad'
 
 # model (each one of these settings can be defined specifically in `encoders` and `decoder`, or generally here)
 attention: True          # use an attention mechanism

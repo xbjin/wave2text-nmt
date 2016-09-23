@@ -91,11 +91,12 @@ class TranslationModel(BaseTranslationModel):
     self.binary_input = [encoder_or_decoder.binary for encoder_or_decoder in encoders_and_decoder]
     self.character_level = [encoder_or_decoder.character_level for encoder_or_decoder in encoders_and_decoder]
     
-    self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
+    self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate', dtype=tf.float32)
+
     if optimizer == 'sgd':
       self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)
     else:
-      self.learning_rate_decay_op = tf.identity
+      self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate)
 
     with tf.device('/cpu:0'):
       self.global_step = tf.Variable(0, trainable=False, name='global_step')

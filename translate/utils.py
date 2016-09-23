@@ -290,6 +290,10 @@ def sorted_batch_iterator(data, batch_size, read_ahead=10):
 
 
 def get_batches(data, batch_size, batches=10):
+  max_batches = len(data) // batch_size
+  if batches == -1 or batches > max_batches:
+    batches = max_batches
+
   random.shuffle(data)
   batches = [data[i * batch_size:(i + 1) * batch_size] for i in range(batches)]
   return batches

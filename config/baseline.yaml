@@ -16,7 +16,7 @@ data_dir: data/btec
 model_dir: models/baseline
 log_file: models/baseline/log.txt
 
-training_algorithm: 'adam'
+optimizer: 'adam'
 learning_rate: 0.001
 # buckets: [[5, 10], [10, 15], [20, 25], [50, 50]]
 
