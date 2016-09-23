@@ -16,6 +16,8 @@ import argparse
 import subprocess
 import tensorflow as tf
 import yaml
+import random
+import numpy as np
 
 from pprint import pformat
 from operator import itemgetter
@@ -50,13 +52,13 @@ parser.add_argument('--remove-unk', action='store_const', const=True)
 
 
 """
+Random thoughts
+---------------
+
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
 Features:
-- try getting rid of buckets (by using dynamic_rnn for encoder + custom dynamic rnn for decoder)
-- copy vocab to model dir
-- train dir/data dir should be optional
-- AdaDelta, AdaGrad
+- copy vocab and config to model dir
 - rename scopes to nicer names + do mapping of existing models
 - time pooling: concat or sum instead of skipping
 
@@ -67,7 +69,7 @@ Benchmarks:
 - replicate the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
 
-Evaluation:
+Evaluation with METEOR:
 java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
 """
 
@@ -119,7 +121,7 @@ def main(args=None):
   ]
   # TODO: independent model dir for each task
   task_parameters = ['data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio',
-                     'lm_file', 'learning_rate', 'learning_rate_decay_factor']
+                     'lm_file', 'learning_rate', 'learning_rate_decay_factor', 'max_output_len']
 
   # in case no task is defined (standard mono-task settings), define a "main" task
   config.setdefault('tasks', [{'encoders': config.encoders, 'decoder': config.decoder, 'name': 'main', 'ratio': 1.0}])
@@ -193,9 +195,10 @@ def main(args=None):
       # loads last checkpoint, unless `reset` is true
       model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
+    # Inspect variables:
     # tf.get_variable_scope().reuse_variables()
+    # import pdb; pdb.set_trace()
 
-    # TODO: load best checkpoint for eval and decode
     if args.decode:
       model.decode(sess, **config)
     elif args.eval:

@@ -79,18 +79,23 @@ class BaseTranslationModel(object):
 
 class TranslationModel(BaseTranslationModel):
   def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
-               learning_rate_decay_factor, keep_best=1, load_embeddings=None, **kwargs):
+               learning_rate_decay_factor, batch_size, keep_best=1,
+               load_embeddings=None, buckets=None, optimizer='sgd', **kwargs):
+    self.batch_size = batch_size
+    self.buckets = buckets
     self.src_ext = [encoder.name for encoder in encoders]
     self.trg_ext = decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
 
     encoders_and_decoder = encoders + [decoder]
-    self.buckets = zip(*[encoder_or_decoder.buckets for encoder_or_decoder in encoders_and_decoder])
     self.binary_input = [encoder_or_decoder.binary for encoder_or_decoder in encoders_and_decoder]
     self.character_level = [encoder_or_decoder.character_level for encoder_or_decoder in encoders_and_decoder]
     
     self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate')
-    self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)    
+    if optimizer == 'sgd':
+      self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)
+    else:
+      self.learning_rate_decay_op = tf.identity
 
     with tf.device('/cpu:0'):
       self.global_step = tf.Variable(0, trainable=False, name='global_step')
@@ -105,27 +110,35 @@ class TranslationModel(BaseTranslationModel):
 
     # main model
     utils.debug('creating model {}'.format(name))
-    self.model = Seq2SeqModel(encoders, decoder, self.buckets, self.learning_rate, self.global_step, **kwargs)
+    self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, buckets=buckets,
+                              optimizer=optimizer, **kwargs)
 
     super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
 
+    self.batch_iterator = None
+    self.dev_batches = None
+
   def read_data(self, max_train_size):
     utils.debug('reading training data')
-    train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, self.buckets,
+    train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs,
                                    max_size=max_train_size, binary_input=self.binary_input,
                                    character_level=self.character_level)
-    self.model.assign_data_set(train_set)
+    if self.buckets is not None:
+      self.batch_iterator = utils.bucket_iterator(train_set, self.batch_size, self.buckets)
+    else:
+      self.batch_iterator = utils.sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
     
     utils.debug('reading development data')
-    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs, self.buckets,
+    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs,
                                  binary_input=self.binary_input, character_level=self.character_level)
-    self.model.dev_set = dev_set
+    # subset of the dev set whose perplexity is periodically evaluated
+    self.dev_batches = utils.get_batches(dev_set, batch_size=self.batch_size, batches=10)
 
   def _read_vocab(self):
     # don't try reading vocabulary for encoders that take pre-computed features
     self.vocabs = [
-      utils.initialize_vocabulary(vocab_path) if ext not in self.binary_input else None
-      for ext, vocab_path in zip(self.extensions, self.filenames.vocab)
+      utils.initialize_vocabulary(vocab_path) if not binary else None
+      for ext, vocab_path, binary in zip(self.extensions, self.filenames.vocab, self.binary_input)
     ]
     self.src_vocab = self.vocabs[:-1]
     self.trg_vocab = self.vocabs[-1]
@@ -179,31 +192,20 @@ class TranslationModel(BaseTranslationModel):
         return
 
   def train_step(self, sess):
-    r = np.random.random_sample()
-    bucket_id = min(i for i in xrange(len(self.model.train_bucket_scales)) if self.model.train_bucket_scales[i] > r)
-    return self.model.step(sess, self.model.train_set, bucket_id)
+    return self.model.step(sess, next(self.batch_iterator))
 
   def eval_step(self, sess):
     # compute perplexity on dev set
-    for bucket_id in xrange(len(self.buckets)):
-      if not self.model.dev_set[bucket_id]:
-        utils.log("  eval: empty bucket {}".format(bucket_id))
-        continue
-
-      eval_loss = self.model.step(sess, self.model.dev_set, bucket_id, forward_only=True)
-      perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-      utils.log("  eval: bucket {} perplexity {:.2f}".format(bucket_id, perplexity))
+    # eval_loss = self.model.step(sess, next(self.dev_batch_iterator), forward_only=True)
+    eval_loss = sum(self.model.step(sess, batch, forward_only=True) for batch in self.dev_batches) / len(self.dev_batches)
+    perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+    utils.log("  eval: perplexity {:.2f}".format(perplexity))
 
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
     # TODO: merge this with read_dataset
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence, char_level in zip(self.vocabs, src_sentences, self.character_level)]
-
-    for ids_, max_len in zip(token_ids, self.buckets[-1][:-1]):
-      if len(ids_) > max_len:
-        utils.warn("line is too long ({} tokens), truncating".format(len(ids_)))
-        ids_[:] = ids_[:max_len]
 
     if beam_size <= 1 and not isinstance(sess, list):
       trg_token_ids = self.model.greedy_decoding(sess, token_ids)
@@ -228,6 +230,7 @@ class TranslationModel(BaseTranslationModel):
       return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
+    utils.log('starting decoding')
     output_file = None
     try:
       output_file = sys.stdout if output is None else open(output, 'w')
@@ -241,6 +244,7 @@ class TranslationModel(BaseTranslationModel):
         output_file.close()
 
   def evaluate(self, sess, beam_size, scoring_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+    utils.log('starting decoding')
     if self.ngrams is not None:
       utils.debug('using external language model')
 

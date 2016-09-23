@@ -10,6 +10,7 @@ import numpy as np
 import math
 import logging
 import struct
+import random
 import sys
 
 from collections import namedtuple, OrderedDict
@@ -210,9 +211,9 @@ def read_binary_features(filename):
   return all_feats
 
 
-def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input=None,
-                 character_level=None):
-  data_set = [[] for _ in buckets]
+def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
+                 character_level=None, sort_by_length=False):
+  data_set = []
 
   line_reader = read_lines(paths, extensions, binary_input=binary_input)
   character_level = character_level or [False] * len(extensions)
@@ -233,16 +234,85 @@ def read_dataset(paths, extensions, vocabs, buckets, max_size=None, binary_input
     if not all(inputs):  # skip empty inputs
       continue
 
-    for bucket_id, bucket in enumerate(buckets):
-      if all(len(input_) <= bucket_size for input_, bucket_size in zip(inputs, bucket)):
-        data_set[bucket_id].append(inputs)
-        break
+    data_set.append(inputs)   # TODO: filter too long
 
   debug('files: {}'.format(' '.join(paths)))
-  for bucket_id, data in enumerate(data_set):
-    debug('  bucket {} size {}'.format(bucket_id, len(data)))
+  debug('size: {}'.format(len(data_set)))
+
+  if sort_by_length:
+    data_set.sort(key=lambda lines: map(len, lines))
 
   return data_set
+
+
+def batch_iterator(data, batch_size, bucket_count=10, key=None):
+  if key is None:
+    key = lambda x: x
+
+  bucket_size = len(data) // bucket_count
+  if bucket_size < batch_size:
+    raise Exception('buckets are too small')
+
+  data.sort(key=lambda lines: key(map(len, lines)))
+
+  buckets = [
+    data[i * bucket_size:(i + 1) * bucket_size] for i in range(bucket_count)
+  ]
+  buckets[-1] = data[(bucket_count - 1) * bucket_size:]
+
+  while True:
+    bucket = random.choice(buckets)
+    yield random.sample(bucket, batch_size)
+
+
+def random_batch_iterator(data, batch_size):
+  while True:
+    yield random.sample(data, batch_size)
+
+
+def cycling_batch_iterator(data, batch_size):
+  while True:
+    random.shuffle(data)
+
+    batch_count = len(data) // batch_size
+    for i in range(batch_count):
+      yield data[i * batch_size:(i + 1) * batch_size]
+
+
+def sorted_batch_iterator(data, batch_size, read_ahead=10):
+  iterator = cycling_batch_iterator(data, batch_size)
+  while True:
+    batches = [next(iterator) for _ in range(read_ahead)]
+    data_ = sorted(sum(batches, []), key=lambda lines: len(lines[-1]))
+    batches = [data_[i * batch_size:(i + 1) * batch_size] for i in range(read_ahead)]
+    for batch in batches:
+      yield batch
+
+
+def get_batches(data, batch_size, batches=10):
+  random.shuffle(data)
+  batches = [data[i * batch_size:(i + 1) * batch_size] for i in range(batches)]
+  return batches
+
+
+def bucket_iterator(data, batch_size, buckets):
+  data_ = [[] for _ in buckets]
+  for lines in data:
+    try:
+      i = next(i for i, bucket in enumerate(buckets)
+               if all(len(line) <= b for line, b in zip(lines, bucket)))
+    except StopIteration:
+      continue
+
+    data_[i].append(lines)
+
+  p = [len(bucket) / sum(map(len, data_)) for bucket in data_]
+  p_ = [sum(p[:i + 1]) for i in range(len(p))]
+  while True:
+    r = random.random()
+    bucket_id = next(i for i, r_ in enumerate(p_) if r_ >= r)
+    sample = [random.choice(data_[bucket_id]) for _ in range(batch_size)]
+    yield sample
 
 
 def read_lines(paths, extensions, binary_input=None):
