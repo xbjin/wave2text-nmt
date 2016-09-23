@@ -84,7 +84,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
           fn = lambda x: tf.nn.embedding_lookup(embedding, x)
           encoder_inputs_ = tf.map_fn(fn, encoder_inputs_, dtype=tf.float32)
 
-        encoder_inputs_ = tf.transpose(encoder_inputs_, perm=[1, 0, 2])
+        encoder_inputs_ = tf.transpose(encoder_inputs_, perm=[1, 0, 2])   # put batch_size first
         sequence_length = encoder_input_length_
         parameters = dict(
           inputs=encoder_inputs_, sequence_length=sequence_length,
@@ -133,19 +133,19 @@ def compute_energy(hidden, state, name, **kwargs):
 
 def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filters,
                                attention_filter_length, **kwargs):
-  attn_length = hidden.get_shape()[1].value
+  attn_length = tf.shape(hidden)[1]
   attn_size = hidden.get_shape()[3].value
   batch_size = tf.shape(hidden)[0]
 
   filter_shape = [attention_filter_length * 2 + 1, 1, 1, attention_filters]
   filter_ = get_variable_unsafe('filter_{}'.format(name), filter_shape)
   u = get_variable_unsafe('U_{}'.format(name), [attention_filters, attn_size])
-  prev_weights = tf.reshape(prev_weights, [-1, attn_length, 1, 1])
+  prev_weights = tf.reshape(prev_weights, tf.pack([batch_size, attn_length, 1, 1]))
   conv = tf.nn.conv2d(prev_weights, filter_, [1, 1, 1, 1], 'SAME')
   shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
   conv = tf.reshape(conv, shape)
   z = tf.matmul(conv, u)
-  z = tf.reshape(z, [-1, attn_length, 1, attn_size])
+  z = tf.reshape(z, tf.pack([batch_size, attn_length, 1, attn_size]))
 
   y = linear_unsafe(state, attn_size, True)
   y = tf.reshape(y, [-1, 1, 1, attn_size])

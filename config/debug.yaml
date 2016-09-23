@@ -5,7 +5,7 @@ dropout_rate: 0.2
 cell_size: 128
 embedding_size: 128
 layers: 1
-bidir: True
+bidir: False
 use_lstm: True
 steps_per_checkpoint: 100
 steps_per_eval: 200
@@ -24,6 +24,8 @@ learning_rate: 0.001
 encoders:
   - name: fr
     vocab_size: 9218
+    layers: 3
+    time_pooling: [2, 2]
 
 decoder:
     name: en
