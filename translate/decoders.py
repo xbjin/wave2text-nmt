@@ -80,15 +80,31 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
           cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
         embedding = embedding_variables[i]
-        if embedding is not None:
-          fn = lambda x: tf.nn.embedding_lookup(embedding, x)
-          encoder_inputs_ = tf.map_fn(fn, encoder_inputs_, dtype=tf.float32)
 
-        encoder_inputs_ = tf.transpose(encoder_inputs_, perm=[1, 0, 2])   # put batch_size first
+        if embedding is not None or encoder.input_layers:
+          batch_size = tf.shape(encoder_inputs_)[0]   # TODO: fix this time major shit
+          seq_len = tf.shape(encoder_inputs_)[1]
+
+          if embedding is None:
+            size = encoder_inputs_.get_shape()[2].value
+            flat_inputs = tf.reshape(encoder_inputs_, [tf.mul(batch_size, seq_len), size])
+          else:
+            flat_inputs = tf.reshape(encoder_inputs_, [tf.mul(batch_size, seq_len)])
+            flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
+
+          if encoder.input_layers:
+            for j, size in enumerate(encoder.input_layers):
+              name = 'input_layer_{}'.format(j)
+              flat_inputs = tf.nn.tanh(linear_unsafe(flat_inputs, size, bias=True, scope=name))
+
+          encoder_inputs_ = tf.reshape(flat_inputs, tf.pack([batch_size, seq_len, flat_inputs.get_shape()[1].value]))
+
+        # encoder_inputs_ = tf.transpose(encoder_inputs_, perm=[1, 0, 2])   # put batch_size first
         sequence_length = encoder_input_length_
         parameters = dict(
           inputs=encoder_inputs_, sequence_length=sequence_length,
-          time_pooling=encoder.time_pooling, pooling_avg=encoder.pooling_avg, dtype=tf.float32
+          time_pooling=encoder.time_pooling, pooling_avg=encoder.pooling_avg, dtype=tf.float32,
+          swap_memory=encoder.swap_memory, parallel_iterations=encoder.parallel_iterations
         )
 
         if encoder.bidir:
@@ -128,6 +144,11 @@ def compute_energy(hidden, state, name, **kwargs):
 
   v = get_variable_unsafe('V_{}'.format(name), [attn_size])
   s = f + y
+
+  # TODO: use reshape to perform tensor product instead of convolution
+  # import pdb;
+  # pdb.set_trace()
+
   return tf.reduce_sum(v * tf.tanh(s), [2, 3])
 
 
@@ -178,22 +199,22 @@ def local_attention(state, prev_weights, hidden_states, encoder, **kwargs):
   """
   Local attention of Luong et al. (http://arxiv.org/abs/1508.04025)
   """
-  attn_length = hidden_states.get_shape()[1].value
+  attn_length = tf.shape(hidden_states)[1]
   state_size = state.get_shape()[1].value
 
   with tf.variable_scope('attention'):
-    S = hidden_states.get_shape()[1].value   # source length
+    # S = hidden_states.get_shape()[1].value   # source length
+    S = tf.cast(attn_length, dtype=tf.float32)
+
     wp = get_variable_unsafe('Wp_{}'.format(encoder.name), [state_size, state_size])
     vp = get_variable_unsafe('vp_{}'.format(encoder.name), [state_size, 1])
 
     pt = tf.nn.sigmoid(tf.matmul(tf.nn.tanh(tf.matmul(state, wp)), vp))
     pt = tf.floor(S * tf.reshape(pt, [-1, 1]))  # aligned position in the source sentence
 
-    # state's shape is (?, bucket_size, 1, state_size)
     batch_size = tf.shape(state)[0]
 
-    indices = tf.convert_to_tensor(range(attn_length), dtype=tf.float32)
-    idx = tf.tile(indices, tf.pack([batch_size]))
+    idx = tf.tile(tf.cast(tf.range(attn_length), dtype=tf.float32), tf.pack([batch_size]))
     idx = tf.reshape(idx, [-1, attn_length])
 
     low = pt - encoder.attention_window_size
@@ -210,6 +231,8 @@ def local_attention(state, prev_weights, hidden_states, encoder, **kwargs):
                         prev_weights=prev_weights, attention_filters=encoder.attention_filters,
                         attention_filter_length=encoder.attention_filter_length)
 
+    # we have to use this mask thing, because the slice operation
+    # does not work with batch dependent indices
     weights = tf.nn.softmax(e * mask)
 
     sigma = encoder.attention_window_size / 2
@@ -363,8 +386,8 @@ def decoder(decoder_inputs, initial_state, decoder,
       cond=lambda time, *_: time < time_steps,
       body=_time_step,
       loop_vars=(time, state, output_ta, state_ta),
-      parallel_iterations=parallel_iterations,
-      swap_memory=False)
+      parallel_iterations=decoder.parallel_iterations,
+      swap_memory=decoder.swap_memory)
 
     outputs = output_final_ta.pack()
     decoder_states = state_final_ta.pack()
@@ -375,7 +398,7 @@ def decoder(decoder_inputs, initial_state, decoder,
 def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder,
                       decoder_input_length=None, attention_weights=None, output_projection=None,
                       initial_state_attention=False, dropout=None,
-                      feed_previous=0.0, parallel_iterations=32, **kwargs):
+                      feed_previous=0.0, **kwargs):
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -419,8 +442,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       emb_prev = tf.nn.embedding_lookup(embedding, prev_symbol)
       return emb_prev
 
-    fn = lambda x: tf.nn.embedding_lookup(embedding, x)
-    decoder_inputs = tf.map_fn(fn, decoder_inputs, dtype=tf.float32)
+    if embedding is not None:
+      time_steps = tf.shape(decoder_inputs)[0]
+      batch_size = tf.shape(decoder_inputs)[1]
+      flat_inputs = tf.reshape(decoder_inputs, [tf.mul(batch_size, time_steps)])
+      flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
+      decoder_inputs = tf.reshape(flat_inputs, tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
 
     attn_lengths = [tf.shape(states)[1] for states in attention_states]
     attn_size = sum(states.get_shape()[2].value for states in attention_states)
@@ -444,7 +471,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     input_shape = tf.shape(decoder_inputs)
     time_steps = input_shape[0]
     batch_size = input_shape[1]
-    output_size = cell.output_size   # FIXME  (when output_projection is None)
+    # output_size = cell.output_size   # FIXME  (when output_projection is None)
     state_size = cell.state_size
 
     zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
@@ -506,8 +533,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       cond=lambda time, *_: time < time_steps,
       body=_time_step,
       loop_vars=(time, state, attns, attention_weights, output_ta, state_ta, attn_weights_ta),
-      parallel_iterations=parallel_iterations,
-      swap_memory=False)
+      parallel_iterations=decoder.parallel_iterations,
+      swap_memory=decoder.swap_memory)
 
     outputs = output_final_ta.pack()
     decoder_states = state_final_ta.pack()

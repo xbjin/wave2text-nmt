@@ -117,7 +117,7 @@ def main(args=None):
   model_parameters = [
     'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
     'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir',
-    'load_embeddings', 'pooling_avg'
+    'load_embeddings', 'pooling_avg', 'swap_memory', 'parallel_iterations', 'input_layers'
   ]
   # TODO: independent model dir for each task
   task_parameters = ['data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio',
@@ -169,7 +169,7 @@ def main(args=None):
     # all parameters except source embeddings and bias variables are initialized with this
     # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
     with tf.variable_scope('seq2seq', initializer=initializer):
-      model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, **config)
+      model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode=(args.decode or args.eval), **config)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():

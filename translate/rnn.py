@@ -48,6 +48,9 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None,
       seq_dim=time_dim, batch_dim=batch_dim)
     inputs = tf.concat(2, [inputs_fw, inputs_bw_reversed])
 
+    if time_pooling and i < len(cells) - 1:
+      inputs, sequence_length = apply_time_pooling(inputs, sequence_length, time_pooling[i], pooling_avg)
+
     output_states_fw.append(output_state_fw)
     output_states_bw.append(output_state_bw)
 
@@ -60,10 +63,10 @@ def multi_rnn(cells, inputs, sequence_length=None, initial_state=None,
               time_pooling=None, pooling_avg=None, **kwargs):
   name = scope or "MultiRNN"
 
+  assert time_pooling is None or len(time_pooling) == len(cells) - 1
+
   output_states = []
   for i, cell in enumerate(cells):
-    # Forward direction
-    import pdb; pdb.set_trace()
     with tf.variable_scope('{}_{}'.format(name, i)) as scope:
       inputs, output_state = rnn.dynamic_rnn(
         cell=cell, inputs=inputs, sequence_length=sequence_length,
@@ -71,16 +74,31 @@ def multi_rnn(cells, inputs, sequence_length=None, initial_state=None,
         parallel_iterations=parallel_iterations, swap_memory=swap_memory,
         time_major=time_major, scope=scope)
 
-    if time_pooling:
-      stride = time_pooling[i]
-
-      import pdb; pdb.set_trace()
-      inputs = tf.strided_slice(
-        inputs, begin=[0, 0, 0], end=[tf.shape(inputs)[0], tf.shape(inputs)[1], inputs.get_shape()[2]], strides=[1, stride, 1]
-      )
-      import pdb; pdb.set_trace()
-    # TODO: pooling_avg
+    if time_pooling and i < len(cells) - 1:
+      inputs, sequence_length = apply_time_pooling(inputs, sequence_length, time_pooling[i], pooling_avg)
 
     output_states.append(output_state)
 
   return inputs, tf.concat(1, output_states)
+
+
+def apply_time_pooling(inputs, sequence_length, stride, pooling_avg=False):
+  shape = [tf.shape(inputs)[0], tf.shape(inputs)[1], inputs.get_shape()[2].value]
+
+  if pooling_avg:
+    inputs_ = [inputs[:, i::stride, :] for i in range(stride)]
+
+    max_len = tf.shape(inputs_[0])[1]
+    for k in range(1, stride):
+      len_ = tf.shape(inputs_[k])[1]
+      paddings = tf.pack([[0, 0], [0, max_len - len_], [0, 0]])
+      inputs_[k] = tf.pad(inputs_[k], paddings=paddings)
+
+    inputs = tf.reduce_sum(inputs_, 0) / len(inputs_)
+  else:
+    inputs = inputs[:, ::stride, :]
+
+  inputs = tf.reshape(inputs, tf.pack([shape[0], tf.shape(inputs)[1], shape[2]]))
+  sequence_length = (sequence_length + stride - 1) // stride  # rounding up
+
+  return inputs, sequence_length

@@ -31,6 +31,7 @@ character_level: False   # input sequence is at the character level
 load_embeddings: []      # load pre-trained embeddings for those extensions
 time_pooling: null       # ratios of time steps to skip between layers
 pooling_avg: False       # average previous steps instead of skipping them
+input_layers: []         # fully connected layers between the embeddings and the RNN
 
 # data
 data_dir: data

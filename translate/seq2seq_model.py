@@ -49,7 +49,7 @@ class Seq2SeqModel(object):
   def __init__(self, encoders, decoder, learning_rate, global_step, max_gradient_norm,
                num_samples=512, dropout_rate=0.0, freeze_variables=None, lm_weight=None,
                max_output_len=50, attention=True, buckets=None, feed_previous=0.0,
-               optimizer='sgd', **kwargs):
+               optimizer='sgd', max_input_len=None, decode=False, **kwargs):
     self.lm_weight = lm_weight
     self.encoders = encoders
     self.decoder = decoder
@@ -63,6 +63,7 @@ class Seq2SeqModel(object):
     self.binary_input = [encoder.name for encoder in encoders if encoder.binary]
 
     self.max_output_len = max_output_len
+    self.max_input_len = max_input_len
     self.buckets = buckets
 
     # if we use sampled softmax, we need an output projection
@@ -121,7 +122,7 @@ class Seq2SeqModel(object):
 
     parameters = dict(
       encoders=encoders, decoder=decoder,
-      dropout=self.dropout, output_projection=output_projection, initial_state_attention=True   # FIXME
+      dropout=self.dropout, output_projection=output_projection, initial_state_attention=True,   # FIXME
     )
 
     self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -155,29 +156,30 @@ class Seq2SeqModel(object):
                                               weights=self.target_weights,
                                               softmax_loss_function=softmax_loss_function)
 
-    # gradients and SGD update operation for training the model
-    if freeze_variables is None:
-      freeze_variables = []
+    if not decode:
+      # gradients and SGD update operation for training the model
+      if freeze_variables is None:
+        freeze_variables = []
 
-    variable_names = set([var.name for var in tf.all_variables()])
-    assert all(name in variable_names for name in freeze_variables), \
-      'you cannot freeze a variable that doesn\'t exist'
+      variable_names = set([var.name for var in tf.all_variables()])
+      assert all(name in variable_names for name in freeze_variables), \
+        'you cannot freeze a variable that doesn\'t exist'
 
-    # compute gradient only for variables that are not frozen
-    params = [var for var in tf.trainable_variables() if var.name not in freeze_variables]
+      # compute gradient only for variables that are not frozen
+      params = [var for var in tf.trainable_variables() if var.name not in freeze_variables]
 
-    if optimizer.lower() == 'adadelta':
-      opt = tf.train.AdadeltaOptimizer(learning_rate=learning_rate)
-    elif optimizer.lower() == 'adagrad':
-      opt = tf.train.AdagradOptimizer(learning_rate=learning_rate)
-    elif optimizer.lower() == 'adam':
-      opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
-    else:
-      opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+      if optimizer.lower() == 'adadelta':
+        opt = tf.train.AdadeltaOptimizer(learning_rate=learning_rate)
+      elif optimizer.lower() == 'adagrad':
+        opt = tf.train.AdagradOptimizer(learning_rate=learning_rate)
+      elif optimizer.lower() == 'adam':
+        opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
+      else:
+        opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
 
-    gradients = tf.gradients(self.loss, params)
-    clipped_gradients, self.gradient_norms = tf.clip_by_global_norm(gradients, max_gradient_norm)
-    self.updates = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
+      gradients = tf.gradients(self.loss, params)
+      clipped_gradients, self.gradient_norms = tf.clip_by_global_norm(gradients, max_gradient_norm)
+      self.updates = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
     def tensor_prod(x, w, b):
       shape = tf.shape(x)
@@ -281,6 +283,7 @@ class Seq2SeqModel(object):
           input_feed_[self.attention_states[i]] = attention_states_[i]
           # input_feed_[self.attention_weights[0][i]] = attention_weights_[i]
 
+      # FIXME
       # output_feed = [self.beam_search_outputs,
       #                self.decoder_states[0]] + self.attention_weights[1]
       output_feed = [self.beam_output, self.beam_decoder_state]
@@ -385,7 +388,6 @@ class Seq2SeqModel(object):
 
     encoder_inputs = [[] for _ in range(self.encoder_count)]
     encoder_input_length = [[] for _ in range(self.encoder_count)]
-    batch_encoder_inputs = [[] for _ in range(self.encoder_count)]
 
     if self.buckets is not None:
       # truncate too long sentences
@@ -393,6 +395,8 @@ class Seq2SeqModel(object):
 
     # maximum sentence length of each encoder in this batch
     max_input_len = [max(len(data[k][i]) for k in xrange(batch_size)) for i in range(self.encoder_count)]
+    if self.max_input_len is not None:
+      max_input_len = [min(len_, self.max_input_len) for len_ in max_input_len]
 
     if self.buckets is not None:
       matching_bucket = next(bucket for bucket in self.buckets
@@ -419,6 +423,9 @@ class Seq2SeqModel(object):
         else:
           pad = utils.PAD_ID
 
+        if len(src_sentence) > max_input_len[i]:
+          src_sentence = src_sentence[:max_input_len[i]]
+
         encoder_pad = [pad] * (max_input_len[i] - len(src_sentence))
         reversed_sentence = list(reversed(src_sentence)) + encoder_pad
 
@@ -435,15 +442,13 @@ class Seq2SeqModel(object):
 
     encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
 
+    batch_encoder_inputs = []
     for i, ext in enumerate(self.encoder_names):
-      for length_idx in xrange(max_input_len[i]):
-      # for length_idx in xrange(encoder_sizes[i]):
-        dtype = np.float32 if ext in self.binary_input else np.int32
-
-        batch_encoder_inputs[i].append(
-          np.array([encoder_inputs[i][batch_idx][length_idx]
-                    for batch_idx in xrange(batch_size)], dtype=dtype))
-    batch_encoder_inputs = [np.array(inputs) for inputs in batch_encoder_inputs]
+      if ext in self.binary_input:
+        encoder_inputs_ = np.array(encoder_inputs[i], dtype=np.float32)
+      else:
+        encoder_inputs_ = np.array(encoder_inputs[i], dtype=np.int32)
+      batch_encoder_inputs.append(encoder_inputs_)
 
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
     for length_idx in xrange(max_output_len):
