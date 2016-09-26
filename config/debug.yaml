@@ -17,8 +17,8 @@ model_dir: models/debug
 log_file: null
 dev_prefix: dev.100
 
-optimizer: 'adam'
-learning_rate: 0.001
+# optimizer: 'adam'
+# learning_rate: 0.001
 # buckets: [[5, 10], [10, 15], [20, 25], [50, 50]]
 # pooling_avg: True
 # attention_window_size: 4 # if positive, use a local attention mechanism with this window size
@@ -28,8 +28,6 @@ learning_rate: 0.001
 encoders:
   - name: fr
     vocab_size: 9218
-    layers: 2
-    input_layers: [128, 128]
 
 decoder:
     name: en

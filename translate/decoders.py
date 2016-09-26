@@ -71,6 +71,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
         encoder_inputs_ = encoder_inputs[i]
         encoder_input_length_ = encoder_input_length[i]
 
+        # TODO: use state_is_tuple=True
         if encoder.use_lstm:
           cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
         else:
@@ -83,21 +84,23 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
 
         if embedding is not None or encoder.input_layers:
           batch_size = tf.shape(encoder_inputs_)[0]   # TODO: fix this time major shit
-          seq_len = tf.shape(encoder_inputs_)[1]
+          time_steps = tf.shape(encoder_inputs_)[1]
 
           if embedding is None:
             size = encoder_inputs_.get_shape()[2].value
-            flat_inputs = tf.reshape(encoder_inputs_, [tf.mul(batch_size, seq_len), size])
+            flat_inputs = tf.reshape(encoder_inputs_, [tf.mul(batch_size, time_steps), size])
           else:
-            flat_inputs = tf.reshape(encoder_inputs_, [tf.mul(batch_size, seq_len)])
+            flat_inputs = tf.reshape(encoder_inputs_, [tf.mul(batch_size, time_steps)])
             flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
 
           if encoder.input_layers:
             for j, size in enumerate(encoder.input_layers):
               name = 'input_layer_{}'.format(j)
               flat_inputs = tf.nn.tanh(linear_unsafe(flat_inputs, size, bias=True, scope=name))
+              if dropout is not None:
+                flat_inputs = tf.nn.dropout(flat_inputs, dropout)
 
-          encoder_inputs_ = tf.reshape(flat_inputs, tf.pack([batch_size, seq_len, flat_inputs.get_shape()[1].value]))
+          encoder_inputs_ = tf.reshape(flat_inputs, tf.pack([batch_size, time_steps, flat_inputs.get_shape()[1].value]))
 
         # encoder_inputs_ = tf.transpose(encoder_inputs_, perm=[1, 0, 2])   # put batch_size first
         sequence_length = encoder_input_length_
@@ -119,11 +122,11 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
           # a matrix to perform a dot product
           shape = tf.shape(encoder_outputs_)
           batch_size = shape[0]
-          seq_len = shape[1]
+          time_steps = shape[1]
           dim = encoder_outputs_.get_shape()[2]
-          outputs_ = tf.reshape(encoder_outputs_, tf.pack([tf.mul(batch_size, seq_len), dim]))
+          outputs_ = tf.reshape(encoder_outputs_, tf.pack([tf.mul(batch_size, time_steps), dim]))
           outputs_ = linear_unsafe(outputs_, cell.output_size, False, scope='bidir_projection')
-          encoder_outputs_ = tf.reshape(outputs_, tf.pack([batch_size, seq_len, cell.output_size]))
+          encoder_outputs_ = tf.reshape(outputs_, tf.pack([batch_size, time_steps, cell.output_size]))
 
         encoder_outputs.append(encoder_outputs_)
         encoder_states.append(encoder_state_)
@@ -134,45 +137,50 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
 
 def compute_energy(hidden, state, name, **kwargs):
   attn_size = hidden.get_shape()[3].value
+  batch_size = tf.shape(hidden)[0]
+  time_steps = tf.shape(hidden)[1]
 
   y = linear_unsafe(state, attn_size, True, scope=name)
   y = tf.reshape(y, [-1, 1, 1, attn_size])
 
-  k = get_variable_unsafe('W_{}'.format(name), [1, 1, attn_size, attn_size])
-  # complicated way to do a dot product
-  f = tf.nn.conv2d(hidden, k, [1, 1, 1, 1], 'SAME')
+  k = get_variable_unsafe('W_{}'.format(name), [attn_size, attn_size])
+
+  # dot product between tensors needs reshaping
+  hidden = tf.reshape(hidden, tf.pack([tf.mul(batch_size, time_steps), attn_size]))
+  f = tf.matmul(hidden, k)
+  f = tf.reshape(f, tf.pack([batch_size, time_steps, 1, attn_size]))
 
   v = get_variable_unsafe('V_{}'.format(name), [attn_size])
   s = f + y
-
-  # TODO: use reshape to perform tensor product instead of convolution
-  # import pdb;
-  # pdb.set_trace()
 
   return tf.reduce_sum(v * tf.tanh(s), [2, 3])
 
 
 def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filters,
                                attention_filter_length, **kwargs):
-  attn_length = tf.shape(hidden)[1]
+  time_steps = tf.shape(hidden)[1]
   attn_size = hidden.get_shape()[3].value
   batch_size = tf.shape(hidden)[0]
 
   filter_shape = [attention_filter_length * 2 + 1, 1, 1, attention_filters]
   filter_ = get_variable_unsafe('filter_{}'.format(name), filter_shape)
   u = get_variable_unsafe('U_{}'.format(name), [attention_filters, attn_size])
-  prev_weights = tf.reshape(prev_weights, tf.pack([batch_size, attn_length, 1, 1]))
+  prev_weights = tf.reshape(prev_weights, tf.pack([batch_size, time_steps, 1, 1]))
   conv = tf.nn.conv2d(prev_weights, filter_, [1, 1, 1, 1], 'SAME')
-  shape = tf.pack([tf.mul(batch_size, attn_length), attention_filters])
+  shape = tf.pack([tf.mul(batch_size, time_steps), attention_filters])
   conv = tf.reshape(conv, shape)
   z = tf.matmul(conv, u)
-  z = tf.reshape(z, tf.pack([batch_size, attn_length, 1, attn_size]))
+  z = tf.reshape(z, tf.pack([batch_size, time_steps, 1, attn_size]))
 
   y = linear_unsafe(state, attn_size, True)
   y = tf.reshape(y, [-1, 1, 1, attn_size])
 
-  k = get_variable_unsafe('W_{}'.format(name), [1, 1, attn_size, attn_size])
-  f = tf.nn.conv2d(hidden, k, [1, 1, 1, 1], 'SAME')
+  k = get_variable_unsafe('W_{}'.format(name), [attn_size, attn_size])
+
+  # dot product between tensors needs reshaping
+  hidden = tf.reshape(hidden, tf.pack([tf.mul(batch_size, time_steps), attn_size]))
+  f = tf.matmul(hidden, k)
+  f = tf.reshape(f, tf.pack([batch_size, time_steps, 1, attn_size]))
 
   v = get_variable_unsafe('V_{}'.format(name), [attn_size])
   s = f + y + z
@@ -220,7 +228,6 @@ def local_attention(state, prev_weights, hidden_states, encoder, **kwargs):
     low = pt - encoder.attention_window_size
     high = pt + encoder.attention_window_size
 
-    # FIXME: is this really more efficient than global attention?
     mlow = tf.to_float(idx < low)
     mhigh =  tf.to_float(idx > high)
     m = mlow + mhigh
@@ -233,6 +240,7 @@ def local_attention(state, prev_weights, hidden_states, encoder, **kwargs):
 
     # we have to use this mask thing, because the slice operation
     # does not work with batch dependent indices
+    # hopefully softmax is more efficient with sparse vectors
     weights = tf.nn.softmax(e * mask)
 
     sigma = encoder.attention_window_size / 2
@@ -267,9 +275,8 @@ def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
   return tf.concat(1, ds), list(weights)
 
 
-def decoder(decoder_inputs, initial_state, decoder,
-            decoder_input_length=None, output_projection=None, dropout=None,
-            feed_previous=False, parallel_iterations=32, **kwargs):
+def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, output_projection=None, dropout=None,
+            feed_previous=0.0, **kwargs):
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -313,16 +320,17 @@ def decoder(decoder_inputs, initial_state, decoder,
       emb_prev = tf.nn.embedding_lookup(embedding, prev_symbol)
       return emb_prev
 
-    loop_function = extract_argmax_and_embed if feed_previous else None
+    if embedding is not None:
+      time_steps = tf.shape(decoder_inputs)[0]
+      batch_size = tf.shape(decoder_inputs)[1]
+      flat_inputs = tf.reshape(decoder_inputs, [tf.mul(batch_size, time_steps)])
+      flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
+      decoder_inputs = tf.reshape(flat_inputs, tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
 
-    fn = lambda x: tf.nn.embedding_lookup(embedding, x)
-    decoder_inputs = tf.map_fn(fn, decoder_inputs, dtype=tf.float32)
-
-    # if initial_state.get_shape()[1] == cell.state_size:
-    #   state = initial_state
-    # else:
-    # TODO: optional
-    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    if initial_state.get_shape()[1] == cell.state_size:
+      state = initial_state
+    else:
+      state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     sequence_length = decoder_input_length
     if sequence_length is not None:
@@ -335,7 +343,6 @@ def decoder(decoder_inputs, initial_state, decoder,
     input_shape = tf.shape(decoder_inputs)
     time_steps = input_shape[0]
     batch_size = input_shape[1]
-    output_size = cell.output_size   # FIXME  (when output_projection is None)
     state_size = cell.state_size
 
     zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
@@ -347,14 +354,11 @@ def decoder(decoder_inputs, initial_state, decoder,
     def _time_step(time, state, output_ta_t, state_ta_t):
       input_t = input_ta.read(time)
       # restore some shape information
+      r = tf.random_uniform([])
+      input_t = tf.cond(tf.logical_and(time > 0, r < feed_previous),
+                        lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
+                        lambda: input_t)
       input_t.set_shape(decoder_inputs.get_shape()[1:])
-
-      if loop_function is not None:
-        input_t = tf.cond(time > 0,
-                          lambda: tf.stop_gradient(loop_function(output_ta_t.read(time - 1))),
-                          lambda: input_t)
-
-      # TODO: optional
       x = linear_unsafe([input_t], input_t.get_shape()[1], True)
       call_cell = lambda: unsafe_decorator(cell)(x, state)
 
@@ -374,7 +378,6 @@ def decoder(decoder_inputs, initial_state, decoder,
 
       state_ta_t = state_ta_t.write(time, new_state)
 
-      # TODO: optional
       if output_projection is not None:
         with tf.variable_scope('output_projection'):
           output = linear_unsafe([output], output_size, True)
@@ -471,7 +474,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     input_shape = tf.shape(decoder_inputs)
     time_steps = input_shape[0]
     batch_size = input_shape[1]
-    # output_size = cell.output_size   # FIXME  (when output_projection is None)
     state_size = cell.state_size
 
     zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
@@ -493,14 +495,11 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     def _time_step(time, state, attns, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
       input_t = input_ta.read(time)
       # restore some shape information
-      input_t.set_shape(decoder_inputs.get_shape()[1:])
-
       r = tf.random_uniform([])
-
       input_t = tf.cond(tf.logical_and(time > 0, r < feed_previous),
                         lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
                         lambda: input_t)
-
+      input_t.set_shape(decoder_inputs.get_shape()[1:])
       x = linear_unsafe([input_t, attns], input_t.get_shape()[1], True)
       call_cell = lambda: unsafe_decorator(cell)(x, state)
 
@@ -544,9 +543,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     return outputs, decoder_states, attention_weights
 
 
-def beam_search_decoder(decoder_input, state, attention_states, encoders, decoder,
+def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder,
                         attention_weights=None, output_projection=None,
                         initial_state_attention=False, dropout=None, **kwargs):
+  # FIXME: only works with attention
+  # FIXME: only works with initial_state_attention set to True
+  # FIXME: doesn't work with convolutional attention
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -587,8 +589,10 @@ def beam_search_decoder(decoder_input, state, attention_states, encoders, decode
     hidden_states = [tf.expand_dims(states, 2) for states in attention_states]
     attention_ = functools.partial(multi_attention, hidden_states=hidden_states, encoders=encoders)
 
-    if state.get_shape()[1] != cell.state_size:  # FIXME: broken with beam-search decoder
-      state = linear_unsafe(state, cell.state_size, False, scope='initial_state_projection')
+    state = initial_state
+    if state.get_shape()[1] != cell.state_size:
+      state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    first_state = state
 
     batch_size = tf.shape(decoder_input)[0]
 
@@ -610,43 +614,27 @@ def beam_search_decoder(decoder_input, state, attention_states, encoders, decode
     else:
       with tf.variable_scope('attention_output_projection'):
         output = linear_unsafe([cell_output, attns], output_size, True)
-    return output, state, attention_weights
+
+    return output, first_state, state, attention_weights
 
 
 def sequence_loss(logits, targets, weights,
                   average_across_timesteps=True, average_across_batch=True,
                   softmax_loss_function=None, name=None):
   with tf.op_scope([logits, targets, weights], name, "sequence_loss"):
-
-    time = tf.constant(0, dtype=tf.int32, name="time")
     time_steps = tf.shape(targets)[0]
+    batch_size = tf.shape(targets)[1]
 
-    logits_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(logits)[0]).unpack(logits)
-    targets_ta = tf.TensorArray(dtype=tf.int32, size=tf.shape(targets)[0]).unpack(targets)
-    weights_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(weights)[0]).unpack(weights)
-    log_perp_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
+    logits_ = tf.reshape(logits, tf.pack([time_steps * batch_size, logits.get_shape()[2].value]))
+    targets_ = tf.reshape(targets, tf.pack([time_steps * batch_size]))
 
-    def _time_step(time, log_perp_ta_t):
-      logit = logits_ta.read(time)
-      target = targets_ta.read(time)
-      weight = weights_ta.read(time)
+    if softmax_loss_function is None:
+      crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_, targets_)
+    else:
+      crossent = softmax_loss_function(logits_, targets_)
 
-      if softmax_loss_function is None:
-        crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(logit, target)
-      else:
-        crossent = softmax_loss_function(logit, target)
-      log_perp_ta_t = log_perp_ta_t.write(time, crossent * weight)
-      return time + 1, log_perp_ta_t
-
-    _, log_perp_final = tf.while_loop(
-      cond=lambda time, *_: time < time_steps,
-      body=_time_step,
-      loop_vars=(time, log_perp_ta),
-      parallel_iterations=1,
-      swap_memory=False)
-
-    log_perp = log_perp_final.pack()
-    log_perp = tf.reduce_sum(log_perp, 0)
+    crossent = tf.reshape(crossent, tf.pack([time_steps, batch_size]))
+    log_perp = tf.reduce_sum(crossent * weights, 0)
 
     if average_across_timesteps:
       total_size = tf.reduce_sum(weights, 0)

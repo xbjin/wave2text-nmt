@@ -31,6 +31,9 @@ class BaseTranslationModel(object):
     except IOError:
       scores = []
 
+    if any(step_ >= step for _, step_ in scores):
+      utils.warn('inconsistent bleu-scores.txt file')
+
     best_scores = sorted(scores, reverse=True)[:self.keep_best]
 
     if any(score_ < score for score_, _ in best_scores) or not best_scores:
@@ -127,7 +130,7 @@ class TranslationModel(BaseTranslationModel):
     if self.buckets is not None:
       self.batch_iterator = utils.bucket_iterator(train_set, self.batch_size, self.buckets)
     else:
-      self.batch_iterator = utils.sorted_batch_iterator(train_set, self.batch_size, read_ahead=20)
+      self.batch_iterator = utils.sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
     
     utils.debug('reading development data')
     dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs,

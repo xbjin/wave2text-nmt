@@ -143,10 +143,11 @@ class Seq2SeqModel(object):
       decoder_inputs=self.decoder_inputs, feed_previous=1.0, **parameters
     )
 
-    self.beam_output, self.beam_decoder_state, self.beam_attention_weights = decoders.beam_search_decoder(
-       decoder_input=self.decoder_input, attention_states=self.attention_states, state=self.encoder_state,
-       **parameters
-    )
+    self.beam_output, self.beam_first_state, self.beam_next_state, self.beam_attention_weights = \
+      decoders.beam_search_decoder(
+        decoder_input=self.decoder_input, attention_states=self.attention_states,
+        initial_state=self.encoder_state, **parameters
+      )
 
     self.loss = decoders.sequence_loss(logits=self.outputs, targets=self.targets,
                                        weights=self.target_weights,
@@ -270,10 +271,14 @@ class Seq2SeqModel(object):
     hypotheses = [[]]
     scores = np.zeros([1], dtype=np.float32)
 
+    # for initial state projection
+    state = [session_.run(self.beam_first_state, {self.encoder_state: state_})
+             for session_, state_ in zip(session, state)]
+
     for _ in range(self.max_output_len):
       # each session/model has its own input and output
       input_feed = [{
-          self.encoder_state: state_,
+          self.beam_first_state: state_,
           self.decoder_input: decoder_input  # in beam-search decoder, we only feed the first input
         } for state_ in state]
 
@@ -286,8 +291,7 @@ class Seq2SeqModel(object):
       # FIXME
       # output_feed = [self.beam_search_outputs,
       #                self.decoder_states[0]] + self.attention_weights[1]
-      output_feed = [self.beam_output, self.beam_decoder_state]
-
+      output_feed = [self.beam_output, self.beam_next_state]
       res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
       # decoder_output, decoder_state, attention_weights = zip(*[(res_[0], res_[1], res_[2:]) for res_ in res])
       decoder_output, decoder_state = zip(*[(res_[0], res_[1]) for res_ in res])
