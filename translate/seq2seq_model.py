@@ -143,11 +143,10 @@ class Seq2SeqModel(object):
       decoder_inputs=self.decoder_inputs, feed_previous=1.0, **parameters
     )
 
-    self.beam_output, self.beam_first_state, self.beam_next_state, self.beam_attention_weights = \
-      decoders.beam_search_decoder(
-        decoder_input=self.decoder_input, attention_states=self.attention_states,
-        initial_state=self.encoder_state, **parameters
-      )
+    (self.beam_output, self.beam_first_state, self.beam_next_state,
+     self.beam_first_attn_weights, self.beam_next_attn_weights) = decoders.beam_search_decoder(
+      decoder_input=self.decoder_input, attention_states=self.attention_states,
+      initial_state=self.encoder_state, **parameters)
 
     self.loss = decoders.sequence_loss(logits=self.outputs, targets=self.targets,
                                        weights=self.target_weights,
@@ -262,7 +261,10 @@ class Seq2SeqModel(object):
     res = [session_.run(output_feed, input_feed) for session_ in session]
     state, attention_states = zip(*[(res_[0], res_[1:]) for res_ in res])
 
-    # attention_weights = [[np.zeros([1, size]) for size in encoder_sizes] for _ in session]
+    # attention_weights = [[np.zeros([1, encoder.size]) for i in range(self.encoders)] for _ in session]
+
+    attention_weights = [[np.zeros([1, states_.shape[1]]) for states_ in states] for states in attention_states]
+
     decoder_input = decoder_inputs[0]  # GO symbol
 
     finished_hypotheses = []
@@ -282,19 +284,22 @@ class Seq2SeqModel(object):
           self.decoder_input: decoder_input  # in beam-search decoder, we only feed the first input
         } for state_ in state]
 
-      # for input_feed_, attention_states_, attention_weights_ in zip(input_feed, attention_states, attention_weights):
-      for input_feed_, attention_states_ in zip(input_feed, attention_states):
+      for input_feed_, attention_states_, attention_weights_ in zip(input_feed, attention_states, attention_weights):
         for i in range(self.encoder_count):
           input_feed_[self.attention_states[i]] = attention_states_[i]
+          input_feed_[self.beam_first_attn_weights[i]] = attention_weights_[i]
+          # input_feed_[self.beam_attention_weights[i]]
           # input_feed_[self.attention_weights[0][i]] = attention_weights_[i]
 
       # FIXME
       # output_feed = [self.beam_search_outputs,
       #                self.decoder_states[0]] + self.attention_weights[1]
-      output_feed = [self.beam_output, self.beam_next_state]
+      import pdb; pdb.set_trace()
+      output_feed = [self.beam_output, self.beam_next_state] + self.beam_next_attn_weights
       res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
       # decoder_output, decoder_state, attention_weights = zip(*[(res_[0], res_[1], res_[2:]) for res_ in res])
-      decoder_output, decoder_state = zip(*[(res_[0], res_[1]) for res_ in res])
+
+      decoder_output, decoder_state, attention_weights = zip(*[(res_[0], res_[1], res_[2:]) for res_ in res])
 
       # hypotheses, list of tokens ids of shape (beam_size, previous_len)
       # decoder_output, shape=(beam_size, trg_vocab_size)

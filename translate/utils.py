@@ -11,9 +11,8 @@ import math
 import logging
 import struct
 import random
-import sys
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple
 from contextlib import contextmanager
 from itertools import izip
 
@@ -245,7 +244,7 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
   return data_set
 
 
-def batch_iterator(data, batch_size, bucket_count=10, key=None):
+def bucket_batch_iterator(data, batch_size, bucket_count=10, key=None):
   if key is None:
     key = lambda x: x
 
@@ -279,7 +278,7 @@ def cycling_batch_iterator(data, batch_size):
       yield data[i * batch_size:(i + 1) * batch_size]
 
 
-def sorted_batch_iterator(data, batch_size, read_ahead=10):
+def sequential_sorted_batch_iterator(data, batch_size, read_ahead=10):
   iterator = cycling_batch_iterator(data, batch_size)
   while True:
     batches = [next(iterator) for _ in range(read_ahead)]
@@ -287,6 +286,14 @@ def sorted_batch_iterator(data, batch_size, read_ahead=10):
     batches = [data_[i * batch_size:(i + 1) * batch_size] for i in range(read_ahead)]
     for batch in batches:
       yield batch
+
+
+def random_sorted_batch_iterator(data, batch_size):
+  data.sort(key=lambda lines: len(lines[-1]))  # sort according to output length
+  while True:
+    i = random.randrange(len(data) - batch_size)
+    batch = data[i:i + batch_size]
+    yield batch
 
 
 def get_batches(data, batch_size, batches=10):

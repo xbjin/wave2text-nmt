@@ -543,9 +543,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     return outputs, decoder_states, attention_weights
 
 
-def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder,
-                        attention_weights=None, output_projection=None,
-                        initial_state_attention=False, dropout=None, **kwargs):
+def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder, initial_state_attention,
+                        output_projection=None, dropout=None, **kwargs):
   # FIXME: only works with attention
   # FIXME: only works with initial_state_attention set to True
   # FIXME: doesn't work with convolutional attention
@@ -596,26 +595,24 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
 
     batch_size = tf.shape(decoder_input)[0]
 
-    if attention_weights is None:
-      attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
+    attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
     if initial_state_attention:
       attns, attention_weights = attention_(state, prev_weights=attention_weights)
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
-      attns.set_shape([None, attn_size])
 
     input_size = decoder_input.get_shape()[1]
     x = linear_unsafe([decoder_input, attns], input_size, True)
     cell_output, state = unsafe_decorator(cell)(x, state)
-    attns, attention_weights = attention_(state, prev_weights=attention_weights)
+    attns, new_attention_weights = attention_(state, prev_weights=attention_weights)
     if output_projection is None:
       output = cell_output
     else:
       with tf.variable_scope('attention_output_projection'):
         output = linear_unsafe([cell_output, attns], output_size, True)
 
-    return output, first_state, state, attention_weights
+    return output, first_state, state, attention_weights, new_attention_weights
 
 
 def sequence_loss(logits, targets, weights,
