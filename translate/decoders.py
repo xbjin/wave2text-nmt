@@ -7,6 +7,7 @@ import functools
 import math
 from tensorflow.python.ops import rnn_cell, rnn
 from translate.rnn import multi_rnn, multi_bidirectional_rnn
+from collections import namedtuple
 
 
 def unsafe_decorator(fun):
@@ -591,28 +592,27 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     state = initial_state
     if state.get_shape()[1] != cell.state_size:
       state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
-    first_state = state
 
     batch_size = tf.shape(decoder_input)[0]
-
-    attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
+    attn_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
     if initial_state_attention:
-      attns, attention_weights = attention_(state, prev_weights=attention_weights)
+      attns, attn_weights = attention_(state, prev_weights=attn_weights)
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
 
     input_size = decoder_input.get_shape()[1]
     x = linear_unsafe([decoder_input, attns], input_size, True)
-    cell_output, state = unsafe_decorator(cell)(x, state)
-    attns, new_attention_weights = attention_(state, prev_weights=attention_weights)
+    cell_output, new_state = unsafe_decorator(cell)(x, state)
+    new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
     if output_projection is None:
       output = cell_output
     else:
       with tf.variable_scope('attention_output_projection'):
-        output = linear_unsafe([cell_output, attns], output_size, True)
+        output = linear_unsafe([cell_output, new_attns], output_size, True)
 
-    return output, first_state, state, attention_weights, new_attention_weights
+    beam_tensors = namedtuple('beam_tensors', 'state new_state attn_weights new_attn_weights attns new_attns')
+    return output, beam_tensors(state, new_state, attn_weights, new_attn_weights, attns, new_attns)
 
 
 def sequence_loss(logits, targets, weights,

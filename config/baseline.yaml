@@ -21,6 +21,9 @@ optimizer: 'sgd'
 # optimizer: 'adam'
 # learning_rate: 0.001
 # buckets: [[5, 10], [10, 15], [20, 25], [50, 50]]
+attention_filters: 1     # number of convolution filters to use in the attention mechanism
+attention_filter_length: 10  # length of the convolution filters
+initial_state_attention: False
 
 encoders:
   - name: fr

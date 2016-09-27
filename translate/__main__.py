@@ -16,8 +16,7 @@ import argparse
 import subprocess
 import tensorflow as tf
 import yaml
-import random
-import numpy as np
+import shutil
 
 from pprint import pformat
 from operator import itemgetter
@@ -29,6 +28,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
 parser.add_argument('--reset-learning-rate', help='reset learning rate', action='store_true')
+parser.add_argument('--purge', help='remove previous model files', action='store_true')
 
 # Available actions (exclusive)
 parser.add_argument('--decode', help='translate this corpus')
@@ -68,6 +68,15 @@ Benchmarks:
 - analyze the impact of this initial_state_attention parameter
 - replicate the experiments of the WMT paper on neural post-editing
 - test convolutional attention (on speech recognition)
+
+TODO:
+- symbolic beam-search
+- residual connections in encoder and decoder
+- possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers
+- pre-load data on GPU for small datasets
+- mixture of Adam and SGD training
+- decay learning rate after a certain number of epochs
+- possibility to run model on several GPUs
 
 Evaluation with METEOR:
 java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
@@ -159,7 +168,11 @@ def main(args=None):
     device = '/cpu:0'
   elif args.gpu_id is not None:
     device = '/gpu:{}'.format(args.gpu_id)
-  
+
+  if args.purge:
+    utils.log('deleting previous model')
+    shutil.rmtree(config.model_dir, ignore_errors=True)
+
   utils.log('creating model')
   utils.log('using device: {}'.format(device))
 
@@ -169,7 +182,8 @@ def main(args=None):
     # all parameters except source embeddings and bias variables are initialized with this
     # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
     with tf.variable_scope('seq2seq', initializer=initializer):
-      model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode=(args.decode or args.eval), **config)
+      decode_only = args.decode or args.eval  # exempt from creating gradient ops
+      model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():

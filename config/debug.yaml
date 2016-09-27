@@ -22,8 +22,9 @@ dev_prefix: dev.100
 # buckets: [[5, 10], [10, 15], [20, 25], [50, 50]]
 # pooling_avg: True
 # attention_window_size: 4 # if positive, use a local attention mechanism with this window size
-# attention_filters: 1     # number of convolution filters to use in the attention mechanism
-# attention_filter_length: 10  # length of the convolution filters
+attention_filters: 1     # number of convolution filters to use in the attention mechanism
+attention_filter_length: 10  # length of the convolution filters
+initial_state_attention: False
 
 encoders:
   - name: fr

@@ -11,6 +11,7 @@ import math
 import logging
 import struct
 import random
+import numbers
 
 from collections import namedtuple
 from contextlib import contextmanager
@@ -408,3 +409,19 @@ def estimate_lm_score(sequence, ngrams):
     weights = ngrams[order - 2].get(sequence[:-1])
     backoff_weight = weights[1] if weights is not None and len(weights) > 1 else 0.0
     return estimate_lm_score(sequence[1:], ngrams) + backoff_weight
+
+
+def advanced_shape(list_or_array):
+  """
+  Utility function to quickly get the shape of a list of arrays
+  """
+  if isinstance(list_or_array, numbers.Number):
+    return str(type(list_or_array))
+  if isinstance(list_or_array, np.ndarray):
+    return 'array({}, {})'.format(', '.join(map(str, list_or_array.shape)), list_or_array.dtype)
+  elif isinstance(list_or_array, list):
+    return 'list({}, {})'.format(len(list_or_array), advanced_shape(list_or_array[0]))
+  elif isinstance(list_or_array, tuple):
+    return 'tuple({}, {})'.format(len(list_or_array), advanced_shape(list_or_array[0]))
+  else:
+    raise Exception('error: unknown type: {}'.format(type(list_or_array)))
