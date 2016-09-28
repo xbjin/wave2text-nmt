@@ -19,14 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.ops import rnn_cell
 from translate import utils
 from translate import decoders
+from collections import namedtuple
 
 from tensorflow.python.ops import variable_scope
 
@@ -204,13 +203,12 @@ class Seq2SeqModel(object):
     input_feed[self.decoder_inputs] = decoder_inputs
     input_feed[self.targets] = targets
 
-    output_feed = [self.loss]
+    output_feed = {'loss': self.loss}
     if not forward_only:
-      output_feed.append(self.updates)
+      output_feed['updates'] = self.updates
 
-    res = session.run(output_feed, input_feed)
-
-    return res[0]  # loss
+    loss = session.run(output_feed, input_feed)['loss']
+    return loss
 
   def greedy_decoding(self, session, token_ids):
     if self.dropout is not None:
@@ -285,17 +283,19 @@ class Seq2SeqModel(object):
         if attns_ is not None:
           input_feed_[self.beam_tensors.attns] = attns_
 
-      # FIXME
-      # output_feed = [self.beam_search_outputs,
-      #                self.decoder_states[0]] + self.attention_weights[1]
-      output_feed = [self.beam_output, self.beam_tensors.new_state,
-                     self.beam_tensors.new_attns] + self.beam_tensors.new_attn_weights
-      # import pdb; pdb.set_trace()
+      output_feed = namedtuple('beam_output', 'decoder_output decoder_state attns attn_weights')(
+        self.beam_output,
+        self.beam_tensors.new_state,
+        self.beam_tensors.new_attns,
+        self.beam_tensors.new_attn_weights
+      )
 
       res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
-      # decoder_output, decoder_state, attention_weights = zip(*[(res_[0], res_[1], res_[2:]) for res_ in res])
-      decoder_output, decoder_state, attns, attn_weights = zip(*[(res_[0], res_[1], res_[2], res_[3:]) for res_ in res])
-      # import pdb; pdb.set_trace()
+      decoder_output, decoder_state, attns, attn_weights = zip(*[(res_.decoder_output,
+                                                                  res_.decoder_state,
+                                                                  res_.attns,
+                                                                  res_.attn_weights)
+                                                                 for res_ in res])
       # hypotheses, list of tokens ids of shape (beam_size, previous_len)
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)

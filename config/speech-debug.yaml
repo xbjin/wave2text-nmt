@@ -6,7 +6,6 @@ use_lstm: True
 
 data_dir: data/btec_speech
 model_dir: models/speech_debug
-# log_file: models/speech_debug/log.txt
 log_file: null
 
 max_output_len: 25

@@ -70,8 +70,8 @@ Benchmarks:
 - test convolutional attention (on speech recognition)
 
 TODO:
-- symbolic beam-search
 - residual connections in encoder and decoder
+- symbolic beam-search
 - possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers
 - pre-load data on GPU for small datasets
 - mixture of Adam and SGD training
@@ -108,6 +108,11 @@ def main(args=None):
     'you need to specify at least one action (decode, eval, or train)')
   assert args.train or 'tasks' not in args or len(args.tasks) == 1, (
     'you cannot set multiple tasks in decode and eval modes')
+
+
+  if args.purge:
+    utils.log('deleting previous model')
+    shutil.rmtree(config.model_dir, ignore_errors=True)
 
   logging_level = logging.DEBUG if args.verbose else logging.INFO
   # always log to stdout in decoding and eval modes (to avoid overwriting precious train logs)
@@ -168,10 +173,6 @@ def main(args=None):
     device = '/cpu:0'
   elif args.gpu_id is not None:
     device = '/gpu:{}'.format(args.gpu_id)
-
-  if args.purge:
-    utils.log('deleting previous model')
-    shutil.rmtree(config.model_dir, ignore_errors=True)
 
   utils.log('creating model')
   utils.log('using device: {}'.format(device))

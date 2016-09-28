@@ -1,9 +1,7 @@
-# BLEU score of 25 on btec-dev
-# Major differences with model_0:
-# - no buckets (dynamic RNNs)
-# - input layers (applied to the embeddings)
-# - convolutional attention
-# - Adam optimizer (instead of untuned SGD)
+# Differences with model_1:
+# - no softmax sampling (512 samples in model_1)
+# - larger filter in convolutional attention
+# - dropout is now also applied to the input layers
 
 learning_rate_decay_factor: 0.99
 dropout_rate: 0.5
@@ -11,8 +9,8 @@ bidir: True
 use_lstm: True
 
 data_dir: experiments/speech/data
-model_dir: experiments/speech_translation/model_1
-log_file: experiments/speech_translation/model_1/log.txt
+model_dir: experiments/speech_translation/model_2
+log_file: experiments/speech_translation/model_2/log.txt
 
 max_output_len: 25
 max_input_len: 600
@@ -20,6 +18,7 @@ parallel_iterations: 32
 swap_memory: True
 optimizer: 'adam'
 learning_rate: 0.001
+num_samples: 0
 
 encoders:
   - name: feats
@@ -31,7 +30,7 @@ encoders:
     pooling_avg: True
     binary: True
     attention_filters: 1
-    attention_filter_length: 25
+    attention_filter_length: 40
     input_layers: [256, 256]
 
 decoder:

@@ -16,13 +16,8 @@ data_dir: data/btec
 model_dir: models/baseline
 log_file: models/baseline/log.txt
 
-optimizer: 'sgd'
-# attention: False
-# optimizer: 'adam'
-# learning_rate: 0.001
-# buckets: [[5, 10], [10, 15], [20, 25], [50, 50]]
-attention_filters: 1     # number of convolution filters to use in the attention mechanism
-attention_filter_length: 10  # length of the convolution filters
+optimizer: 'adam'
+learning_rate: 0.001
 initial_state_attention: False
 
 encoders:
