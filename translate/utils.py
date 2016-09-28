@@ -290,6 +290,7 @@ def sequential_sorted_batch_iterator(data, batch_size, read_ahead=10):
 
 
 def random_sorted_batch_iterator(data, batch_size):
+  # this iterator is seriously bad (prefer the read_ahead iterator)
   data.sort(key=lambda lines: len(lines[-1]))  # sort according to output length
   while True:
     i = random.randrange(len(data) - batch_size)

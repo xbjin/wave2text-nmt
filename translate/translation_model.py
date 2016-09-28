@@ -130,9 +130,8 @@ class TranslationModel(BaseTranslationModel):
     if self.buckets is not None:
       self.batch_iterator = utils.bucket_iterator(train_set, self.batch_size, self.buckets)
     else:
-      # self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
-      self.batch_iterator = utils.random_sorted_batch_iterator(train_set, self.batch_size)
-    
+      self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
+
     utils.debug('reading development data')
     dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs,
                                  binary_input=self.binary_input, character_level=self.character_level)
