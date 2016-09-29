@@ -4,7 +4,7 @@ learning_rate_decay_factor: 0.95
 dropout_rate: 0.0
 cell_size: 128
 embedding_size: 128
-layers: 1
+layers: 2
 bidir: True
 use_lstm: True
 steps_per_checkpoint: 100
@@ -16,6 +16,7 @@ data_dir: data/btec
 model_dir: models/debug
 log_file: null
 dev_prefix: dev.100
+residual_connections: True
 
 encoders:
   - name: fr

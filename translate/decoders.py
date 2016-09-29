@@ -37,7 +37,7 @@ multi_rnn_unsafe = unsafe_decorator(multi_rnn)
 multi_bidirectional_rnn_unsafe = unsafe_decorator(multi_bidirectional_rnn)
 
 
-def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=None,
+def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=None, residual_connections=False,
                   **kwargs):
   assert len(encoder_inputs) == len(encoders)
   encoder_states = []
@@ -108,7 +108,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
         parameters = dict(
           inputs=encoder_inputs_, sequence_length=sequence_length,
           time_pooling=encoder.time_pooling, pooling_avg=encoder.pooling_avg, dtype=tf.float32,
-          swap_memory=encoder.swap_memory, parallel_iterations=encoder.parallel_iterations
+          swap_memory=encoder.swap_memory, parallel_iterations=encoder.parallel_iterations,
+          residual_connections=residual_connections
         )
 
         if encoder.bidir:

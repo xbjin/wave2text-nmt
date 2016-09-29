@@ -257,6 +257,7 @@ class TranslationModel(BaseTranslationModel):
 
     hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
                   for lines_ in lines]
+
     references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
 
     # score = utils.bleu_score(bleu_script, hypotheses, references)

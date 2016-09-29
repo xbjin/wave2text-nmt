@@ -1,3 +1,4 @@
+# BLEU score of 26, converges really quickly
 # Differences with model_1:
 # - less input features (just MFCC + energy, without derivatives)
 # - dropout is now also applied to the input layers

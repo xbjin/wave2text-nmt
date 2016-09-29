@@ -48,8 +48,9 @@ class Seq2SeqModel(object):
   def __init__(self, encoders, decoder, learning_rate, global_step, max_gradient_norm,
                num_samples=512, dropout_rate=0.0, freeze_variables=None, lm_weight=None,
                max_output_len=50, attention=True, buckets=None, feed_previous=0.0,
-               optimizer='sgd', max_input_len=None, decode_only=False, initial_state_attention=True,
-               **kwargs):
+               optimizer='sgd', max_input_len=None, decode_only=False,
+               initial_state_attention=True, len_normalization=1.0,
+               residual_connections=False, **kwargs):
     self.lm_weight = lm_weight
     self.encoders = encoders
     self.decoder = decoder
@@ -65,6 +66,7 @@ class Seq2SeqModel(object):
     self.max_output_len = max_output_len
     self.max_input_len = max_input_len
     self.buckets = buckets
+    self.len_normalization = len_normalization
 
     # if we use sampled softmax, we need an output projection
     output_projection = None
@@ -125,7 +127,8 @@ class Seq2SeqModel(object):
     parameters = dict(
       encoders=encoders, decoder=decoder,
       dropout=self.dropout, output_projection=output_projection,
-      initial_state_attention=initial_state_attention
+      initial_state_attention=initial_state_attention,
+      residual_connections=residual_connections
     )
 
     self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -230,8 +233,7 @@ class Seq2SeqModel(object):
     outputs = session.run(self.outputs, input_feed)
     return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
 
-  def beam_search_decoding(self, session, token_ids, beam_size, normalize=True, ngrams=None, 
-                           weights=None, reverse_vocab=None):
+  def beam_search_decoding(self, session, token_ids, beam_size, ngrams=None, weights=None, reverse_vocab=None):
     if not isinstance(session, list):
       session = [session]
 
@@ -386,8 +388,8 @@ class Seq2SeqModel(object):
     hypotheses += finished_hypotheses
     scores = np.concatenate([scores, finished_scores])
 
-    if normalize:  # normalize score by length (to encourage longer sentences)
-      scores /= map(len, hypotheses)
+    if self.len_normalization > 0:  # normalize score by length (to encourage longer sentences)
+      scores /= [len(hypothesis) ** self.len_normalization for hypothesis in hypotheses]
 
     # sort best-list by score
     sorted_idx = np.argsort(scores)

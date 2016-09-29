@@ -93,7 +93,7 @@ class MultiTaskModel(BaseTranslationModel):
           # if there is a main task, pick best checkpoint according to its score
           # otherwise use the average score across tasks
           if self.main_task is None:
-            score += ratio * score_  # TODO use ratio
+            score += ratio * score_
           elif model_.name == self.main_task:
             score = score_
 

@@ -10,7 +10,8 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None,
                             initial_state_fw=None, initial_state_bw=None,
                             dtype=None, parallel_iterations=None,
                             swap_memory=False, time_major=False, scope=None,
-                            time_pooling=None, pooling_avg=None, **kwargs):
+                            time_pooling=None, pooling_avg=None,
+                            residual_connections=False, **kwargs):
   if not time_major:
     time_dim = 1
     batch_dim = 0
@@ -46,7 +47,14 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None,
     inputs_bw_reversed = tf.reverse_sequence(
       input=inputs_bw, seq_lengths=sequence_length,
       seq_dim=time_dim, batch_dim=batch_dim)
-    inputs = tf.concat(2, [inputs_fw, inputs_bw_reversed])
+    new_inputs = tf.concat(2, [inputs_fw, inputs_bw_reversed])
+
+    # import pdb; pdb.set_trace()
+    if residual_connections and i < len(cells) - 1:
+      # inputs = new_inputs + inputs
+      inputs = new_inputs
+    else:
+      inputs = new_inputs
 
     if time_pooling and i < len(cells) - 1:
       inputs, sequence_length = apply_time_pooling(inputs, sequence_length, time_pooling[i], pooling_avg)
@@ -59,8 +67,8 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None,
 
 def multi_rnn(cells, inputs, sequence_length=None, initial_state=None,
               dtype=None, parallel_iterations=None, swap_memory=False,
-              time_major=False, scope=None,
-              time_pooling=None, pooling_avg=None, **kwargs):
+              time_major=False, scope=None, time_pooling=None, pooling_avg=None,
+              residual_connections=False, **kwargs):
   name = scope or "MultiRNN"
 
   assert time_pooling is None or len(time_pooling) == len(cells) - 1
@@ -68,11 +76,16 @@ def multi_rnn(cells, inputs, sequence_length=None, initial_state=None,
   output_states = []
   for i, cell in enumerate(cells):
     with tf.variable_scope('{}_{}'.format(name, i)) as scope:
-      inputs, output_state = rnn.dynamic_rnn(
+      new_inputs, output_state = rnn.dynamic_rnn(
         cell=cell, inputs=inputs, sequence_length=sequence_length,
         initial_state=initial_state, dtype=dtype,
         parallel_iterations=parallel_iterations, swap_memory=swap_memory,
         time_major=time_major, scope=scope)
+
+    if residual_connections and i < len(cells) - 1:
+      inputs = new_inputs + inputs
+    else:
+      inputs = new_inputs
 
     if time_pooling and i < len(cells) - 1:
       inputs, sequence_length = apply_time_pooling(inputs, sequence_length, time_pooling[i], pooling_avg)
