@@ -333,6 +333,7 @@ class Seq2SeqModel(object):
       if ngrams is not None:
         weights = [(1 - lm_weight) / len(session)] * len(session) + [lm_weight]
 
+      # FIXME: divide by zero encountered in log
       scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output] +
                                              [lm_score], axis=0, weights=weights)
       scores_ = scores_.flatten()
