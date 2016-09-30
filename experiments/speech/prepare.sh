@@ -55,6 +55,14 @@ scripts/audio-features-cat.py ${data_dir}/train.{Helene,Fabienne,Loic,Marion,Mic
 cat ${data_dir}/train.{fr,fr,fr,fr,fr,fr} > ${data_dir}/train-concat.fr
 cat ${data_dir}/train.{en,en,en,en,en,en} > ${data_dir}/train-concat.en
 
+# symbolic links for back-compatibility
+cur_dir=`pwd`
+cd ${data_dir}
+ln -s train.Agnes41 train.feats41
+ln -s dev.Agnes41 dev.feats41
+ln -s test1.Agnes41 test1.feats41
+ln -s test2.Agnes41 test2.feats41
+cd ${cur_dir}
 
 # samples for debugging
 head -n 100 ${data_dir}/dev.en > ${data_dir}/dev.100.en
