@@ -12,6 +12,7 @@ import logging
 import struct
 import random
 import numbers
+import math
 
 from collections import namedtuple
 from contextlib import contextmanager
@@ -219,7 +220,7 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
   character_level = character_level or [False] * len(extensions)
 
   for counter, inputs in enumerate(line_reader, 1):
-    if max_size and counter >= max_size:
+    if max_size and counter > max_size:
       break
     if counter % 100000 == 0:
       log("  reading data line {}".format(counter))
@@ -298,9 +299,13 @@ def random_sorted_batch_iterator(data, batch_size):
     yield batch
 
 
-def get_batches(data, batch_size, batches=10):
-  max_batches = len(data) // batch_size
-  if batches == -1 or batches > max_batches:
+def get_batches(data, batch_size, batches=10, allow_smaller=True):
+  if not allow_smaller:
+    max_batches = len(data) // batch_size
+  else:
+    max_batches = int(math.ceil(len(data) / batch_size))
+
+  if batches < 1 or batches > max_batches:
     batches = max_batches
 
   random.shuffle(data)

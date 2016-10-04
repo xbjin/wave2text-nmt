@@ -6,6 +6,7 @@ learning_rate_decay_factor: 0.99  # decay the learning rate by this factor when 
 max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.0        # dropout rate applied to the RNN units
 max_train_size: 0        # maximum size of the training data (0 for unlimited)
+max_dev_size: 0          # maximum size of the dev data
 steps_per_checkpoint: 500   # number of updates between each checkpoint
 steps_per_eval: 2000     # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping

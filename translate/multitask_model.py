@@ -37,12 +37,12 @@ class MultiTaskModel(BaseTranslationModel):
     super(MultiTaskModel, self).__init__(name, checkpoint_dir, keep_best)
 
   def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
-            max_train_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
+            max_train_size=None, max_dev_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
     utils.log('reading training and development data')
 
     self.global_step = 0
     for model in self.models:
-      model.read_data(max_train_size)
+      model.read_data(max_train_size, max_dev_size)
       # those parameters are used to track the progress of each task
       model.loss, model.time, model.steps = 0, 0, 0
       model.previous_losses = []

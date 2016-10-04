@@ -122,7 +122,7 @@ class TranslationModel(BaseTranslationModel):
     self.batch_iterator = None
     self.dev_batches = None
 
-  def read_data(self, max_train_size):
+  def read_data(self, max_train_size, max_dev_size):
     utils.debug('reading training data')
     train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs,
                                    max_size=max_train_size, binary_input=self.binary_input,
@@ -133,10 +133,10 @@ class TranslationModel(BaseTranslationModel):
       self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
 
     utils.debug('reading development data')
-    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs,
+    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs, max_size=max_dev_size,
                                  binary_input=self.binary_input, character_level=self.character_level)
     # subset of the dev set whose perplexity is periodically evaluated
-    self.dev_batches = utils.get_batches(dev_set, batch_size=self.batch_size, batches=10)
+    self.dev_batches = utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1)
 
   def _read_vocab(self):
     # don't try reading vocabulary for encoders that take pre-computed features
@@ -149,9 +149,9 @@ class TranslationModel(BaseTranslationModel):
     self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
 
   def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
-            max_train_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
+            max_train_size=None, max_dev_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
     utils.log('reading training and development data')
-    self.read_data(max_train_size)
+    self.read_data(max_train_size, max_dev_size)
     previous_losses = []
 
     loss, time_, steps = 0, 0, 0
@@ -200,8 +200,12 @@ class TranslationModel(BaseTranslationModel):
 
   def eval_step(self, sess):
     # compute perplexity on dev set
-    # eval_loss = self.model.step(sess, next(self.dev_batch_iterator), forward_only=True)
-    eval_loss = sum(self.model.step(sess, batch, forward_only=True) for batch in self.dev_batches) / len(self.dev_batches)
+    eval_loss = sum(
+      self.model.step(sess, batch, forward_only=True) * len(batch)
+      for batch in self.dev_batches
+    )
+    eval_loss /= sum(map(len, self.dev_batches))
+
     perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
     utils.log("  eval: perplexity {:.2f}".format(perplexity))
 
