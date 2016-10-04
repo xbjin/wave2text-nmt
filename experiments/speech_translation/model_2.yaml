@@ -21,7 +21,7 @@ learning_rate: 0.001
 num_samples: 0
 
 encoders:
-  - name: feats
+  - name: feats143
     embedding_size: 123
     vocab_size: 0
     cell_size: 256

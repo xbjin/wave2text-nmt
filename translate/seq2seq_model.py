@@ -31,7 +31,7 @@ from tensorflow.python.ops import variable_scope
 
 
 class Seq2SeqModel(object):
-  """Sequence-to-sequence model with attention and for multiple buckets.
+  """Sequence-to-sequence model with attention.
 
   This class implements a multi-layer recurrent neural network as encoder,
   and an attention-based decoder. This is the same as the model described in

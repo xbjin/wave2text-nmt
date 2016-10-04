@@ -189,7 +189,7 @@ def main(args=None):
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
   for var in tf.all_variables():
-    utils.log('  {} shape {}'.format(var.name, var.get_shape()))
+    utils.log('  {} {}'.format(var.name, var.get_shape()))
 
   tf_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
   tf_config.gpu_options.allow_growth = config.allow_growth

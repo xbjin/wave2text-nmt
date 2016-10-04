@@ -37,7 +37,7 @@ multi_rnn_unsafe = unsafe_decorator(multi_rnn)
 multi_bidirectional_rnn_unsafe = unsafe_decorator(multi_bidirectional_rnn)
 
 
-def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=None, residual_connections=False,
+def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, residual_connections=False,
                   **kwargs):
   assert len(encoder_inputs) == len(encoders)
   encoder_states = []
@@ -55,7 +55,6 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
         initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
         embedding_shape = [encoder.vocab_size, encoder.embedding_size]
 
-      # TODO: shared name
       with tf.device('/cpu:0'):
         embedding = get_variable_unsafe('embedding_{}'.format(encoder.name), shape=embedding_shape,
                                         initializer=initializer)
@@ -64,9 +63,6 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
       embedding_variables.append(None)
 
   with tf.variable_scope('multi_encoder'):
-    if encoder_input_length is None:
-      encoder_input_length = [None] * len(encoders)
-
     for i, encoder in enumerate(encoders):
       with tf.variable_scope(encoder.name):
         encoder_inputs_ = encoder_inputs[i]
@@ -103,7 +99,6 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length=None, dropout=N
 
           encoder_inputs_ = tf.reshape(flat_inputs, tf.pack([batch_size, time_steps, flat_inputs.get_shape()[1].value]))
 
-        # encoder_inputs_ = tf.transpose(encoder_inputs_, perm=[1, 0, 2])   # put batch_size first
         sequence_length = encoder_input_length_
         parameters = dict(
           inputs=encoder_inputs_, sequence_length=sequence_length,
@@ -213,8 +208,7 @@ def local_attention(state, prev_weights, hidden_states, encoder, **kwargs):
   state_size = state.get_shape()[1].value
 
   with tf.variable_scope('attention'):
-    # S = hidden_states.get_shape()[1].value   # source length
-    S = tf.cast(attn_length, dtype=tf.float32)
+    S = tf.cast(attn_length, dtype=tf.float32)  # source length
 
     wp = get_variable_unsafe('Wp_{}'.format(encoder.name), [state_size, state_size])
     vp = get_variable_unsafe('vp_{}'.format(encoder.name), [state_size, 1])
@@ -279,6 +273,7 @@ def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
 
 def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, output_projection=None, dropout=None,
             feed_previous=0.0, **kwargs):
+  # TODO: code refactoring with `attention_decoder`
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -547,9 +542,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
 def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder, initial_state_attention,
                         output_projection=None, dropout=None, **kwargs):
-  # FIXME: only works with attention
-  # FIXME: only works with initial_state_attention set to True
-  # FIXME: doesn't work with convolutional attention
+  # TODO: code refactoring with `attention_decoder`
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
