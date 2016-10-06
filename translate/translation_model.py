@@ -67,14 +67,13 @@ class BaseTranslationModel(object):
 
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
-    if not reset:
-      blacklist = ('learning_rate', 'dropout_keep_prob') if reset_learning_rate else ()
-      load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
-
     if checkpoints is not None:  # load partial checkpoints
       for checkpoint in checkpoints:  # checkpoint files to load
         load_checkpoint(sess, None, checkpoint,
                         blacklist=('learning_rate', 'global_step', 'dropout_keep_prob'))
+    elif not reset:
+      blacklist = ('learning_rate', 'dropout_keep_prob') if reset_learning_rate else ()
+      load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
 
   def save(self, sess):
     save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
@@ -209,18 +208,22 @@ class TranslationModel(BaseTranslationModel):
     perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
     utils.log("  eval: perplexity {:.2f}".format(perplexity))
 
-  def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
+  def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False, align_mode=False):
+    if align_mode and (beam_size > 1 or len(src_sentences) > 1):
+      raise NotImplementedError
+
     # TODO: merge this with read_dataset
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence, char_level in zip(self.vocabs, src_sentences, self.character_level)]
 
     if beam_size <= 1 and not isinstance(sess, list):
-      trg_token_ids = self.model.greedy_decoding(sess, token_ids)
+      trg_token_ids, attn_weights = self.model.greedy_decoding(sess, token_ids)
     else:
       hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
                                                            reverse_vocab=self.trg_vocab.reverse)
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
+      attn_weights = None   # alignment not supported yet with beam-search
 
     # remove EOS symbols from output
     if utils.EOS_ID in trg_token_ids:
@@ -229,6 +232,20 @@ class TranslationModel(BaseTranslationModel):
     trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
                   for i in trg_token_ids]
 
+    if align_mode:
+      weights = attn_weights.squeeze()[2:len(trg_tokens)+2,::-1].T
+      max_len = weights.shape[0]
+
+      # import pdb; pdb.set_trace()
+
+      if self.binary_input:
+        # src_tokens = map(str, range(1, max_len + 1))
+        src_tokens = None
+      else:
+        src_tokens = src_sentences[0].split()[:max_len]
+
+      utils.heatmap(src_tokens, trg_tokens, weights.T)
+
     if remove_unk:
       trg_tokens = [token for token in trg_tokens if token != utils._UNK]
 
@@ -236,6 +253,16 @@ class TranslationModel(BaseTranslationModel):
       return ''.join(trg_tokens)
     else:
       return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
+
+  def align(self, sess, output=None, **kwargs):
+    for i, lines in enumerate(utils.read_lines(self.filenames.test[:-1], self.src_ext, self.binary_input), 1):
+      self._decode_sentence(sess, lines, beam_size=1, remove_unk=False, align_mode=True)
+
+      import matplotlib.pyplot as plt
+      if output is None:
+        plt.show()
+      else:
+        plt.savefig('{}.{}.jpg'.format(output, i))
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
     utils.log('starting decoding')

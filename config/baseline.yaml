@@ -14,11 +14,11 @@ max_output_len: 50
 
 data_dir: data/btec
 model_dir: models/baseline
-log_file: models/baseline/log.txt
+# log_file: models/baseline/log.txt
 
 optimizer: 'adam'
 learning_rate: 0.001
-initial_state_attention: False
+initial_state_attention: True
 
 encoders:
   - name: fr

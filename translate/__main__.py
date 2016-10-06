@@ -32,6 +32,7 @@ parser.add_argument('--purge', help='remove previous model files', action='store
 
 # Available actions (exclusive)
 parser.add_argument('--decode', help='translate this corpus')
+parser.add_argument('--align', help='translate and show alignments by the attention mechanism')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
 parser.add_argument('config', help='load a configuration file in the YAML format')
@@ -72,6 +73,8 @@ Benchmarks:
 
 TODO:
 - residual connections in encoder and decoder
+- possibility to read stream instead of corpus when decoding
+- reading files as a stream when decoding (useful for large files)
 - symbolic beam-search
 - possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers
 - pre-load data on GPU for small datasets
@@ -95,7 +98,7 @@ def main(args=None):
     config = utils.AttrDict(yaml.safe_load(f))
     # command-line parameters have higher precedence than config file
     for k, v in vars(args).items():
-      if v is not None and (k in default_config or k in ('decode', 'eval', 'output')):
+      if v is not None and (k in default_config or k in ('decode', 'eval', 'output', 'align')):
         config[k] = v
 
     # set default values for parameters that are not defined
@@ -105,11 +108,10 @@ def main(args=None):
   # enforce parameter constraints
   assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
     'steps-per-eval should be a multiple of steps-per-checkpoint')
-  assert args.decode or args.eval or args.train, (
-    'you need to specify at least one action (decode, eval, or train)')
+  assert args.decode or args.eval or args.train or args.align, (
+    'you need to specify at least one action (decode, eval, align, or train)')
   assert args.train or 'tasks' not in args or len(args.tasks) == 1, (
     'you cannot set multiple tasks in decode and eval modes')
-
 
   if args.purge:
     utils.log('deleting previous model')
@@ -184,7 +186,7 @@ def main(args=None):
     # all parameters except source embeddings and bias variables are initialized with this
     # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
     with tf.variable_scope('seq2seq', initializer=initializer):
-      decode_only = args.decode or args.eval  # exempt from creating gradient ops
+      decode_only = args.decode or args.eval or args.align # exempt from creating gradient ops
       model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
@@ -203,7 +205,8 @@ def main(args=None):
       sess = [tf.Session() for _ in config.checkpoints]
       for sess_, checkpoint in zip(sess, config.checkpoints):
         model.initialize(sess_, [checkpoint], reset=True)
-    elif not config.checkpoints and not args.reset and (args.eval or args.decode) and os.path.isfile(best_checkpoint):
+    elif not config.checkpoints and not args.reset and (args.eval or args.decode or args.align) \
+            and os.path.isfile(best_checkpoint):
       # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
       # try to load the best checkpoint)
       model.initialize(sess, [best_checkpoint], reset=True)
@@ -219,6 +222,8 @@ def main(args=None):
       model.decode(sess, **config)
     elif args.eval:
       model.evaluate(sess, on_dev=False, **config)
+    elif args.align:
+      model.align(sess, **config)
     elif args.train:
       eval_output = os.path.join(config.model_dir, 'eval')
       try:

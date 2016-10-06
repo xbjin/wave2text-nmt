@@ -515,7 +515,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
         output, new_state = call_cell()
 
       state_ta_t = state_ta_t.write(time, new_state)
-      attn_weights_ta_t.write(time, attn_weights)
+      attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
       new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
       if output_projection is not None:
@@ -534,6 +534,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     outputs = output_final_ta.pack()
     decoder_states = state_final_ta.pack()
+
+    # shape (time_steps, encoders, batch_size, input_time_steps)
     attention_weights = tf.concat(0, [tf.expand_dims(attention_weights, 0),
                                       attn_weights_final.pack()])
 

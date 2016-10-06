@@ -230,8 +230,8 @@ class Seq2SeqModel(object):
     input_feed[self.targets] = targets
     input_feed[self.feed_previous] = 1.0
 
-    outputs = session.run(self.outputs, input_feed)
-    return [int(np.argmax(logit, axis=1)) for logit in outputs]  # greedy decoder
+    outputs, attn_weights = session.run([self.outputs, self.attention_weights], input_feed)
+    return [int(np.argmax(logit, axis=1)) for logit in outputs], attn_weights  # greedy decoder
 
   def beam_search_decoding(self, session, token_ids, beam_size, ngrams=None, weights=None, reverse_vocab=None):
     if not isinstance(session, list):

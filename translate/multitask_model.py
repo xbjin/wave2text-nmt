@@ -103,14 +103,20 @@ class MultiTaskModel(BaseTranslationModel):
         utils.log('finished training')
         return
 
-  def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
+  def decode(self, *args, **kwargs):
     if len(self.models) == 1:
-      return self.models[0].decode(sess, beam_size, output, remove_unk)
+      return self.models[0].decode(*args, **kwargs)
     else:
       raise NotImplementedError
 
-  def evaluate(self, sess, beam_size, scoring_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+  def evaluate(self, *args, **kwargs):
     if len(self.models) == 1:
-      return self.models[0].evaluate(sess, beam_size, scoring_script, on_dev, output, remove_unk)
+      return self.models[0].evaluate(*args, **kwargs)
+    else:
+      raise NotImplementedError
+
+  def align(self, *args, **kwargs):
+    if len(self.models) == 1:
+      return self.models[0].align(*args, **kwargs)
     else:
       raise NotImplementedError

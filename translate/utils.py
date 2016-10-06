@@ -17,6 +17,7 @@ import math
 from collections import namedtuple
 from contextlib import contextmanager
 from itertools import izip
+import matplotlib.pyplot as plt
 
 # special vocabulary symbols
 _PAD = "_PAD"
@@ -114,6 +115,7 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
   embedding_path = os.path.join(data_dir, embedding_prefix)
   test_path = kwargs.get('decode')  # `decode` or `eval` or None
   test_path = test_path if test_path is not None else kwargs.get('eval')
+  test_path = test_path if test_path is not None else kwargs.get('align')
   lm_path = lm_file
 
   train = ['{}.{}'.format(train_path, ext) for ext in extensions]
@@ -431,3 +433,29 @@ def advanced_shape(list_or_array):
     return 'tuple({}, {})'.format(len(list_or_array), advanced_shape(list_or_array[0]))
   else:
     raise Exception('error: unknown type: {}'.format(type(list_or_array)))
+
+
+def heatmap(xlabels=None, ylabels=None, weights=None, output_file=None):
+  xlabels = xlabels or []
+  ylabels = ylabels or []
+
+  xlabels = [label.decode('utf-8') for label in xlabels]
+  ylabels = [label.decode('utf-8') for label in ylabels]
+
+  fig, ax = plt.subplots()
+  ax.pcolor(weights, cmap=plt.cm.Blues)
+  ax.set_frame_on(False)
+
+  # put the major ticks at the middle of each cell
+  ax.set_yticks(np.arange(weights.shape[0]) + 0.5, minor=False)
+  ax.set_xticks(np.arange(weights.shape[1]) + 0.5, minor=False)
+  ax.invert_yaxis()
+  ax.xaxis.tick_top()
+
+  ax.set_xticklabels(xlabels, minor=False)
+  ax.set_yticklabels(ylabels, minor=False)
+  plt.xticks(rotation=90)
+
+  ax.grid(False)
+  ax = plt.gca()  # turn off all the ticks
+  return fig
