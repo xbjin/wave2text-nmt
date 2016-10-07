@@ -16,6 +16,9 @@ optimizer: 'adam'
 learning_rate: 0.001
 max_steps: 20000
 
+train_prefix: train.concat
+dev_prefix: dev.Michel
+
 encoders:
   - name: feats41
     embedding_size: 41
