@@ -48,6 +48,10 @@ scripts/extract-audio-features.py ${raw_audio_dir}/dev-Helene/* ${data_dir}/dev.
 scripts/extract-audio-features.py ${raw_audio_dir}/dev-Loic/* ${data_dir}/dev.Loic.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test1-Agnes/* ${data_dir}/test1.Agnes.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test2-Agnes/* ${data_dir}/test2.Agnes.feats41 --no-derivatives
+scripts/extract-audio-features.py ${raw_audio_dir}/test1-Michel/* ${data_dir}/test1.Michel.feats41 --no-derivatives
+scripts/extract-audio-features.py ${raw_audio_dir}/test2-Michel/* ${data_dir}/test2.Michel.feats41 --no-derivatives
+scripts/extract-audio-features.py ${raw_audio_dir}/test1-Marion/* ${data_dir}/test1.Marion.feats41 --no-derivatives
+scripts/extract-audio-features.py ${raw_audio_dir}/test2-Marion/* ${data_dir}/test2.Marion.feats41 --no-derivatives
 
 scripts/prepare-data.py ${raw_data_dir}/btec-dev-concat fr en ${data_dir} --max 0 --lowercase --output dev --mode prepare
 scripts/prepare-data.py ${raw_data_dir}/btec-test1 fr en ${data_dir} --max 0 --lowercase --output test1 --mode prepare
