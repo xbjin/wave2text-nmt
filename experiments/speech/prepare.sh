@@ -53,6 +53,13 @@ scripts/extract-audio-features.py ${raw_audio_dir}/test2-Michel/* ${data_dir}/te
 scripts/extract-audio-features.py ${raw_audio_dir}/test1-Marion/* ${data_dir}/test1.Marion.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test2-Marion/* ${data_dir}/test2.Marion.feats41 --no-derivatives
 
+# real spoken data
+scripts/extract-audio-features.py ${raw_audio_dir}/btec-Laurent/* ${data_dir}/btec.Laurent.feats41 --no-derivatives
+scripts/extract-audio-features.py ${raw_audio_dir}/btec-Margaux/* ${data_dir}/btec.Margaux.feats41 --no-derivatives
+
+scripts/prepare-data.py ${raw_data_dir}/btec-Laurent en ${data_dir} --max 0 --lowercase --output btec.Laurent --mode prepare
+scripts/prepare-data.py ${raw_data_dir}/btec-Margaux en ${data_dir} --max 0 --lowercase --output btec.Margaux --mode prepare
+
 scripts/prepare-data.py ${raw_data_dir}/btec-dev-concat fr en ${data_dir} --max 0 --lowercase --output dev --mode prepare
 scripts/prepare-data.py ${raw_data_dir}/btec-test1 fr en ${data_dir} --max 0 --lowercase --output test1 --mode prepare
 scripts/prepare-data.py ${raw_data_dir}/btec-test1 fr en ${data_dir} --max 0 --lowercase --output test2 --mode prepare
