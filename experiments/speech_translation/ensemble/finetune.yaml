@@ -1,0 +1,59 @@
+
+learning_rate_decay_factor: 0.99
+dropout_rate: 0.5
+bidir: True
+use_lstm: True
+
+data_dir: experiments/speech/data
+model_dir: experiments/speech_translation/ensemble/finetune
+log_file: experiments/speech_translation/ensemble/finetune/log.txt
+
+max_output_len: 25
+max_input_len: 600
+parallel_iterations: 32
+swap_memory: True
+optimizer: 'adam'
+learning_rate: 0.001
+max_steps: 30000
+
+steps_per_checkpoint: 200
+steps_per_eval: 1000
+
+checkpoints: ['experiments/speech_translation/ensemble/model_1/checkpoints/best']
+train_prefix: train.Laurent+Margaux
+dev_prefix: train.Laurent+Margaux
+
+encoders:
+  - name: feats41
+    embedding_size: 41
+    vocab_size: 0
+    cell_size: 256
+    layers: 3
+    time_pooling: [2, 2]
+    pooling_avg: True
+    binary: True
+    attention_filters: 1
+    attention_filter_length: 25
+    input_layers: [256, 256]
+
+decoder:
+    name: en
+    vocab_size: 7186
+    cell_size: 256
+    embedding_size: 256
+    layers: 2
+
+freeze_variables: ['seq2seq/decoder_en/.*', 'seq2seq/embedding_en']
+
+tasks:
+  - name: task1
+    train_prefix: train.Laurent+Margaux
+    dev_prefix: train.Laurent+Margaux
+    ratio: 0.5
+
+  - name: task2
+    train_prefix: train.concat
+    dev_prefix: dev
+    ratio: 0.5
+
+main_task: task1

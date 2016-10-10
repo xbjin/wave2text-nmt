@@ -138,19 +138,21 @@ def main(args=None):
   ]
   # TODO: independent model dir for each task
   task_parameters = ['data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio',
-                     'lm_file', 'learning_rate', 'learning_rate_decay_factor', 'max_output_len']
+                     'lm_file', 'learning_rate', 'learning_rate_decay_factor', 'max_output_len',
+                     'encoders', 'decoder']
 
   # in case no task is defined (standard mono-task settings), define a "main" task
   config.setdefault('tasks', [{'encoders': config.encoders, 'decoder': config.decoder, 'name': 'main', 'ratio': 1.0}])
   config.tasks = [utils.AttrDict(task) for task in config.tasks]
 
   for task in config.tasks:
+    for parameter in task_parameters:
+      task.setdefault(parameter, config.get(parameter))
+
     # convert dicts to AttrDicts for convenience
     task.encoders = [utils.AttrDict(encoder) for encoder in task.encoders]
     task.decoder = utils.AttrDict(task.decoder)
 
-    for parameter in task_parameters:
-      task.setdefault(parameter, config.get(parameter))
     for encoder_or_decoder in task.encoders + [task.decoder]:
       # move parameters all the way up from base level to encoder/decoder level:
       # default values for encoder/decoder parameters can be defined at the task level and base level

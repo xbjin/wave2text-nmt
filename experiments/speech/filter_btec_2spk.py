@@ -8,18 +8,24 @@ import wave
 import os
 import shutil
 import struct
+import random
 
-txt_filename = 'data/raw/btec.fr-en/btec-Margaux.en'
-feats_filename = 'data/raw/btec.fr-en/btec-Margaux.feats41'
+data_dir = 'data/btec'
+speaker = 'Margaux'
+txt_filename = os.path.join(data_dir, 'btec.{}.en'.format(speaker))
+feats_filename = os.path.join(data_dir, 'btec.{}.feats41'.format(speaker))
+
 test_size = 400
 
-train_file = 'data/raw/btec.fr-en/train.en'
-test_files = ['data/raw/btec.fr-en/dev.en', 'data/raw/btec.fr-en/test1.en', 'data/raw/btec.fr-en/test2.en']
+train_file = os.path.join(data_dir, 'train.en')
+test_files = [os.path.join(data_dir, 'dev.en'),
+              os.path.join(data_dir, 'test1.en'),
+              os.path.join(data_dir, 'test2.en')]
 
-test_txt_output = 'data/raw/btec.fr-en/test-Margaux.en'
-test_feats_output = 'data/raw/btec.fr-en/test-Margaux.feats41'
-train_txt_output = 'data/raw/btec.fr-en/train-Margaux.en'
-train_feats_output = 'data/raw/btec.fr-en/train-Margaux.feats41'
+test_txt_output = os.path.join(data_dir, 'test.{}.en'.format(speaker))
+test_feats_output = os.path.join(data_dir, 'test.{}.feats41'.format(speaker))
+train_txt_output = os.path.join(data_dir, 'train.{}.en'.format(speaker))
+train_feats_output = os.path.join(data_dir, 'train.{}.feats41'.format(speaker))
 
 train_lines = set(line for line in open(train_file))
 test_lines = set(line for filename in test_files for line in open(filename))
@@ -37,6 +43,7 @@ with open(txt_filename) as txt_file, open(feats_filename, 'rb') as feats_file:
     n = frames * dim
     feats = struct.unpack('f' * n, feats_file.read(4 * n))
 
+    data = struct.pack('i' + 'f' * n, frames, *feats)
     if line in train_lines and line in test_lines:
       l = lines_in_both
     elif line in train_lines:
@@ -46,7 +53,7 @@ with open(txt_filename) as txt_file, open(feats_filename, 'rb') as feats_file:
     else:
       l = lines_in_neither
 
-    l.append((line, feats))
+    l.append((line, data))
 
 total = sum(map(len, [lines_in_train, lines_in_test, lines_in_both, lines_in_neither]))
 print('{}/{} lines in both train and test (discarded)'.format(len(lines_in_both), total))
@@ -56,6 +63,10 @@ print('{}/{} lines in neither'.format(len(lines_in_neither), total))
 
 
 i = max(0, 400 - len(lines_in_train))
+
+g = random.Random(42)
+g.shuffle(lines_in_neither)
+
 write_to_test = lines_in_train + lines_in_neither[:i]
 write_to_train = lines_in_test + lines_in_neither[i:]
 
@@ -64,8 +75,9 @@ with open(test_txt_output, 'w') as test_txt_file, open(train_txt_output, 'w') as
     test_feats_file.write(struct.pack('ii', len(write_to_test), dim))
     train_feats_file.write(struct.pack('ii', len(write_to_train), dim))
 
-    # TODO: write feats
     for line, feats in write_to_test:
+      test_feats_file.write(feats)
       test_txt_file.write(line)
     for line, feats in write_to_train:
+      train_feats_file.write(feats)
       train_txt_file.write(line)

@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+import re
 
 from translate import utils
 from translate import decoders
@@ -157,11 +158,15 @@ class Seq2SeqModel(object):
         freeze_variables = []
 
       variable_names = set([var.name for var in tf.all_variables()])
-      assert all(name in variable_names for name in freeze_variables), \
-        'you cannot freeze a variable that doesn\'t exist'
+      # assert all(name in variable_names for name in freeze_variables), \
+      #   'you cannot freeze a variable that doesn\'t exist'
 
       # compute gradient only for variables that are not frozen
-      params = [var for var in tf.trainable_variables() if var.name not in freeze_variables]
+      # params = [var for var in tf.trainable_variables() if var.name not in freeze_variables]
+      frozen_parameters = [var.name for var in tf.trainable_variables()
+                           if any(re.match(var_, var.name) for var_ in freeze_variables)]
+      utils.debug('frozen parameters: {}'.format(', '.join(frozen_parameters)))
+      params = [var for var in tf.trainable_variables() if var.name not in frozen_parameters]
 
       if optimizer.lower() == 'adadelta':
         opt = tf.train.AdadeltaOptimizer(learning_rate=learning_rate)
