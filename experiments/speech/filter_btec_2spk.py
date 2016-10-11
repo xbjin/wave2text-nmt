@@ -11,7 +11,7 @@ import struct
 import random
 
 data_dir = 'data/btec'
-speaker = 'Margaux'
+speaker = 'Laurent'
 txt_filename = os.path.join(data_dir, 'btec.{}.en'.format(speaker))
 feats_filename = os.path.join(data_dir, 'btec.{}.feats41'.format(speaker))
 

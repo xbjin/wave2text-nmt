@@ -77,7 +77,7 @@ class MultiTaskModel(BaseTranslationModel):
 
           model_.previous_losses.append(loss_)
           model_.loss, model_.time, model_.steps = 0, 0, 0
-          model_.eval_step(sess)
+          # model_.eval_step(sess)
 
         self.save(sess)
 

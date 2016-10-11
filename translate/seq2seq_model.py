@@ -165,7 +165,8 @@ class Seq2SeqModel(object):
       # params = [var for var in tf.trainable_variables() if var.name not in freeze_variables]
       frozen_parameters = [var.name for var in tf.trainable_variables()
                            if any(re.match(var_, var.name) for var_ in freeze_variables)]
-      utils.debug('frozen parameters: {}'.format(', '.join(frozen_parameters)))
+      if frozen_parameters:
+        utils.debug('frozen parameters: {}'.format(', '.join(frozen_parameters)))
       params = [var for var in tf.trainable_variables() if var.name not in frozen_parameters]
 
       if optimizer.lower() == 'adadelta':

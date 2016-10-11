@@ -16,12 +16,10 @@ optimizer: 'adam'
 learning_rate: 0.001
 max_steps: 30000
 
-steps_per_checkpoint: 200
-steps_per_eval: 1000
+steps_per_checkpoint: 250
+steps_per_eval: 500
 
 checkpoints: ['experiments/speech_translation/ensemble/model_1/checkpoints/best']
-train_prefix: train.Laurent+Margaux
-dev_prefix: train.Laurent+Margaux
 
 encoders:
   - name: feats41
@@ -48,7 +46,7 @@ freeze_variables: ['seq2seq/decoder_en/.*', 'seq2seq/embedding_en']
 tasks:
   - name: task1
     train_prefix: train.Laurent+Margaux
-    dev_prefix: train.Laurent+Margaux
+    dev_prefix: test.Laurent
     ratio: 0.5
 
   - name: task2

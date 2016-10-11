@@ -236,8 +236,6 @@ class TranslationModel(BaseTranslationModel):
       weights = attn_weights.squeeze()[2:len(trg_tokens)+2,::-1].T
       max_len = weights.shape[0]
 
-      # import pdb; pdb.set_trace()
-
       if self.binary_input:
         # src_tokens = map(str, range(1, max_len + 1))
         src_tokens = None
@@ -324,9 +322,9 @@ def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
       variables = [var for var in tf.all_variables() if var.name in var_names]
   else:
     variables = tf.all_variables()
-  
+
   # remove variables from blacklist
-  variables = [var for var in variables if not any(var.name.startswith(prefix) for prefix in blacklist)]
+  variables = [var for var in variables if not any(prefix in var.name for prefix in blacklist)]
 
   if filename is not None:
     utils.log('reading model parameters from {}'.format(filename))

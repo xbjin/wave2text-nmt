@@ -11,40 +11,34 @@ layers: 1
 bidir: False
 use_lstm: False
 
-data_dir: data/btec_multi
+data_dir: data/btec
 model_dir: models/debug-multi-task
 log_file: null
 
 # encoders and decoders with the same names are shared across tasks
 # their parameters should be the same (vocab_size, cell_size, etc.)
+
+encoders:
+  - name: feats41
+    embedding_size: 41
+    vocab_size: 0
+    cell_size: 128
+    layers: 1
+    binary: True
+
+decoder:
+  name: en
+  vocab_size: 7186
+
 tasks:
   - name: task1
-    train_prefix: train
+    train_prefix: train.1000
     dev_prefix: dev.100
-    vocab_prefix: vocab
     ratio: 0.5
-    encoders:
-      - name: fr
-        vocab_size: 9218
-        buckets: [ 5, 10, 20, 50]
-    decoder:
-        name: en
-        vocab_size: 7186
-        buckets: [10, 15, 25, 50]
 
   - name: task2
-    train_prefix: train2
-    dev_prefix: dev2.100
-    vocab_prefix: vocab2
+    train_prefix: dev.100
+    dev_prefix: dev.100
     ratio: 0.5
-    encoders:
-      - name: fr
-        vocab_size: 9218
-        buckets: [ 5, 10, 20, 50]
-    decoder:
-        name: fr
-        vocab_size: 9218
-        buckets: [10, 15, 25, 50]
 
-main_task: task1    # task that matters (checkpoints are sorted according to this task's scores)
-load_embeddings: fr
+main_task: task2    # task that matters (checkpoints are sorted according to this task's scores)
