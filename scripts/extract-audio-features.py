@@ -6,15 +6,19 @@ import numpy as np
 # sys.path.append('~/.yaafe/python_packages')
 import yaafelib
 import struct
+import sys
 from collections import Counter
 # import scipy.io.wavfile as wav
 
 parser = argparse.ArgumentParser()
-parser.add_argument('filenames', nargs='+', help='audio filenames corresponding to one line each')
-parser.add_argument('output_file', help='output file')
+parser.add_argument('filenames', nargs='*', help='audio filenames corresponding to one line each')
+parser.add_argument('--output', dest='output_file', help='output file')
 parser.add_argument('--no-derivatives', action='store_false', dest='derivatives')
 
 args = parser.parse_args()
+
+if not args.filenames:
+  args.filenames = [filename.strip() for filename in sys.stdin]
 
 parameters = dict(
   step_size=160,    # corresponds to 10 ms (at 16 kHz)
@@ -61,6 +65,10 @@ with open(args.output_file, 'wb') as f:
     frames, dim = feats.shape
     frame_counter[frames] += 1
     feats = feats.flatten()
+
+    if frames == 0:
+        print(frames, dim, filename)
+        raise Exception
 
     if i == 0:  # write header
       f.write(struct.pack('ii', len(args.filenames), dim))
