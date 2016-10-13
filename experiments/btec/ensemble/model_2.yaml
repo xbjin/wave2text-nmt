@@ -7,8 +7,9 @@ bidir: True
 use_lstm: True
 steps_per_checkpoint: 1000
 steps_per_eval: 2000
-max_steps: 50000
+max_steps: 30000
 optimizer: 'adam'
+learning_rate: 0.001
 
 data_dir: experiments/btec/data
 model_dir: experiments/btec/ensemble/model_2

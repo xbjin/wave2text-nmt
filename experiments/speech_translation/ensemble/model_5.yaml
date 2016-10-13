@@ -1,5 +1,4 @@
 
-learning_rate_decay_factor: 0.99
 dropout_rate: 0.5
 bidir: True
 use_lstm: True
@@ -17,7 +16,7 @@ learning_rate: 0.001
 max_steps: 20000
 
 train_prefix: train.concat
-dev_prefix: dev.Michel
+dev_prefix: dev.Agnes
 
 encoders:
   - name: feats41
