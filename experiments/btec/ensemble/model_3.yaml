@@ -1,25 +1,23 @@
 
-learning_rate_decay_factor: 0.95
 dropout_rate: 0.5
 cell_size: 256
 embedding_size: 256
 layers: 2
 bidir: True
 use_lstm: True
-data_dir: experiments/btec/data
 steps_per_checkpoint: 1000
 steps_per_eval: 2000
 max_steps: 50000
+optimizer: 'adam'
 
+data_dir: experiments/btec/data
 model_dir: experiments/btec/ensemble/model_3
 log_file: experiments/btec/ensemble/model_3/log.txt
 
 encoders:
   - name: fr
     vocab_size: 9218
-    buckets: [ 5, 10, 20, 50]
 
 decoder:
     name: en
     vocab_size: 7186
-    buckets: [10, 15, 25, 50]

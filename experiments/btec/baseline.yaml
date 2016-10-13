@@ -1,24 +1,19 @@
 # BTEC (fr -> en) baseline
 
-learning_rate_decay_factor: 0.95
 dropout_rate: 0.5
 cell_size: 256
 embedding_size: 256
 layers: 2
 bidir: True
 use_lstm: True
-steps_per_checkpoint: 500
+steps_per_checkpoint: 1000
 steps_per_eval: 2000
 max_steps: 50000
-max_output_len: 50
+optimizer: 'adam'
 
 data_dir: experiments/btec/data
 model_dir: experiments/btec/baseline
 log_file: experiments/btec/baseline/log.txt
-
-optimizer: 'adam'
-learning_rate: 0.001
-initial_state_attention: False
 
 encoders:
   - name: fr

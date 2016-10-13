@@ -1,13 +1,11 @@
-# Train on multiple speakers, evaluate on different speaker
 
-learning_rate_decay_factor: 0.99
 dropout_rate: 0.5
 bidir: True
 use_lstm: True
 
 data_dir: experiments/speech/data
-model_dir: experiments/speech_translation/model_5
-log_file: experiments/speech_translation/model_5/log.txt
+model_dir: experiments/speech_translation/baseline_multi
+log_file: experiments/speech_translation/baseline_multi/log.txt
 
 max_output_len: 25
 max_input_len: 600
@@ -15,11 +13,10 @@ parallel_iterations: 32
 swap_memory: True
 optimizer: 'adam'
 learning_rate: 0.001
+max_steps: 20000
 
-train_prefix: train.concat  # concat everyone except Agnes
-dev_prefix: dev.Michel
-# dev is Agnes
-initial_state_attention: True
+train_prefix: train.concat  # Michel, Philippe, Loic, Marion, Helene, Fabienne
+dev_prefix: dev.Agnes       # different speaker
 
 encoders:
   - name: feats41

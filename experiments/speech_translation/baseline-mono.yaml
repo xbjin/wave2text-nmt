@@ -1,16 +1,11 @@
-# Differences with model_1:
-# - no softmax sampling (512 samples in model_1)
-# - larger filter in convolutional attention
-# - dropout is now also applied to the input layers
 
-learning_rate_decay_factor: 0.99
 dropout_rate: 0.5
 bidir: True
 use_lstm: True
 
 data_dir: experiments/speech/data
-model_dir: experiments/speech_translation/model_2
-log_file: experiments/speech_translation/model_2/log.txt
+model_dir: experiments/speech_translation/baseline_mono
+log_file: experiments/speech_translation/baseline_mono/log.txt
 
 max_output_len: 25
 max_input_len: 600
@@ -18,11 +13,14 @@ parallel_iterations: 32
 swap_memory: True
 optimizer: 'adam'
 learning_rate: 0.001
-num_samples: 0
+max_steps: 20000
+
+train_prefix: train.Michel   # 'easy' mono-speaker settings
+dev_prefix: dev.Michel
 
 encoders:
-  - name: feats143
-    embedding_size: 123
+  - name: feats41
+    embedding_size: 41
     vocab_size: 0
     cell_size: 256
     layers: 3
@@ -30,7 +28,7 @@ encoders:
     pooling_avg: True
     binary: True
     attention_filters: 1
-    attention_filter_length: 40
+    attention_filter_length: 25
     input_layers: [256, 256]
 
 decoder:
