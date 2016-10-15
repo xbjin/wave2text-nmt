@@ -13,6 +13,7 @@ import struct
 import random
 import numbers
 import math
+import wave
 
 from collections import namedtuple
 from contextlib import contextmanager
@@ -110,7 +111,7 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
                   embedding_prefix, lm_file=None, **kwargs):
   """ Last extension is always assumed to be the target """
   train_path = os.path.join(data_dir, train_prefix)
-  dev_path = os.path.join(data_dir, dev_prefix)
+  dev_path = [os.path.join(data_dir, prefix) for prefix in dev_prefix]
   vocab_path = os.path.join(data_dir, vocab_prefix)
   embedding_path = os.path.join(data_dir, embedding_prefix)
   test_path = kwargs.get('decode')  # `decode` or `eval` or None
@@ -119,7 +120,7 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
   lm_path = lm_file
 
   train = ['{}.{}'.format(train_path, ext) for ext in extensions]
-  dev = ['{}.{}'.format(dev_path, ext) for ext in extensions]
+  dev = [['{}.{}'.format(path, ext) for ext in extensions] for path in dev_path]
   vocab = ['{}.{}'.format(vocab_path, ext) for ext in extensions]
   embeddings = ['{}.{}'.format(embedding_path, ext) for ext in extensions]
   test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
@@ -459,3 +460,10 @@ def heatmap(xlabels=None, ylabels=None, weights=None, output_file=None):
   ax.grid(False)
   ax = plt.gca()  # turn off all the ticks
   return fig
+
+def plot_waveform(filename):
+  from pylab import fromstring
+  with wave.open(filename) as f:
+    sound_info = f.readframes(-1)
+    sound_info = fromstring(sound_info, 'int16')
+    plt.plot(sound_info)

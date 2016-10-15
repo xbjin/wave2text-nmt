@@ -39,7 +39,7 @@ initial_state_attention: True
 data_dir: data
 model_dir: model
 train_prefix: train      # name of the training corpus
-dev_prefix: dev          # name of the development cor
+dev_prefix: [dev]        # names of the development corpora
 vocab_prefix: vocab      # name of the vocabulary files
 embedding_prefix: vectors  # name of the embeddings files
 checkpoints: []          # list of checkpoints to load (in this specific order) after main checkpoint

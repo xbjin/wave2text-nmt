@@ -132,10 +132,12 @@ class TranslationModel(BaseTranslationModel):
       self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
 
     utils.debug('reading development data')
-    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs, max_size=max_dev_size,
-                                 binary_input=self.binary_input, character_level=self.character_level)
+    dev_sets = [
+      utils.read_dataset(dev, self.extensions, self.vocabs, max_size=max_dev_size,
+                         binary_input=self.binary_input, character_level=self.character_level)
+      for dev in self.filenames.dev]
     # subset of the dev set whose perplexity is periodically evaluated
-    self.dev_batches = utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1)
+    self.dev_batches = [utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1) for dev_set in dev_sets]
 
   def _read_vocab(self):
     # don't try reading vocabulary for encoders that take pre-computed features
@@ -186,9 +188,9 @@ class TranslationModel(BaseTranslationModel):
 
       if steps_per_eval and scoring_script and global_step % steps_per_eval == 0:
         output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
-        score = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
-                              remove_unk=remove_unk)
-        self.manage_best_checkpoints(global_step, score)
+        scores = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
+                               remove_unk=remove_unk)
+        self.manage_best_checkpoints(global_step, scores[0])  # FIXME: for now, only first dev set is used
 
       if 0 < max_steps < global_step:
         utils.log('finished training')
@@ -199,14 +201,15 @@ class TranslationModel(BaseTranslationModel):
 
   def eval_step(self, sess):
     # compute perplexity on dev set
-    eval_loss = sum(
-      self.model.step(sess, batch, forward_only=True) * len(batch)
-      for batch in self.dev_batches
-    )
-    eval_loss /= sum(map(len, self.dev_batches))
+    for dev_batches in self.dev_batches:
+      eval_loss = sum(
+        self.model.step(sess, batch, forward_only=True) * len(batch)
+        for batch in dev_batches
+      )
+      eval_loss /= sum(map(len, dev_batches))
 
-    perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-    utils.log("  eval: perplexity {:.2f}".format(perplexity))
+      perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+      utils.log("  eval: perplexity {:.2f}".format(perplexity))
 
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False, align_mode=False):
     if align_mode and (beam_size > 1 or len(src_sentences) > 1):
@@ -281,24 +284,29 @@ class TranslationModel(BaseTranslationModel):
     if self.ngrams is not None:
       utils.debug('using external language model')
 
-    filenames_ = self.filenames.dev if on_dev else self.filenames.test
-    lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
+    filenames = self.filenames.dev if on_dev else [self.filenames.test]
+    bleu_scores = []
 
-    hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
-                  for lines_ in lines]
+    for filenames_ in filenames:
+      lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
 
-    references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
+      hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
+                    for lines_ in lines]
 
-    # score = utils.bleu_score(bleu_script, hypotheses, references)
-    score = utils.scoring(scoring_script, hypotheses, references)
-    summary = score if self.name is None else '{} {}'.format(self.name, score)
-    utils.log(summary)
+      references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
 
-    if output is not None:
-      with open(output, 'w') as f:
-        f.writelines(line + '\n' for line in hypotheses)
+      # score = utils.bleu_score(bleu_script, hypotheses, references)
+      score = utils.scoring(scoring_script, hypotheses, references)
+      summary = score if self.name is None else '{} {}'.format(self.name, score)
+      utils.log(summary)
 
-    return score.bleu
+      if output is not None:
+        with open(output, 'w') as f:
+          f.writelines(line + '\n' for line in hypotheses)
+
+      bleu_scores.append(score.bleu)
+
+    return bleu_scores
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
