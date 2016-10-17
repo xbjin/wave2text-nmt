@@ -115,7 +115,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
             cells=[cell] * encoder.layers, **parameters)
 
         if encoder.bidir:  # map to correct output dimension
-          # there is not tensor product operation, so we need to flatten our tensor to
+          # there is no tensor product operation, so we need to flatten our tensor to
           # a matrix to perform a dot product
           shape = tf.shape(encoder_outputs_)
           batch_size = shape[0]
@@ -323,7 +323,9 @@ def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, o
 
     if dropout is not None:
       initial_state = tf.nn.dropout(initial_state, dropout)
-    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    state = tf.nn.tanh(
+      linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    )
 
     sequence_length = decoder_input_length
     if sequence_length is not None:
@@ -449,7 +451,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     if dropout is not None:
       initial_state = tf.nn.dropout(initial_state, dropout)
-    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    state = tf.nn.tanh(
+      linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    )
 
     sequence_length = decoder_input_length
     if sequence_length is not None:
@@ -482,8 +486,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
       attns.set_shape([None, attn_size])
 
-    # import pdb; pdb.set_trace()
-
     def _time_step(time, state, attns, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
       input_t = input_ta.read(time)
       # restore some shape information
@@ -511,6 +513,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
       state_ta_t = state_ta_t.write(time, new_state)
       attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
+      # using decoder state instead of decoder output in the attention model seems
+      # to give much better results
       new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
       # TODO: this projection greatly affects results, figure out why
@@ -581,7 +585,9 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
 
     if dropout is not None:
       initial_state = tf.nn.dropout(initial_state, dropout)
-    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    state = tf.nn.tanh(
+      linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    )
 
     batch_size = tf.shape(decoder_input)[0]
     attn_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]

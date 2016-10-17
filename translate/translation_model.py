@@ -211,22 +211,18 @@ class TranslationModel(BaseTranslationModel):
       perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
       utils.log("  eval: perplexity {:.2f}".format(perplexity))
 
-  def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False, align_mode=False):
-    if align_mode and (beam_size > 1 or len(src_sentences) > 1):
-      raise NotImplementedError
-
+  def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
     # TODO: merge this with read_dataset
     token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                  if vocab is not None else sentence   # when `sentence` is not a sentence but a vector...
                  for vocab, sentence, char_level in zip(self.vocabs, src_sentences, self.character_level)]
 
     if beam_size <= 1 and not isinstance(sess, list):
-      trg_token_ids, attn_weights = self.model.greedy_decoding(sess, token_ids)
+      trg_token_ids, _ = self.model.greedy_decoding(sess, token_ids)
     else:
       hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
                                                            reverse_vocab=self.trg_vocab.reverse)
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
-      attn_weights = None   # alignment not supported yet with beam-search
 
     # remove EOS symbols from output
     if utils.EOS_ID in trg_token_ids:
@@ -234,18 +230,6 @@ class TranslationModel(BaseTranslationModel):
 
     trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
                   for i in trg_token_ids]
-
-    if align_mode:
-      weights = attn_weights.squeeze()[2:len(trg_tokens)+2,::-1].T
-      max_len = weights.shape[0]
-
-      if self.binary_input[0]:
-        # src_tokens = map(str, range(1, max_len + 1))
-        src_tokens = None
-      else:
-        src_tokens = src_sentences[0].split()[:max_len]
-
-      utils.heatmap(src_tokens, trg_tokens, weights.T)
 
     if remove_unk:
       trg_tokens = [token for token in trg_tokens if token != utils._UNK]
@@ -265,8 +249,6 @@ class TranslationModel(BaseTranslationModel):
                    for vocab, sentence, char_level in zip(self.vocabs, lines, self.character_level)]
 
       _, weights = self.model.step(sess, data=[token_ids], forward_only=True, align=True)
-      # self._decode_sentence(sess, lines, beam_size=1, remove_unk=False, align_mode=True)
-
       trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
                     for i in token_ids[-1]]
 
@@ -274,7 +256,6 @@ class TranslationModel(BaseTranslationModel):
       max_len = weights.shape[0]
 
       if self.binary_input[0]:
-        # src_tokens = map(str, range(1, max_len + 1))
         src_tokens = None
       else:
         src_tokens = lines[0].split()[:max_len]

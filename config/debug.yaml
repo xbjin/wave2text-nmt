@@ -1,6 +1,5 @@
 # Really small model on BTEC for debugging purposes
 
-learning_rate_decay_factor: 0.95
 dropout_rate: 0.0
 cell_size: 128
 embedding_size: 128
@@ -16,6 +15,11 @@ data_dir: data/btec
 model_dir: models/debug
 log_file: null
 dev_prefix: dev.100
+num_samples: 512
+
+optimizer: 'adam'
+learning_rate: 0.001
+initial_state_attention: False
 
 encoders:
   - name: fr
@@ -24,5 +28,3 @@ encoders:
 decoder:
     name: en
     vocab_size: 7186
-
-num_samples: 0

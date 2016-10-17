@@ -1,6 +1,5 @@
 # BTEC (fr -> en) baseline
 
-learning_rate_decay_factor: 0.95
 dropout_rate: 0.5
 cell_size: 256
 embedding_size: 256
@@ -13,12 +12,12 @@ max_steps: 50000
 
 data_dir: data/btec
 model_dir: models/baseline
-# log_file: models/baseline/log.txt
-num_samples: 0
+log_file: models/baseline/log.txt
+num_samples: 512
 
 optimizer: 'adam'
 learning_rate: 0.001
-initial_state_attention: True
+initial_state_attention: False
 
 encoders:
   - name: fr
