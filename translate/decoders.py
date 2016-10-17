@@ -298,12 +298,9 @@ def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, o
     cell = rnn_cell.MultiRNNCell([cell] * decoder.layers)
 
   if output_projection is None:
-    cell = rnn_cell.OutputProjectionWrapper(cell, decoder.vocab_size)
     output_size = decoder.vocab_size
   else:
     output_size = cell.output_size
-
-  if output_projection is not None:
     proj_weights = tf.convert_to_tensor(output_projection[0], dtype=tf.float32)
     proj_weights.get_shape().assert_is_compatible_with([cell.output_size, decoder.vocab_size])
     proj_biases = tf.convert_to_tensor(output_projection[1], dtype=tf.float32)
@@ -324,10 +321,9 @@ def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, o
       flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
       decoder_inputs = tf.reshape(flat_inputs, tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
 
-    if initial_state.get_shape()[1] == cell.state_size:
-      state = initial_state
-    else:
-      state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    if dropout is not None:
+      initial_state = tf.nn.dropout(initial_state, dropout)
+    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     sequence_length = decoder_input_length
     if sequence_length is not None:
@@ -375,9 +371,8 @@ def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, o
 
       state_ta_t = state_ta_t.write(time, new_state)
 
-      if output_projection is not None:
-        with tf.variable_scope('output_projection'):
-          output = linear_unsafe([output], output_size, True)
+      with tf.variable_scope('output_projection'):
+        output = linear_unsafe([output], output_size, True)
 
       output_ta_t = output_ta_t.write(time, output)
       return time + 1, new_state, output_ta_t, state_ta_t
@@ -423,12 +418,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     cell = rnn_cell.MultiRNNCell([cell] * decoder.layers)
 
   if output_projection is None:
-    cell = rnn_cell.OutputProjectionWrapper(cell, decoder.vocab_size)
     output_size = decoder.vocab_size
   else:
     output_size = cell.output_size
-
-  if output_projection is not None:
     proj_weights = tf.convert_to_tensor(output_projection[0], dtype=tf.float32)
     proj_weights.get_shape().assert_is_compatible_with([cell.output_size, decoder.vocab_size])
     proj_biases = tf.convert_to_tensor(output_projection[1], dtype=tf.float32)
@@ -455,10 +447,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     hidden_states = [tf.expand_dims(states, 2) for states in attention_states]
     attention_ = functools.partial(multi_attention, hidden_states=hidden_states, encoders=encoders)
 
-    if initial_state.get_shape()[1] == cell.state_size:
-      state = initial_state
-    else:
-      state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    if dropout is not None:
+      initial_state = tf.nn.dropout(initial_state, dropout)
+    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     sequence_length = decoder_input_length
     if sequence_length is not None:
@@ -480,6 +471,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps).unpack(decoder_inputs)
     attn_weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
 
+    # TODO: do attention on cell output instead of cell state
+
     if attention_weights is None:
       attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
@@ -488,6 +481,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     else:
       attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
       attns.set_shape([None, attn_size])
+
+    # import pdb; pdb.set_trace()
 
     def _time_step(time, state, attns, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
       input_t = input_ta.read(time)
@@ -518,9 +513,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
       new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
-      if output_projection is not None:
-        with tf.variable_scope('attention_output_projection'):
-          output = linear_unsafe([output, new_attns], output_size, True)
+      # TODO: this projection greatly affects results, figure out why
+      with tf.variable_scope('attention_output_projection'):
+        output = linear_unsafe([output, new_attns], output_size, True)
 
       output_ta_t = output_ta_t.write(time, output)
       return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t
@@ -568,7 +563,6 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     cell = rnn_cell.MultiRNNCell([cell] * decoder.layers)
 
   if output_projection is None:
-    cell = rnn_cell.OutputProjectionWrapper(cell, decoder.vocab_size)
     output_size = decoder.vocab_size
   else:
     output_size = cell.output_size
@@ -585,9 +579,9 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     hidden_states = [tf.expand_dims(states, 2) for states in attention_states]
     attention_ = functools.partial(multi_attention, hidden_states=hidden_states, encoders=encoders)
 
-    state = initial_state
-    if state.get_shape()[1] != cell.state_size:
-      state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+    if dropout is not None:
+      initial_state = tf.nn.dropout(initial_state, dropout)
+    state = linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
 
     batch_size = tf.shape(decoder_input)[0]
     attn_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
@@ -601,11 +595,9 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     x = linear_unsafe([decoder_input, attns], input_size, True)
     cell_output, new_state = unsafe_decorator(cell)(x, state)
     new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
-    if output_projection is None:
-      output = cell_output
-    else:
-      with tf.variable_scope('attention_output_projection'):
-        output = linear_unsafe([cell_output, new_attns], output_size, True)
+
+    with tf.variable_scope('attention_output_projection'):
+      output = linear_unsafe([cell_output, new_attns], output_size, True)
 
     beam_tensors = namedtuple('beam_tensors', 'state new_state attn_weights new_attn_weights attns new_attns')
     return output, beam_tensors(state, new_state, attn_weights, new_attn_weights, attns, new_attns)

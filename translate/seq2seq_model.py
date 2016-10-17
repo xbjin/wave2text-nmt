@@ -70,10 +70,11 @@ class Seq2SeqModel(object):
     self.len_normalization = len_normalization
 
     # if we use sampled softmax, we need an output projection
-    output_projection = None
-    softmax_loss_function = None
     # sampled softmax only makes sense if we sample less than vocabulary size
-    if 0 < num_samples < self.trg_vocab_size:
+    if num_samples == 0 or num_samples > self.trg_vocab_size:
+      output_projection = None
+      softmax_loss_function = None
+    else:
       with tf.device("/cpu:0"):
         with variable_scope.variable_scope('decoder_{}'.format(decoder.name)):
           w = decoders.get_variable_unsafe("proj_w", [self.trg_cell_size, self.trg_vocab_size])
@@ -85,6 +86,7 @@ class Seq2SeqModel(object):
         with tf.device("/cpu:0"):
           labels = tf.reshape(labels, [-1, 1])
           return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples, self.trg_vocab_size)
+
       softmax_loss_function = sampled_loss
 
     if dropout_rate > 0:
@@ -157,12 +159,7 @@ class Seq2SeqModel(object):
       if freeze_variables is None:
         freeze_variables = []
 
-      variable_names = set([var.name for var in tf.all_variables()])
-      # assert all(name in variable_names for name in freeze_variables), \
-      #   'you cannot freeze a variable that doesn\'t exist'
-
       # compute gradient only for variables that are not frozen
-      # params = [var for var in tf.trainable_variables() if var.name not in freeze_variables]
       frozen_parameters = [var.name for var in tf.trainable_variables()
                            if any(re.match(var_, var.name) for var_ in freeze_variables)]
       if frozen_parameters:
@@ -196,7 +193,7 @@ class Seq2SeqModel(object):
 
     self.beam_output = tf.nn.softmax(self.beam_output)
 
-  def step(self, session, data, forward_only=False):
+  def step(self, session, data, forward_only=False, align=False):
     if self.dropout is not None:
       session.run(self.dropout_on)
 
@@ -215,9 +212,11 @@ class Seq2SeqModel(object):
     output_feed = {'loss': self.loss}
     if not forward_only:
       output_feed['updates'] = self.updates
+    if align:
+      output_feed['attn_weights'] = self.attention_weights
 
-    loss = session.run(output_feed, input_feed)['loss']
-    return loss
+    res = session.run(output_feed, input_feed)
+    return res['loss'], res.get('attn_weights')
 
   def greedy_decoding(self, session, token_ids):
     if self.dropout is not None:
@@ -429,7 +428,7 @@ class Seq2SeqModel(object):
     if decoding:
       max_output_len = self.max_output_len if matching_bucket is None else matching_bucket[-1]
     else:
-      max_output_len = max(len(data[k][-1]) for k in xrange(batch_size))
+      max_output_len = max(len(data[k][-1]) for k in xrange(batch_size)) + 1   # + 1 for EOS
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
@@ -455,12 +454,12 @@ class Seq2SeqModel(object):
         encoder_input_length[i].append(len(src_sentence))
 
       # Decoder inputs get an extra "GO" symbol, and are padded then.
-      decoder_pad_size = max_output_len - len(trg_sentence) - 1
+      decoder_pad_size = max_output_len - len(trg_sentence)
       decoder_inputs.append([utils.BOS_ID] + trg_sentence +
                             [utils.PAD_ID] * decoder_pad_size)
 
     # Now we create batch-major vectors from the data selected above.
-    batch_decoder_inputs, batch_weights = [], []
+    batch_decoder_inputs, batch_targets, batch_weights = [], [], []
 
     encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
 
@@ -477,21 +476,23 @@ class Seq2SeqModel(object):
       batch_decoder_inputs.append(
           np.array([decoder_inputs[batch_idx][length_idx]
                     for batch_idx in xrange(batch_size)], dtype=np.int32))
+      batch_targets.append(
+          np.array([decoder_inputs[batch_idx][length_idx + 1]
+                    for batch_idx in xrange(batch_size)], dtype=np.int32))
 
       # Create target_weights to be 0 for targets that are padding.
       batch_weight = np.ones(batch_size, dtype=np.float32)
       for batch_idx in xrange(batch_size):
         # We set weight to 0 if the corresponding target is a PAD symbol.
         # The corresponding target is decoder_input shifted by 1 forward.
-        if length_idx < max_output_len - 1:
+        if length_idx < max_output_len:
           target = decoder_inputs[batch_idx][length_idx + 1]
-        if length_idx == max_output_len - 1 or target == utils.PAD_ID:
+        if target == utils.PAD_ID:
           batch_weight[batch_idx] = 0.0
+
       batch_weights.append(batch_weight)
 
-    batch_targets = batch_decoder_inputs[1:] + [np.zeros_like(batch_decoder_inputs[0])]
     batch_targets = np.array(batch_targets)
     batch_decoder_inputs = np.array(batch_decoder_inputs)
     batch_weights = np.array(batch_weights)
-
     return batch_encoder_inputs, batch_decoder_inputs, batch_targets, batch_weights, encoder_input_length

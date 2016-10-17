@@ -16,7 +16,6 @@ data_dir: data/btec
 model_dir: models/debug
 log_file: null
 dev_prefix: dev.100
-residual_connections: True
 
 encoders:
   - name: fr
@@ -25,3 +24,5 @@ encoders:
 decoder:
     name: en
     vocab_size: 7186
+
+num_samples: 0

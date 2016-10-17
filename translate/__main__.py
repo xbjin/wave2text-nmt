@@ -59,19 +59,14 @@ Random thoughts
 
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
-Features:
-- copy vocab and config to model dir
-- rename scopes to nicer names + do mapping of existing models
-- time pooling: concat or sum instead of skipping
-
 Benchmarks:
-- compare our baseline system with vanilla Tensorflow seq2seq, and GroundHog/blocks-examples
 - replicate Jean et al. (2015)'s results
+- replicate speech recognition results
 - analyze the impact of this initial_state_attention parameter
 - replicate the experiments of the WMT paper on neural post-editing
-- test convolutional attention (on speech recognition)
 
-TODO:
+TODO (by order of priority):
+- possibility to evaluate on multiple dev
 - residual connections in encoder and decoder
 - possibility to read stream instead of corpus when decoding
 - reading files as a stream when decoding (useful for large files)
@@ -81,6 +76,8 @@ TODO:
 - mixture of Adam and SGD training
 - decay learning rate after a certain number of epochs
 - possibility to run model on several GPUs
+- copy vocab and config to model dir
+- rename scopes to nicer names
 
 Evaluation with METEOR:
 java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
@@ -148,6 +145,9 @@ def main(args=None):
   for task in config.tasks:
     for parameter in task_parameters:
       task.setdefault(parameter, config.get(parameter))
+
+    if isinstance(task.dev_prefix, str):   # for back-compatibility with old config files
+      task.dev_prefix = [task.dev_prefix]
 
     # convert dicts to AttrDicts for convenience
     task.encoders = [utils.AttrDict(encoder) for encoder in task.encoders]

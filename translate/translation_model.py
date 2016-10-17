@@ -67,7 +67,7 @@ class BaseTranslationModel(object):
 
   def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
     sess.run(tf.initialize_all_variables())
-    if checkpoints is not None:  # load partial checkpoints
+    if checkpoints:  # load partial checkpoints
       for checkpoint in checkpoints:  # checkpoint files to load
         load_checkpoint(sess, None, checkpoint,
                         blacklist=('learning_rate', 'global_step', 'dropout_keep_prob'))
@@ -132,10 +132,12 @@ class TranslationModel(BaseTranslationModel):
       self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
 
     utils.debug('reading development data')
-    dev_set = utils.read_dataset(self.filenames.dev, self.extensions, self.vocabs, max_size=max_dev_size,
-                                 binary_input=self.binary_input, character_level=self.character_level)
+    dev_sets = [
+      utils.read_dataset(dev, self.extensions, self.vocabs, max_size=max_dev_size,
+                         binary_input=self.binary_input, character_level=self.character_level)
+      for dev in self.filenames.dev]
     # subset of the dev set whose perplexity is periodically evaluated
-    self.dev_batches = utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1)
+    self.dev_batches = [utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1) for dev_set in dev_sets]
 
   def _read_vocab(self):
     # don't try reading vocabulary for encoders that take pre-computed features
@@ -186,27 +188,28 @@ class TranslationModel(BaseTranslationModel):
 
       if steps_per_eval and scoring_script and global_step % steps_per_eval == 0:
         output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
-        score = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
-                              remove_unk=remove_unk)
-        self.manage_best_checkpoints(global_step, score)
+        scores = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
+                               remove_unk=remove_unk)
+        self.manage_best_checkpoints(global_step, scores[0])  # FIXME: for now, only first dev set is used
 
       if 0 < max_steps < global_step:
         utils.log('finished training')
         return
 
   def train_step(self, sess):
-    return self.model.step(sess, next(self.batch_iterator))
+    return self.model.step(sess, next(self.batch_iterator))[0]
 
   def eval_step(self, sess):
     # compute perplexity on dev set
-    eval_loss = sum(
-      self.model.step(sess, batch, forward_only=True) * len(batch)
-      for batch in self.dev_batches
-    )
-    eval_loss /= sum(map(len, self.dev_batches))
+    for dev_batches in self.dev_batches:
+      eval_loss = sum(
+        self.model.step(sess, batch, forward_only=True)[0] * len(batch)
+        for batch in dev_batches
+      )
+      eval_loss /= sum(map(len, dev_batches))
 
-    perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-    utils.log("  eval: perplexity {:.2f}".format(perplexity))
+      perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+      utils.log("  eval: perplexity {:.2f}".format(perplexity))
 
   def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False, align_mode=False):
     if align_mode and (beam_size > 1 or len(src_sentences) > 1):
@@ -236,7 +239,7 @@ class TranslationModel(BaseTranslationModel):
       weights = attn_weights.squeeze()[2:len(trg_tokens)+2,::-1].T
       max_len = weights.shape[0]
 
-      if self.binary_input:
+      if self.binary_input[0]:
         # src_tokens = map(str, range(1, max_len + 1))
         src_tokens = None
       else:
@@ -253,14 +256,36 @@ class TranslationModel(BaseTranslationModel):
       return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
   def align(self, sess, output=None, **kwargs):
-    for i, lines in enumerate(utils.read_lines(self.filenames.test[:-1], self.src_ext, self.binary_input), 1):
-      self._decode_sentence(sess, lines, beam_size=1, remove_unk=False, align_mode=True)
+    if len(self.src_ext) != 1:
+      raise NotImplementedError
+
+    for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input), 1):
+      token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
+                   if vocab is not None else sentence
+                   for vocab, sentence, char_level in zip(self.vocabs, lines, self.character_level)]
+
+      _, weights = self.model.step(sess, data=[token_ids], forward_only=True, align=True)
+      # self._decode_sentence(sess, lines, beam_size=1, remove_unk=False, align_mode=True)
+
+      trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
+                    for i in token_ids[-1]]
+
+      weights = weights.squeeze()[2:len(trg_tokens)+2,::-1].T
+      max_len = weights.shape[0]
+
+      if self.binary_input[0]:
+        # src_tokens = map(str, range(1, max_len + 1))
+        src_tokens = None
+      else:
+        src_tokens = lines[0].split()[:max_len]
+
+      utils.heatmap(src_tokens, trg_tokens, weights.T)
 
       import matplotlib.pyplot as plt
       if output is None:
         plt.show()
       else:
-        plt.savefig('{}.{}.jpg'.format(output, i))
+        plt.savefig('{}.{}.jpg'.format(output, line_id))
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
     utils.log('starting decoding')
@@ -281,24 +306,29 @@ class TranslationModel(BaseTranslationModel):
     if self.ngrams is not None:
       utils.debug('using external language model')
 
-    filenames_ = self.filenames.dev if on_dev else self.filenames.test
-    lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
+    filenames = self.filenames.dev if on_dev else [self.filenames.test]
+    bleu_scores = []
 
-    hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
-                  for lines_ in lines]
+    for filenames_ in filenames:
+      lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
 
-    references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
+      hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
+                    for lines_ in lines]
 
-    # score = utils.bleu_score(bleu_script, hypotheses, references)
-    score = utils.scoring(scoring_script, hypotheses, references)
-    summary = score if self.name is None else '{} {}'.format(self.name, score)
-    utils.log(summary)
+      references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
 
-    if output is not None:
-      with open(output, 'w') as f:
-        f.writelines(line + '\n' for line in hypotheses)
+      # score = utils.bleu_score(bleu_script, hypotheses, references)
+      score = utils.scoring(scoring_script, hypotheses, references)
+      summary = score if self.name is None else '{} {}'.format(self.name, score)
+      utils.log(summary)
 
-    return score.bleu
+      if output is not None:
+        with open(output, 'w') as f:
+          f.writelines(line + '\n' for line in hypotheses)
+
+      bleu_scores.append(score.bleu)
+
+    return bleu_scores
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):

@@ -87,8 +87,9 @@ class MultiTaskModel(BaseTranslationModel):
         for ratio, model_ in zip(self.ratios, self.models):
           output = None if eval_output is None else '{}.{}.{}'.format(eval_output, model_.name,
                                                                       model_.global_step.eval(sess))
-          score_ = model_.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
-                                   remove_unk=remove_unk)
+          scores_ = model_.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
+                                    remove_unk=remove_unk)
+          score_ = scores_[0]
 
           # if there is a main task, pick best checkpoint according to its score
           # otherwise use the average score across tasks
