@@ -85,8 +85,8 @@ class TranslationModel(BaseTranslationModel):
                load_embeddings=None, buckets=None, optimizer='sgd', **kwargs):
     self.batch_size = batch_size
     self.buckets = buckets
-    self.src_ext = [encoder.name for encoder in encoders]
-    self.trg_ext = decoder.name
+    self.src_ext = [encoder.get('ext') or encoder.name for encoder in encoders]
+    self.trg_ext = decoder.get('ext') or decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
 
     encoders_and_decoder = encoders + [decoder]

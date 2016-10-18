@@ -1,0 +1,31 @@
+# baseline with no pre-training/multi-tasking (just btec), but with extended vocabulary and subwords
+
+dropout_rate: 0.5
+cell_size: 256
+embedding_size: 256
+layers: 2
+bidir: True
+use_lstm: True
+steps_per_checkpoint: 1000
+steps_per_eval: 2000
+max_steps: 20000
+
+data_dir: experiments/btec/multi_task/data
+model_dir: experiments/btec/multi_task/baseline
+log_file: experiments/btec/multi_task/baseline/log.txt
+num_samples: 0
+
+train_prefix: btec.train
+dev_prefix: btec.dev
+
+optimizer: 'adam'
+learning_rate: 0.001
+initial_state_attention: True
+
+encoders:
+  - name: fr
+    vocab_size: 30000
+
+decoder:
+    name: en
+    vocab_size: 30000
