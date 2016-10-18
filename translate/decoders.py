@@ -6,38 +6,12 @@ import tensorflow as tf
 import functools
 import math
 from tensorflow.python.ops import rnn_cell, rnn
-from translate.rnn import multi_rnn, multi_bidirectional_rnn
+from translate.rnn import get_variable_unsafe, GRUCell_unsafe, BasicLSTMCell_unsafe, MultiRNNCell_unsafe, \
+  linear_unsafe, multi_rnn_unsafe, multi_bidirectional_rnn_unsafe, unsafe_decorator, MultiRNNCell
 from collections import namedtuple
 
 
-def unsafe_decorator(fun):
-  """
-  Wrapper that automatically handles the `reuse' parameter.
-  This is rather unsafe, as it can lead to reusing variables
-  by mistake, without knowing about it.
-  """
-  def fun_(*args, **kwargs):
-    try:
-      return fun(*args, **kwargs)
-    except ValueError as e:
-      if 'reuse' in str(e):
-        with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-          return fun(*args, **kwargs)
-      else:
-        raise e
-  return fun_
-
-
-get_variable_unsafe = unsafe_decorator(tf.get_variable)
-GRUCell_unsafe = unsafe_decorator(rnn_cell.GRUCell)
-BasicLSTMCell_unsafe = unsafe_decorator(rnn_cell.BasicLSTMCell)
-MultiRNNCell_unsafe = unsafe_decorator(rnn_cell.MultiRNNCell)
-linear_unsafe = unsafe_decorator(rnn_cell._linear)
-multi_rnn_unsafe = unsafe_decorator(multi_rnn)
-multi_bidirectional_rnn_unsafe = unsafe_decorator(multi_bidirectional_rnn)
-
-
-def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, residual_connections=False,
+def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None,
                   **kwargs):
   assert len(encoder_inputs) == len(encoders)
   encoder_states = []
@@ -104,7 +78,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
           inputs=encoder_inputs_, sequence_length=sequence_length,
           time_pooling=encoder.time_pooling, pooling_avg=encoder.pooling_avg, dtype=tf.float32,
           swap_memory=encoder.swap_memory, parallel_iterations=encoder.parallel_iterations,
-          residual_connections=residual_connections
+          residual_connections=encoder.residual_connections
         )
 
         if encoder.bidir:
@@ -273,6 +247,7 @@ def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
 
 def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, output_projection=None, dropout=None,
             feed_previous=0.0, **kwargs):
+  raise NotImplementedError
   # TODO: code refactoring with `attention_decoder`
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
@@ -417,7 +392,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
   if decoder.layers > 1:
-    cell = rnn_cell.MultiRNNCell([cell] * decoder.layers)
+    cell = MultiRNNCell([cell] * decoder.layers, residual_connections=decoder.residual_connections)
 
   if output_projection is None:
     output_size = decoder.vocab_size
@@ -564,7 +539,7 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
   if decoder.layers > 1:
-    cell = rnn_cell.MultiRNNCell([cell] * decoder.layers)
+    cell = MultiRNNCell([cell] * decoder.layers, residual_connections=decoder.residual_connections)
 
   if output_projection is None:
     output_size = decoder.vocab_size

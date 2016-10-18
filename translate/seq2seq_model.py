@@ -130,8 +130,7 @@ class Seq2SeqModel(object):
     parameters = dict(
       encoders=encoders, decoder=decoder,
       dropout=self.dropout, output_projection=output_projection,
-      initial_state_attention=initial_state_attention,
-      residual_connections=residual_connections
+      initial_state_attention=initial_state_attention
     )
 
     self.attention_states, self.encoder_state = decoders.multi_encoder(

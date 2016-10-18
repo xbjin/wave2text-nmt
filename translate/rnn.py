@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn, rnn_cell
 
 
 def multi_bidirectional_rnn(cells, inputs, sequence_length=None,
@@ -49,10 +49,11 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None,
       seq_dim=time_dim, batch_dim=batch_dim)
     new_inputs = tf.concat(2, [inputs_fw, inputs_bw_reversed])
 
-    # import pdb; pdb.set_trace()
     if residual_connections and i < len(cells) - 1:
-      # inputs = new_inputs + inputs
-      inputs = new_inputs
+      # the output's dimension is twice that of the initial input (because of bidir)
+      if i == 0:
+        inputs = tf.tile(inputs, (1, 1, 2))   # FIXME: temporary solution
+      inputs = new_inputs + inputs
     else:
       inputs = new_inputs
 
@@ -115,3 +116,72 @@ def apply_time_pooling(inputs, sequence_length, stride, pooling_avg=False):
   sequence_length = (sequence_length + stride - 1) // stride  # rounding up
 
   return inputs, sequence_length
+
+
+def unsafe_decorator(fun):
+  """
+  Wrapper that automatically handles the `reuse' parameter.
+  This is rather unsafe, as it can lead to reusing variables
+  by mistake, without knowing about it.
+  """
+  def fun_(*args, **kwargs):
+    try:
+      return fun(*args, **kwargs)
+    except ValueError as e:
+      if 'reuse' in str(e):
+        with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+          return fun(*args, **kwargs)
+      else:
+        raise e
+  return fun_
+
+
+get_variable_unsafe = unsafe_decorator(tf.get_variable)
+GRUCell_unsafe = unsafe_decorator(rnn_cell.GRUCell)
+BasicLSTMCell_unsafe = unsafe_decorator(rnn_cell.BasicLSTMCell)
+MultiRNNCell_unsafe = unsafe_decorator(rnn_cell.MultiRNNCell)
+linear_unsafe = unsafe_decorator(rnn_cell._linear)
+multi_rnn_unsafe = unsafe_decorator(multi_rnn)
+multi_bidirectional_rnn_unsafe = unsafe_decorator(multi_bidirectional_rnn)
+
+
+class MultiRNNCell(rnn_cell.RNNCell):
+  """
+  Same as rnn_cell.MultiRNNCell, except it accepts an additional `residual_connections` parameter
+  """
+  def __init__(self, cells, state_is_tuple=False, residual_connections=False):
+    self._cells = cells
+    self._state_is_tuple = state_is_tuple
+    self._residual_connections = residual_connections
+
+  @property
+  def state_size(self):
+    if self._state_is_tuple:
+      return tuple(cell.state_size for cell in self._cells)
+    else:
+      return sum([cell.state_size for cell in self._cells])
+
+  @property
+  def output_size(self):
+    return self._cells[-1].output_size
+
+  def __call__(self, inputs, state, scope=None):
+    with tf.variable_scope(scope or type(self).__name__):
+      cur_state_pos = 0
+      cur_inp = inputs
+      new_states = []
+      for i, cell in enumerate(self._cells):
+        with tf.variable_scope("Cell%d" % i):
+          if self._state_is_tuple:
+            cur_state = state[i]
+          else:
+            cur_state = tf.slice(state, [0, cur_state_pos], [-1, cell.state_size])
+            cur_state_pos += cell.state_size
+          new_inp, new_state = cell(cur_inp, cur_state)
+          if self._residual_connections and i < len(self._cells) - 1:
+            cur_inp = cur_inp + new_inp
+          else:
+            cur_inp = new_inp
+          new_states.append(new_state)
+    new_states = (tuple(new_states) if self._state_is_tuple else tf.concat(1, new_states))
+    return cur_inp, new_states
