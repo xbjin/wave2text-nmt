@@ -153,8 +153,11 @@ def scoring(scoring_script, hypotheses, references):
     for hyp in hypotheses:
       f2.write(hyp + '\n')
 
-  output = subprocess.check_output([scoring_script, f2.name, f1.name],
-                                   stderr=open('/dev/null', 'w'))
+  try:
+    output = subprocess.check_output([scoring_script, f2.name, f1.name])
+  finally:
+    os.unlink(f1.name)
+    os.unlink(f2.name)
 
   m = re.match(r'BLEU=(.*) NIST=(.*) TER=(.*) RATIO=(.*)', output)
   values = [float(m.group(i)) for i in range(1, 5)]
