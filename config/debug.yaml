@@ -15,17 +15,18 @@ data_dir: data/btec
 model_dir: models/debug
 log_file: null
 dev_prefix: dev.100
-num_samples: 512
+num_samples: 0
 
 optimizer: 'adam'
 learning_rate: 0.001
 initial_state_attention: True
-residual_connections: True
+residual_connections: False
 
 encoders:
   - name: fr
-    vocab_size: 9218
+    vocab_size: 10000
 
 decoder:
     name: en
-    vocab_size: 7186
+    ext: en
+    vocab_size: 10000
