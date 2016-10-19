@@ -1,4 +1,5 @@
 # baseline with no pre-training/multi-tasking (just btec), but with extended vocabulary and subwords
+# BLEU = 43.5  (btec-dev)    -> BTEC baseline with limited vocabulary: 42.8
 
 dropout_rate: 0.5
 cell_size: 256

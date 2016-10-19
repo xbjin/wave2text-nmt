@@ -14,9 +14,6 @@ model_dir: experiments/btec/multi_task/multi_task
 log_file: experiments/btec/multi_task/multi_task/log.txt
 num_samples: 0
 
-train_prefix: news+europarl
-dev_prefix: dev.2000
-
 optimizer: 'adam'
 learning_rate: 0.001
 initial_state_attention: True
