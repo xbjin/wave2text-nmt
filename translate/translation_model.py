@@ -252,7 +252,7 @@ class TranslationModel(BaseTranslationModel):
       trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
                     for i in token_ids[-1]]
 
-      weights = weights.squeeze()[2:len(trg_tokens)+2,::-1].T
+      weights = weights.squeeze()[:len(trg_tokens),::-1].T
       max_len = weights.shape[0]
 
       if self.binary_input[0]:
@@ -266,7 +266,7 @@ class TranslationModel(BaseTranslationModel):
       if output is None:
         plt.show()
       else:
-        plt.savefig('{}.{}.jpg'.format(output, line_id))
+        plt.savefig('{}.{}.pdf'.format(output, line_id))
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
     utils.log('starting decoding')

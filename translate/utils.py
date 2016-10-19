@@ -461,7 +461,7 @@ def heatmap(xlabels=None, ylabels=None, weights=None, output_file=None):
   heatmap_ = ax.pcolor(weights, cmap=plt.cm.Greys)
   ax.set_frame_on(False)
 
-  plt.colorbar(mappable=heatmap_)
+  # plt.colorbar(mappable=heatmap_)
 
   # put the major ticks at the middle of each cell
   ax.set_yticks(np.arange(weights.shape[0]) + 0.5, minor=False)

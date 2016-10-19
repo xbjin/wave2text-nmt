@@ -505,9 +505,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     decoder_states = state_final_ta.pack()
 
     # shape (time_steps, encoders, batch_size, input_time_steps)
-    attention_weights = tf.concat(0, [tf.expand_dims(attention_weights, 0),
-                                      attn_weights_final.pack()])
-
+    attention_weights = tf.slice(attn_weights_final.pack(), [1, 0, 0, 0], [-1, -1, -1, -1])
     return outputs, decoder_states, attention_weights
 
 

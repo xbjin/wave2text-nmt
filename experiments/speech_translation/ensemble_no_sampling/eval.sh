@@ -1,6 +1,6 @@
 #!/bin/bash
 
-config=experiments/speech_translation/ensemble_no_sampling/model_1.yaml
+config=experiments/speech_translation/ensemble_no_sampling/model_1.yaml  # replace by best model
 ensemble_dir=experiments/speech_translation/ensemble_no_sampling
 model_dir=${ensemble_dir}/model_1
 data_dir=experiments/speech/data
