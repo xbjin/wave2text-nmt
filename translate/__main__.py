@@ -51,6 +51,7 @@ parser.add_argument('--len-normalization', type=float)
 parser.add_argument('--output')
 parser.add_argument('--max-steps', type=int)
 parser.add_argument('--remove-unk', action='store_const', const=True)
+parser.add_argument('--wav-files', nargs='*')
 
 
 """
@@ -226,7 +227,7 @@ def main(args=None):
     elif args.eval:
       model.evaluate(sess, on_dev=False, **config)
     elif args.align:
-      model.align(sess, **config)
+      model.align(sess, wav_files=args.wav_files, **config)
     elif args.train:
       eval_output = os.path.join(config.model_dir, 'eval')
       try:

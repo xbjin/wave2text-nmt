@@ -450,14 +450,31 @@ def advanced_shape(list_or_array):
     raise Exception('error: unknown type: {}'.format(type(list_or_array)))
 
 
-def heatmap(xlabels=None, ylabels=None, weights=None, output_file=None):
+def heatmap(xlabels=None, ylabels=None, weights=None,
+            output_file=None, wav_file=None):
   xlabels = xlabels or []
   ylabels = ylabels or []
 
   xlabels = [label.decode('utf-8') for label in xlabels]
   ylabels = [label.decode('utf-8') for label in ylabels]
 
-  fig, ax = plt.subplots()
+  if wav_file is None:
+    ax = plt.subplot()
+  else:
+    import matplotlib.gridspec as gridspec
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 6])
+    ax_audio = plt.subplot(gs[0])
+    ax = plt.subplot(gs[1])
+    from pylab import fromstring
+    f = wave.open(wav_file)
+    sound_info = f.readframes(-1)
+    sound_info = fromstring(sound_info, 'int16')
+    ax_audio.plot(sound_info, color='gray')
+    ax_audio.xaxis.set_visible(False)
+    ax_audio.yaxis.set_visible(False)
+    ax_audio.set_frame_on(False)
+
+  plt.autoscale(enable=True, axis='x', tight=True)
   heatmap_ = ax.pcolor(weights, cmap=plt.cm.Greys)
   ax.set_frame_on(False)
 
@@ -471,20 +488,41 @@ def heatmap(xlabels=None, ylabels=None, weights=None, output_file=None):
 
   ax.set_xticklabels(xlabels, minor=False)
   ax.set_yticklabels(ylabels, minor=False)
+  ax.tick_params(axis=u'both', which=u'both', length=0)
   # plt.xticks(rotation=45, fontsize=12, ha='left')
-  plt.xticks(rotation=90, fontsize=14)
+
+  if wav_file is None:
+    plt.xticks(rotation=90, fontsize=14)
+
   plt.yticks(fontsize=14)
   plt.tight_layout()
-  ax.set_aspect('equal')
+  plt.subplots_adjust(wspace=0, hspace=0)
+  # ax.set_aspect('equal')
 
   ax.grid(False)
-  ax = plt.gca()  # turn off all the ticks
-  return fig
+  # ax = plt.gca()  # turn off all the ticks
+  # return fig
 
 
 def plot_waveform(filename):
   from pylab import fromstring
-  with wave.open(filename) as f:
-    sound_info = f.readframes(-1)
-    sound_info = fromstring(sound_info, 'int16')
-    plt.plot(sound_info)
+  f = wave.open(filename)
+  sound_info = f.readframes(-1)
+  sound_info = fromstring(sound_info, 'int16')
+  import matplotlib.gridspec as gridspec
+  gs = gridspec.GridSpec(2, 1, height_ratios=[1, 4])
+
+  # ax1 = plt.subplot(2, 1, 1)
+  ax1 = plt.subplot(gs[0])
+  ax1.plot(sound_info)
+  ax1.xaxis.set_visible(False)
+  ax1.yaxis.set_visible(False)
+  plt.autoscale(enable=True, axis='x', tight=True)
+
+  x = np.linspace(0, 1, 100)
+  # ax2 = plt.subplot(2, 1, 2)
+  ax2 = plt.subplot(gs[1])
+  ax2.plot(x, np.sin(x))
+  # plt.subplots_adjust(hspace=0.35, bottom=0.125)
+  plt.subplots_adjust(wspace=0, hspace=0)
+  plt.show()

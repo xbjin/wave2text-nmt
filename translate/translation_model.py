@@ -239,7 +239,7 @@ class TranslationModel(BaseTranslationModel):
     else:
       return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
-  def align(self, sess, output=None, **kwargs):
+  def align(self, sess, output=None, wav_files=None, **kwargs):
     if len(self.src_ext) != 1:
       raise NotImplementedError
 
@@ -260,7 +260,12 @@ class TranslationModel(BaseTranslationModel):
       else:
         src_tokens = lines[0].split()[:max_len]
 
-      utils.heatmap(src_tokens, trg_tokens, weights.T)
+      if wav_files is not None:
+        wav_file = wav_files[line_id]
+      else:
+        wav_file = None
+
+      utils.heatmap(src_tokens, trg_tokens, weights.T, wav_file=wav_file)
 
       import matplotlib.pyplot as plt
       if output is None:

@@ -14,6 +14,7 @@ swap_memory: True
 optimizer: 'adam'
 learning_rate: 0.001
 max_steps: 20000
+num_samples: 0
 
 train_prefix: train.concat
 dev_prefix: dev.Agnes
