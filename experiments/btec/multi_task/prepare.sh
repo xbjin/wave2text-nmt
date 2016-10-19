@@ -37,3 +37,5 @@ head -n2000 ${data_dir}/dev.en > ${data_dir}/dev.2000.en
 head -n2000 ${data_dir}/dev.fr > ${data_dir}/dev.2000.fr
 head -n2000 ${data_dir}/dev.scrambled.en > ${data_dir}/dev.2000.scrambled.en
 head -n2000 ${data_dir}/dev.dummy > ${data_dir}/dev.2000.dummy
+head -n1000 ${data_dir}/btec.train.fr > ${data_dir}/btec.train.1000.fr
+head -n1000 ${data_dir}/btec.train.en > ${data_dir}/btec.train.1000.en

@@ -105,19 +105,22 @@ class MultiTaskModel(BaseTranslationModel):
         return
 
   def decode(self, *args, **kwargs):
-    if len(self.models) == 1:
-      return self.models[0].decode(*args, **kwargs)
+    if self.main_task is not None:
+      model = next(model for model in self.models if model.name == self.main_task)
     else:
-      raise NotImplementedError
+      model = self.models[0]
+    return model.decode(*args, **kwargs)
 
   def evaluate(self, *args, **kwargs):
-    if len(self.models) == 1:
-      return self.models[0].evaluate(*args, **kwargs)
+    if self.main_task is not None:
+      model = next(model for model in self.models if model.name == self.main_task)
     else:
-      raise NotImplementedError
+      model = self.models[0]
+    return model.evaluate(*args, **kwargs)
 
   def align(self, *args, **kwargs):
-    if len(self.models) == 1:
-      return self.models[0].align(*args, **kwargs)
+    if self.main_task is not None:
+      model = next(model for model in self.models if model.name == self.main_task)
     else:
-      raise NotImplementedError
+      model = self.models[0]
+    return model.align(*args, **kwargs)
