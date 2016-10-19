@@ -369,8 +369,7 @@ def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, o
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder,
                       decoder_input_length=None, attention_weights=None, output_projection=None,
-                      initial_state_attention=False, dropout=None,
-                      feed_previous=0.0, **kwargs):
+                      dropout=None, feed_previous=0.0, **kwargs):
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -455,13 +454,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     if attention_weights is None:
       attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
-    if initial_state_attention:
-      attns, attention_weights = attention_(state, prev_weights=attention_weights)
-    else:
-      attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
-      attns.set_shape([None, attn_size])
+    attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
+    attns.set_shape([None, attn_size])
 
-    def _time_step(time, state, attns, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
+    def _time_step(time, state, _, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
       input_t = input_ta.read(time)
       # restore some shape information
       r = tf.random_uniform([])
@@ -469,8 +465,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                         lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
                         lambda: input_t)
       input_t.set_shape(decoder_inputs.get_shape()[1:])
-      x = linear_unsafe([input_t, attns], input_t.get_shape()[1], True)
-      call_cell = lambda: unsafe_decorator(cell)(x, state)
+      call_cell = lambda: unsafe_decorator(cell)(input_t, state)
 
       if sequence_length is not None:
         output, new_state = rnn._rnn_step(
@@ -516,7 +511,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
     return outputs, decoder_states, attention_weights
 
 
-def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder, initial_state_attention,
+def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder,
                         output_projection=None, dropout=None, **kwargs):
   # TODO: code refactoring with `attention_decoder`
   if decoder.get('embedding') is not None:
@@ -567,14 +562,9 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     batch_size = tf.shape(decoder_input)[0]
     attn_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
-    if initial_state_attention:
-      attns, attn_weights = attention_(state, prev_weights=attn_weights)
-    else:
-      attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
+    attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
 
-    input_size = decoder_input.get_shape()[1]
-    x = linear_unsafe([decoder_input, attns], input_size, True)
-    cell_output, new_state = unsafe_decorator(cell)(x, state)
+    cell_output, new_state = unsafe_decorator(cell)(decoder_input, state)
     new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
     with tf.variable_scope('attention_output_projection'):
