@@ -142,7 +142,7 @@ def bleu_score(bleu_script, hypotheses, references):
   m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
   values = [float(m.group(i)) for i in range(1, 4)]
 
-  return namedtuple('BLEU', ['score', 'penalty', 'ratio'])(*values)
+  return namedtuple('score', ['bleu', 'penalty', 'ratio'])(*values)
 
 
 def scoring(scoring_script, hypotheses, references):
@@ -163,6 +163,17 @@ def scoring(scoring_script, hypotheses, references):
   values = [float(m.group(i)) for i in range(1, 5)]
 
   return namedtuple('score', ['bleu', 'nist', 'ter', 'ratio'])(*values)
+
+
+def nltk_bleu_score(hypotheses, references):
+  import nltk
+  # from translate import bleu_score
+  # smoothing_function = bleu_score.SmoothingFunction().method7
+  bleus = [nltk.bleu_score.bleu([ref.split()], hyp.split(), [1.0 / 3]*3)
+           for ref, hyp in zip(references, hypotheses)]
+  bleu = float('{:.2f}'.format(100 * sum(bleus) / len(bleus)))
+  # bleu = bleu_score.corpus_bleu(hypotheses, references, smoothing_function=smoothing_function)
+  return namedtuple('score', ['bleu'])(bleu)
 
 
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
