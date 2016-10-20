@@ -266,13 +266,8 @@ class TranslationModel(BaseTranslationModel):
       else:
         wav_file = None
 
-      utils.heatmap(src_tokens, trg_tokens, weights.T, wav_file=wav_file)
-
-      import matplotlib.pyplot as plt
-      if output is None:
-        plt.show()
-      else:
-        plt.savefig('{}.{}.svg'.format(output, line_id))
+      output_file = '{}.{}.svg'.format(output, line_id) if output is not None else None
+      utils.heatmap(src_tokens, trg_tokens, weights.T, wav_file=wav_file, output_file=output_file)
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
     utils.log('starting decoding')

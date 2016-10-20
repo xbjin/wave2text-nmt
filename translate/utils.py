@@ -498,3 +498,8 @@ def heatmap(xlabels=None, ylabels=None, weights=None,
   # plt.subplots_adjust(wspace=0, hspace=0)
   # ax.set_aspect('equal')
   ax.grid(False)
+
+  if output_file is None:
+    plt.show()
+  else:
+    plt.savefig(output_file)

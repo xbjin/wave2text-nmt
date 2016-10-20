@@ -29,12 +29,6 @@ experiments/speech/voxygen/convert-to-audio.sh ${raw_data_dir}/btec-test2.fr ${r
 experiments/speech/voxygen/convert-to-audio.sh ${raw_data_dir}/btec-test1.fr ${raw_audio_dir}/test1-Marion Marion
 experiments/speech/voxygen/convert-to-audio.sh ${raw_data_dir}/btec-test2.fr ${raw_audio_dir}/test2-Marion Marion
 
-# 40 MFCC features + frame energy with derivatives and second-order derivatives
-scripts/extract-audio-features.py ${raw_audio_dir}/train-Agnes/* ${data_dir}/train.Agnes.feats143
-scripts/extract-audio-features.py ${raw_audio_dir}/test1-Agnes/* ${data_dir}/test1.Agnes.feats143
-scripts/extract-audio-features.py ${raw_audio_dir}/test2-Agnes/* ${data_dir}/test2.Agnes.feats143
-scripts/extract-audio-features.py ${raw_audio_dir}/dev-Agnes/* ${data_dir}/dev.Agnes.feats143
-
 # 40 MFCC features + frame energy without derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/train-Agnes/* ${data_dir}/train.Agnes.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/train-Fabienne/* ${data_dir}/train.Fabienne.feats41 --no-derivatives
@@ -44,14 +38,11 @@ scripts/extract-audio-features.py ${raw_audio_dir}/train-Marion/* ${data_dir}/tr
 scripts/extract-audio-features.py ${raw_audio_dir}/train-Michel/* ${data_dir}/train.Michel.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/train-Philippe/* ${data_dir}/train.Philippe.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/dev-Agnes/* ${data_dir}/dev.Agnes.feats41 --no-derivatives
-scripts/extract-audio-features.py ${raw_audio_dir}/dev-Helene/* ${data_dir}/dev.Helene.feats41 --no-derivatives
-scripts/extract-audio-features.py ${raw_audio_dir}/dev-Loic/* ${data_dir}/dev.Loic.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test1-Agnes/* ${data_dir}/test1.Agnes.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test2-Agnes/* ${data_dir}/test2.Agnes.feats41 --no-derivatives
+scripts/extract-audio-features.py ${raw_audio_dir}/dev-Michel/* ${data_dir}/dev.Michel.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test1-Michel/* ${data_dir}/test1.Michel.feats41 --no-derivatives
 scripts/extract-audio-features.py ${raw_audio_dir}/test2-Michel/* ${data_dir}/test2.Michel.feats41 --no-derivatives
-scripts/extract-audio-features.py ${raw_audio_dir}/test1-Marion/* ${data_dir}/test1.Marion.feats41 --no-derivatives
-scripts/extract-audio-features.py ${raw_audio_dir}/test2-Marion/* ${data_dir}/test2.Marion.feats41 --no-derivatives
 
 # real spoken data
 scripts/extract-audio-features.py ${raw_audio_dir}/btec-Laurent/* ${data_dir}/btec.Laurent.feats41 --no-derivatives
