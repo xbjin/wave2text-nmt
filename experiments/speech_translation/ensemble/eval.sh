@@ -1,8 +1,8 @@
 #!/bin/bash
 
-config=experiments/speech_translation/ensemble/model_1.yaml  # replace by best model
+config=experiments/speech_translation/ensemble/model_4.yaml  # replace by best model
 ensemble_dir=experiments/speech_translation/ensemble
-model_dir=${ensemble_dir}/model_1
+model_dir=${ensemble_dir}/model_4
 data_dir=experiments/speech/data
 
 parameters="-v"

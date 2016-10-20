@@ -33,7 +33,6 @@ load_embeddings: []      # load pre-trained embeddings for those extensions
 time_pooling: null       # ratios of time steps to skip between layers
 pooling_avg: False       # average previous steps instead of skipping them
 input_layers: []         # fully connected layers between the embeddings and the RNN
-initial_state_attention: True
 residual_connections: False
 
 # data

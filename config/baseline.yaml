@@ -8,16 +8,15 @@ bidir: True
 use_lstm: True
 steps_per_checkpoint: 500
 steps_per_eval: 2000
-max_steps: 50000
+max_steps: 20000
 
 data_dir: data/btec
 model_dir: models/baseline
 log_file: models/baseline/log.txt
-num_samples: 512
+num_samples: 0
 
 optimizer: 'adam'
 learning_rate: 0.001
-initial_state_attention: False
 
 encoders:
   - name: fr
