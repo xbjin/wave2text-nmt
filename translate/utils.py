@@ -159,10 +159,7 @@ def scoring(scoring_script, hypotheses, references):
     os.unlink(f1.name)
     os.unlink(f2.name)
 
-  m = re.match(r'BLEU=(.*) NIST=(.*) TER=(.*) RATIO=(.*)', output)
-  values = [float(m.group(i)) for i in range(1, 5)]
-
-  return namedtuple('score', ['bleu', 'nist', 'ter', 'ratio'])(*values)
+  return namedtuple('score', ['wsd'])(output)
 
 
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,

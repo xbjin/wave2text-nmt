@@ -307,7 +307,7 @@ class TranslationModel(BaseTranslationModel):
         with open(output, 'w') as f:
           f.writelines(line + '\n' for line in hypotheses)
 
-      bleu_scores.append(score.bleu)
+      bleu_scores.append(score.wsd)
 
     return bleu_scores
 

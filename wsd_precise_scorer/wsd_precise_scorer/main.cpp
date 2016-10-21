@@ -23,8 +23,7 @@ int main(int argc, char *argv[])
     string ref_word;
     string hyp_word;
 
-    double count = 0;
-    double match = 0;
+    int match = 0;
 
     bool found = false;
 
@@ -66,7 +65,7 @@ int main(int argc, char *argv[])
                 }
                 if (hyp_lemma == ref_lemma)
                 {
-                    if (hyp_sense == ref_sense)
+                    if (ref_sense != "" && hyp_sense == ref_sense)
                     {
                         match += 1;
                     }
@@ -77,13 +76,11 @@ int main(int argc, char *argv[])
             {
                 hyp_file.seekg(position);
             }
-            count += 1;
         }
     }
 
-
-
-    cout << fixed << match / count << endl;
+    cout << match;
+    cout.flush();
 
     return 0;
 }
