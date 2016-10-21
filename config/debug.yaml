@@ -8,7 +8,7 @@ bidir: True
 use_lstm: True
 steps_per_checkpoint: 100
 steps_per_eval: 200
-max_steps: 50000
+max_steps: 20000
 max_output_len: 20
 
 data_dir: data/btec

@@ -129,23 +129,43 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
   return filenames(train, dev, test, vocab, lm_path, embeddings)
 
 
-def bleu_score(bleu_script, hypotheses, references):
+def bleu_score(hypotheses, references, script_dir):
+  """
+  Scoring function which calls the `multi-bleu.perl` script.
+
+  :param hypotheses: list of translation hypotheses
+  :param references: list of translation references
+  :param script_dir: directory containing the evaluation script
+  :return: a pair (BLEU score, additional scoring information)
+  """
   with tempfile.NamedTemporaryFile(delete=False) as f:
     for ref in references:
       f.write(ref + '\n')
 
-  p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE,
-                       stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
-
-  output, _ = p.communicate('\n'.join(hypotheses))
+  bleu_script = os.path.join(script_dir, 'multi-bleu.perl')
+  try:
+    p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
+    output, _ = p.communicate('\n'.join(hypotheses))
+  finally:
+    os.unlink(f.name)
 
   m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
-  values = [float(m.group(i)) for i in range(1, 4)]
+  bleu, penalty, ratio = [float(m.group(i)) for i in range(1, 4)]
 
-  return namedtuple('score', ['bleu', 'penalty', 'ratio'])(*values)
+  return bleu, 'penalty={} ratio={}'.format(penalty, ratio)
 
 
-def scoring(scoring_script, hypotheses, references):
+def multi_score(hypotheses, references, script_dir):
+  """
+  Scoring function which calls the `score.py` script, to get
+  BLEU, NIST, and TER scores.
+
+  :param hypotheses: list of translation hypotheses
+  :param references: list of translation references
+  :param script_dir: directory containing the evaluation script
+  :return: a pair (BLEU score, additional scoring information)
+  """
   with tempfile.NamedTemporaryFile(delete=False) as f1, \
        tempfile.NamedTemporaryFile(delete=False) as f2:
     for ref in references:
@@ -153,6 +173,7 @@ def scoring(scoring_script, hypotheses, references):
     for hyp in hypotheses:
       f2.write(hyp + '\n')
 
+  scoring_script = os.path.join(script_dir, 'score.py')
   try:
     output = subprocess.check_output([scoring_script, f2.name, f1.name])
   finally:
@@ -160,20 +181,17 @@ def scoring(scoring_script, hypotheses, references):
     os.unlink(f2.name)
 
   m = re.match(r'BLEU=(.*) NIST=(.*) TER=(.*) RATIO=(.*)', output)
-  values = [float(m.group(i)) for i in range(1, 5)]
+  bleu, nist, ter, ratio = [float(m.group(i)) for i in range(1, 5)]
 
-  return namedtuple('score', ['bleu', 'nist', 'ter', 'ratio'])(*values)
+  return bleu, 'nist={} ter={} ratio={}'.format(nist, ter, ratio)
 
 
-def nltk_bleu_score(hypotheses, references):
+def nltk_bleu_score(hypotheses, references, **kwargs):
   import nltk
-  # from translate import bleu_score
-  # smoothing_function = bleu_score.SmoothingFunction().method7
   bleus = [nltk.bleu_score.bleu([ref.split()], hyp.split(), [1.0 / 3]*3)
            for ref, hyp in zip(references, hypotheses)]
   bleu = float('{:.2f}'.format(100 * sum(bleus) / len(bleus)))
-  # bleu = bleu_score.corpus_bleu(hypotheses, references, smoothing_function=smoothing_function)
-  return namedtuple('score', ['bleu'])(bleu)
+  return bleu, None
 
 
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,

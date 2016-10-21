@@ -22,7 +22,7 @@ class BaseTranslationModel(object):
     self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
 
   def manage_best_checkpoints(self, step, score):
-    score_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
+    score_filename = os.path.join(self.checkpoint_dir, 'scores.txt')
     # try loading previous scores
     try:
       with open(score_filename) as f:
@@ -32,7 +32,7 @@ class BaseTranslationModel(object):
       scores = []
 
     if any(step_ >= step for _, step_ in scores):
-      utils.warn('inconsistent bleu-scores.txt file')
+      utils.warn('inconsistent scores.txt file')
 
     best_scores = sorted(scores, reverse=True)[:self.keep_best]
 
@@ -149,8 +149,8 @@ class TranslationModel(BaseTranslationModel):
     self.trg_vocab = self.vocabs[-1]
     self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
 
-  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
-            max_train_size=None, max_dev_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
+  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, max_train_size=None,
+            max_dev_size=None, eval_output=None, max_steps=0, **kwargs):
     utils.log('reading training and development data')
     self.read_data(max_train_size, max_dev_size)
     previous_losses = []
@@ -186,10 +186,9 @@ class TranslationModel(BaseTranslationModel):
         self.eval_step(sess)
         self.save(sess)
 
-      if steps_per_eval and scoring_script and global_step % steps_per_eval == 0:
+      if steps_per_eval and global_step % steps_per_eval == 0:
         output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
-        scores = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
-                               remove_unk=remove_unk)
+        scores = self.evaluate(sess, beam_size, on_dev=True, output=output, **kwargs)
         self.manage_best_checkpoints(global_step, scores[0])  # FIXME: for now, only first dev set is used
 
       if 0 < max_steps < global_step:
@@ -283,13 +282,15 @@ class TranslationModel(BaseTranslationModel):
       if output_file is not None:
         output_file.close()
 
-  def evaluate(self, sess, beam_size, scoring_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+  def evaluate(self, sess, beam_size, score_function, on_dev=True, output=None,
+               remove_unk=False, auxiliary_score_function=None, script_dir='scripts',
+               **kwargs):
     utils.log('starting decoding')
     if self.ngrams is not None:
       utils.debug('using external language model')
 
     filenames = self.filenames.dev if on_dev else [self.filenames.test]
-    bleu_scores = []
+    scores = []
 
     for filenames_ in filenames:
       lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
@@ -299,18 +300,33 @@ class TranslationModel(BaseTranslationModel):
 
       references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
 
-      # score = utils.bleu_score(bleu_script, hypotheses, references)
-      score = utils.scoring(scoring_script, hypotheses, references)
-      summary = score if self.name is None else '{} {}'.format(self.name, score)
-      utils.log(summary)
+      # main score function (used to choose which checkpoints to keep)
+      score, score_summary = getattr(utils, score_function)(hypotheses, references, script_dir)
+
+      # optionally use an auxiliary function to get different score information
+      if auxiliary_score_function is not None and auxiliary_score_function != score_function:
+        try:
+          _, score_summary = getattr(utils, auxiliary_score_function)(hypotheses, references, script_dir)
+        except:
+          pass
+
+      # print the scoring information
+      score_info = []
+      if self.name is not None:
+        score_info.append(self.name)
+      score_info.append('score={}'.format(score))
+      if score_summary:
+        score_info.append(score_summary)
+
+      utils.log(' '.join(map(str, score_info)))
 
       if output is not None:
         with open(output, 'w') as f:
           f.writelines(line + '\n' for line in hypotheses)
 
-      bleu_scores.append(score.bleu)
+      scores.append(score)
 
-    return bleu_scores
+    return scores
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):

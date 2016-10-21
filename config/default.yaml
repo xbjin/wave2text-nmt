@@ -39,14 +39,16 @@ residual_connections: False
 data_dir: data
 model_dir: model
 train_prefix: train      # name of the training corpus
+script_dir: scripts      # directory where the scripts are kepts (in particular the scoring scripts)
 dev_prefix: [dev]        # names of the development corpora
 vocab_prefix: vocab      # name of the vocabulary files
 embedding_prefix: vectors  # name of the embeddings files
 checkpoints: []          # list of checkpoints to load (in this specific order) after main checkpoint
 
 # decoding
-bleu_script: scripts/multi-bleu.perl  # path to BLEU script
-scoring_script: scripts/score.py      # path to scoring script
+score_function: bleu_score  # name of the main scoring function (used for selecting models)
+auxiliary_score_function: null   # name of the auxiliary scoring function (used for logging)
+
 remove_unk: False        # remove UNK symbols from the decoder output
 lm_file: null            # path to a language model file (in arpa format) to use during decoding
 lm_weight: 0.2           # weight of the language model in the log-linear model
