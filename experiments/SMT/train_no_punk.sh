@@ -5,11 +5,11 @@ output_dir=`pwd`/experiments/SMT/model_no_punk
 data_dir=`pwd`/experiments/SMT/data_no_punk
 lm_file=${data_dir}/btec.arpa
 
-#${mosesdecoder}/scripts/training/train-model.perl -root-dir ${output_dir} \
-#-corpus ${data_dir}/train -f fr -e en -alignment grow-diag-final-and \
-#-reordering msd-bidirectional-fe -lm 0:3:${lm_file}:8 \
-#-mgiza -external-bin-dir ${mosesdecoder}/training-tools \
-#-mgiza-cpus 8 -cores 8 --parallel
+${mosesdecoder}/scripts/training/train-model.perl -root-dir ${output_dir} \
+-corpus ${data_dir}/train -f fr -e en -alignment grow-diag-final-and \
+-reordering msd-bidirectional-fe -lm 0:3:${lm_file}:8 \
+-mgiza -external-bin-dir ${mosesdecoder}/training-tools \
+-mgiza-cpus 8 -cores 8 --parallel
 
 # filter phrase table
 cat ${data_dir}/{train,dev,test1,test2}.fr > ${output_dir}/concat.fr   # concatenation of all data that we want to translate
