@@ -1,4 +1,4 @@
-"""Binary for training translation models and decoding from them
+"""Script for training translation models and decoding from them
 
 See the following papers for more information on neural translation models
  * http://arxiv.org/abs/1409.3215
@@ -25,6 +25,7 @@ from translate.multitask_model import MultiTaskModel
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('config', help='load a configuration file in the YAML format')
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
 parser.add_argument('--reset-learning-rate', help='reset learning rate', action='store_true')
@@ -35,7 +36,6 @@ parser.add_argument('--decode', help='translate this corpus')
 parser.add_argument('--align', help='translate and show alignments by the attention mechanism')
 parser.add_argument('--eval', help='compute BLEU score on this corpus')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
-parser.add_argument('config', help='load a configuration file in the YAML format')
 
 # Tensorflow configuration
 parser.add_argument('--gpu-id', type=int, help='index of the GPU where to run the computation')
@@ -55,19 +55,14 @@ parser.add_argument('--wav-files', nargs='*')
 
 
 """
-Random thoughts
----------------
-
 data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
 
 Benchmarks:
 - replicate Jean et al. (2015)'s results
 - replicate speech recognition results
-- analyze the impact of this initial_state_attention parameter
 - replicate the experiments of the WMT paper on neural post-editing
 
-TODO (by order of priority):
-- possibility to evaluate on multiple dev
+TODO:
 - residual connections in encoder and decoder
 - possibility to read stream instead of corpus when decoding
 - reading files as a stream when decoding (useful for large files)
@@ -79,9 +74,6 @@ TODO (by order of priority):
 - possibility to run model on several GPUs
 - copy vocab and config to model dir
 - rename scopes to nicer names
-
-Evaluation with METEOR:
-java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
 """
 
 

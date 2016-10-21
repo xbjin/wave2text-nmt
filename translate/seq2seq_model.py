@@ -50,8 +50,7 @@ class Seq2SeqModel(object):
                num_samples=512, dropout_rate=0.0, freeze_variables=None, lm_weight=None,
                max_output_len=50, attention=True, buckets=None, feed_previous=0.0,
                optimizer='sgd', max_input_len=None, decode_only=False,
-               initial_state_attention=True, len_normalization=1.0,
-               residual_connections=False, **kwargs):
+               len_normalization=1.0, **kwargs):
     self.lm_weight = lm_weight
     self.encoders = encoders
     self.decoder = decoder
@@ -129,8 +128,7 @@ class Seq2SeqModel(object):
 
     parameters = dict(
       encoders=encoders, decoder=decoder,
-      dropout=self.dropout, output_projection=output_projection,
-      initial_state_attention=initial_state_attention
+      dropout=self.dropout, output_projection=output_projection
     )
 
     self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -215,7 +213,7 @@ class Seq2SeqModel(object):
       output_feed['attn_weights'] = self.attention_weights
 
     res = session.run(output_feed, input_feed)
-    return res['loss'], res.get('attn_weights')
+    return namedtuple('output', 'loss attn_weights')(res['loss'], res.get('attn_weights'))
 
   def greedy_decoding(self, session, token_ids):
     if self.dropout is not None:

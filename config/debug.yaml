@@ -19,8 +19,6 @@ num_samples: 0
 
 optimizer: 'adam'
 learning_rate: 0.001
-initial_state_attention: True
-residual_connections: False
 
 encoders:
   - name: fr

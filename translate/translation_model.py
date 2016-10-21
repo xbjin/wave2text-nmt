@@ -8,7 +8,6 @@ import cPickle
 import time
 import sys
 import math
-import numpy as np
 import shutil
 from translate import utils
 from translate.seq2seq_model import Seq2SeqModel
@@ -149,60 +148,17 @@ class TranslationModel(BaseTranslationModel):
     self.trg_vocab = self.vocabs[-1]
     self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
 
-  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, max_train_size=None,
-            max_dev_size=None, eval_output=None, max_steps=0, **kwargs):
-    utils.log('reading training and development data')
-    self.read_data(max_train_size, max_dev_size)
-    previous_losses = []
-
-    loss, time_, steps = 0, 0, 0
-
-    utils.log('starting training')
-    while True:
-      start_time = time.time()
-      step_loss = self.train_step(sess)
-
-      time_  += (time.time() - start_time)
-      loss += step_loss
-      steps += 1
-
-      global_step = self.global_step.eval(sess)
-
-      if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
-        loss_ = loss / steps
-        perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
-
-        utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
-          global_step, self.model.learning_rate.eval(), time_ / steps, perplexity))
-
-        # decay learning rate when loss is worse than last losses
-        if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-          utils.debug('decreasing learning rate')
-          sess.run(self.learning_rate_decay_op)
-
-        previous_losses.append(loss)
-        loss, time_, steps = 0, 0, 0
-
-        self.eval_step(sess)
-        self.save(sess)
-
-      if steps_per_eval and global_step % steps_per_eval == 0:
-        output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
-        scores = self.evaluate(sess, beam_size, on_dev=True, output=output, **kwargs)
-        self.manage_best_checkpoints(global_step, scores[0])  # FIXME: for now, only first dev set is used
-
-      if 0 < max_steps < global_step:
-        utils.log('finished training')
-        return
+  def train(self, *args, **kwargs):
+    raise NotImplementedError('use MultiTaskModel')
 
   def train_step(self, sess):
-    return self.model.step(sess, next(self.batch_iterator))[0]
+    return self.model.step(sess, next(self.batch_iterator)).loss
 
   def eval_step(self, sess):
     # compute perplexity on dev set
     for dev_batches in self.dev_batches:
       eval_loss = sum(
-        self.model.step(sess, batch, forward_only=True)[0] * len(batch)
+        self.model.step(sess, batch, forward_only=True).loss * len(batch)
         for batch in dev_batches
       )
       eval_loss /= sum(map(len, dev_batches))
