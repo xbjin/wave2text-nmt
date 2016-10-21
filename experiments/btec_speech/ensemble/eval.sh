@@ -2,7 +2,7 @@
 
 config=experiments/btec_speech/ensemble/model_1.yaml  # replace by best model
 ensemble_dir=experiments/btec_speech/ensemble
-data_dir=experiments/speech/data
+data_dir=experiments/btec_speech/data
 
 parameters="-v"
 python2 -m translate ${config} --decode ${data_dir}/dev.Agnes --output ${ensemble_dir}/dev.Agnes.greedy.out ${parameters}
