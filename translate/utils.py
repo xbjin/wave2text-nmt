@@ -159,7 +159,7 @@ def scoring(scoring_script, hypotheses, references):
     os.unlink(f1.name)
     os.unlink(f2.name)
 
-  return namedtuple('score', ['wsd'])(output)
+  return namedtuple('score', ['wsd'])(float(output))
 
 
 def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
