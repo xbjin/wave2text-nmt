@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
             }
             if (!found)
             {
-                hyp_file.seekg(position);
+                hyp_line_stream.seekg(position);
             }
         }
     }
