@@ -6,6 +6,34 @@
 
 using namespace std;
 
+string extract_lemma(string token)
+{
+    auto lemma_sense_delimiter_position = token.find_first_of('%');
+    string lemma = token.substr(0, lemma_sense_delimiter_position);
+    //cout << "lemma : " << lemma << endl;
+    return lemma;
+}
+
+string extract_sense(string token)
+{
+    auto lemma_sense_delimiter_position = token.find_first_of('%');
+    string sense = "";
+    if (lemma_sense_delimiter_position == token.npos)
+    {
+        sense = "";
+    }
+    else if (lemma_sense_delimiter_position + 1 == token.npos)
+    {
+        sense = "";
+    }
+    else
+    {
+        sense = token.substr(lemma_sense_delimiter_position + 1);
+    }
+    //cout << "sense : " << sense << endl;
+    return sense;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 3)
@@ -20,15 +48,15 @@ int main(int argc, char *argv[])
     ifstream hyp_file(hyp_file_path);
     ifstream ref_file(ref_file_path);
 
-    string ref_word;
     string hyp_word;
+    string ref_word;
 
     int match = 0;
 
     bool found = false;
 
-    string ref_line;
     string hyp_line;
+    string ref_line;
 
     while (getline(ref_file, ref_line))
     {
@@ -37,32 +65,14 @@ int main(int argc, char *argv[])
         istringstream hyp_line_stream(hyp_line);
         while (ref_line_stream >> ref_word)
         {
-            auto ref_lemma_sense_delimiter_position = ref_word.find_first_of('%');
-            string ref_lemma = ref_word.substr(0, ref_lemma_sense_delimiter_position);
-            string ref_sense = "";
-            if (ref_lemma_sense_delimiter_position == ref_word.npos)
-            {
-                ref_sense = "";
-            }
-            else
-            {
-                ref_sense = ref_word.substr(ref_lemma_sense_delimiter_position);
-            }
+            string ref_lemma = extract_lemma(ref_word);
+            string ref_sense = extract_sense(ref_word);
             auto position = hyp_line_stream.tellg();
             found = false;
             while (!found && hyp_line_stream >> hyp_word)
             {
-                auto hyp_lemma_sense_delimiter_position = hyp_word.find_first_of('%');
-                string hyp_lemma = hyp_word.substr(0, hyp_lemma_sense_delimiter_position);
-                string hyp_sense = "";
-                if (hyp_lemma_sense_delimiter_position == hyp_word.npos)
-                {
-                    hyp_sense = "";
-                }
-                else
-                {
-                    hyp_sense = hyp_word.substr(hyp_lemma_sense_delimiter_position);
-                }
+                string hyp_lemma = extract_lemma(hyp_word);
+                string hyp_sense = extract_sense(hyp_word);
                 if (hyp_lemma == ref_lemma)
                 {
                     if (ref_sense != "" && hyp_sense == ref_sense)
