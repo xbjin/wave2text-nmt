@@ -7,8 +7,8 @@ max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.0        # dropout rate applied to the RNN units
 max_train_size: 0        # maximum size of the training data (0 for unlimited)
 max_dev_size: 0          # maximum size of the dev data
-steps_per_checkpoint: 500   # number of updates between each checkpoint
-steps_per_eval: 2000      # number of updates between each BLEU eval (on dev set)
+steps_per_checkpoint: 200   # number of updates between each checkpoint
+steps_per_eval: 1000      # number of updates between each BLEU eval (on dev set)
 max_steps: 0             # max number of updates before stopping
 keep_best: 4             # number of best checkpoints to keep
 feed_previous: 0.0       # randomly feed previous output instead of groundtruth to decoder during training
@@ -24,7 +24,7 @@ bidir: True              # use bidirectional encoders
 attention_window_size: 0 # if positive, use a local attention mechanism with this window size
 attention_filters: 0     # number of convolution filters to use in the attention mechanism
 attention_filter_length: 0  # length of the convolution filters
-vocab_size: 40000        # number of symbols of each encoder and decoder
+vocab_size: 400000        # number of symbols of each encoder and decoder
 use_lstm: True           # use LSTM units instead of GRU units
 num_samples: 512         # number of samples for sampled softmax (0 for standard softmax)
 binary: False            # input file is binary (contains vector features)
@@ -37,8 +37,8 @@ initial_state_attention: False
 residual_connections: False
 
 # data
-data_dir: data
-model_dir: model
+data_dir: wsd/data
+model_dir: wsd/model
 train_prefix: train      # name of the training corpus
 dev_prefix: [dev]        # names of the development corpora
 vocab_prefix: vocab      # name of the vocabulary files
@@ -47,7 +47,7 @@ checkpoints: []          # list of checkpoints to load (in this specific order) 
 
 # decoding
 bleu_script: scripts/multi-bleu.perl  # path to BLEU script
-scoring_script: wsd_precise_scorer/wsd_precise_scorer/wsd_precise_scorer      # path to scoring script
+scoring_script: wsd/scorer/precise/score      # path to scoring script
 remove_unk: False        # remove UNK symbols from the decoder output
 lm_file: null            # path to a language model file (in arpa format) to use during decoding
 lm_weight: 0.2           # weight of the language model in the log-linear model

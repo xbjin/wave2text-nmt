@@ -80,6 +80,7 @@ int main(int argc, char *argv[])
     if (argc < 3)
     {
         cerr << "Usage : <program> <text.tag> <answers.ans>" << endl;
+        return 0;
     }
 
     string hyp_file_path = argv[1];
