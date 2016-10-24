@@ -24,7 +24,7 @@ bidir: True              # use bidirectional encoders
 attention_window_size: 0 # if positive, use a local attention mechanism with this window size
 attention_filters: 0     # number of convolution filters to use in the attention mechanism
 attention_filter_length: 0  # length of the convolution filters
-vocab_size: 400000        # number of symbols of each encoder and decoder
+vocab_size: 60000        # number of symbols of each encoder and decoder
 use_lstm: True           # use LSTM units instead of GRU units
 num_samples: 512         # number of samples for sampled softmax (0 for standard softmax)
 binary: False            # input file is binary (contains vector features)
