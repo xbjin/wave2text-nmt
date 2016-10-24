@@ -364,7 +364,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
       with tf.variable_scope('attention_output_projection'):
-        output = linear_unsafe([output, new_attns], output_size, True)
+        with tf.device('/cpu:0'):
+          output = linear_unsafe([output, new_attns], output_size, True)
 
       output_ta_t = output_ta_t.write(time, output)
       return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t
@@ -441,7 +442,8 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
     with tf.variable_scope('attention_output_projection'):
-      output = linear_unsafe([cell_output, new_attns], output_size, True)
+      with tf.device('/cpu:0'):
+        output = linear_unsafe([cell_output, new_attns], output_size, True)
 
     beam_tensors = namedtuple('beam_tensors', 'state new_state attn_weights new_attn_weights attns new_attns')
     return output, beam_tensors(state, new_state, attn_weights, new_attn_weights, attns, new_attns)

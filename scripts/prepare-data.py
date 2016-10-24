@@ -388,7 +388,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--min', nargs='+', type=int, default=[1],
                         help='min number of tokens per line')
-    parser.add_argument('--max', nargs='+', type=int, default=[50],
+    parser.add_argument('--max', nargs='+', type=int, default=[0],
                         help='max number of tokens per line (0 for no limit)')
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
                         'the vocabularies', default=[30000])

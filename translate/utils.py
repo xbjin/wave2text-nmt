@@ -11,7 +11,6 @@ import wave
 
 from collections import namedtuple
 from contextlib import contextmanager
-import matplotlib.pyplot as plt
 
 # special vocabulary symbols
 _PAD = "_PAD"
@@ -448,6 +447,7 @@ def estimate_lm_score(sequence, ngrams):
 
 def heatmap(xlabels=None, ylabels=None, weights=None,
             output_file=None, wav_file=None):
+  import matplotlib.pyplot as plt
   xlabels = xlabels or []
   ylabels = ylabels or []
 

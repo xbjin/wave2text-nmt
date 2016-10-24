@@ -51,8 +51,6 @@ parser.add_argument('--wav-files', nargs='*')
 
 
 """
-data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
-
 Benchmarks:
 - replicate Jean et al. (2015)'s results
 - replicate speech recognition results
