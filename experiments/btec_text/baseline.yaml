@@ -10,7 +10,7 @@ steps_per_eval: 2000
 max_steps: 20000
 optimizer: 'adam'
 learning_rate: 0.001
-num_samples: 0
+num_samples: 512
 
 data_dir: experiments/btec_text/data
 model_dir: experiments/btec_text/baseline

@@ -66,8 +66,8 @@ allow_growth: True       # allow GPU memory allocation to change during runtime
 mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
 log_file: null           # log to this file instead of standard output
-parallel_iterations: 16
-swap_memory: True
+parallel_iterations: 16  # parameter of Tensorflow's while_loop
+swap_memory: True        # parameter of Tensorflow's while_loop
 
 encoders:
   - name: fr
