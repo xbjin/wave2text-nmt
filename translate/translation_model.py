@@ -1,10 +1,6 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 import os
-import cPickle
+import pickle
 import time
 import sys
 import math
@@ -257,6 +253,7 @@ class TranslationModel(BaseTranslationModel):
       references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
 
       # main score function (used to choose which checkpoints to keep)
+      # default is utils.bleu_score
       score, score_summary = getattr(utils, score_function)(hypotheses, references, script_dir)
 
       # optionally use an auxiliary function to get different score information
@@ -302,7 +299,7 @@ def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
   
   if os.path.exists(var_file):
     with open(var_file, 'rb') as f:
-      var_names = cPickle.load(f)    
+      var_names = pickle.load(f)
       variables = [var for var in tf.all_variables() if var.name in var_names]
   else:
     variables = tf.all_variables()
@@ -330,7 +327,7 @@ def save_checkpoint(sess, saver, checkpoint_dir, step=None, name=None):
   
   with open(var_file, 'wb') as f:
     var_names = [var.name for var in tf.all_variables()]
-    cPickle.dump(var_names, f)
+    pickle.dump(var_names, f)
   
   utils.log('saving model to {}'.format(checkpoint_dir))
   checkpoint_path = os.path.join(checkpoint_dir, name)

@@ -1,23 +1,16 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 import subprocess
 import tempfile
 import numpy as np
-import math
 import logging
 import struct
 import random
-import numbers
 import math
 import wave
 
 from collections import namedtuple
 from contextlib import contextmanager
-from itertools import izip
 import matplotlib.pyplot as plt
 
 # special vocabulary symbols
@@ -138,7 +131,7 @@ def bleu_score(hypotheses, references, script_dir):
   :param script_dir: directory containing the evaluation script
   :return: a pair (BLEU score, additional scoring information)
   """
-  with tempfile.NamedTemporaryFile(delete=False) as f:
+  with tempfile.NamedTemporaryFile(delete=False, mode='w') as f:
     for ref in references:
       f.write(ref + '\n')
 
@@ -146,9 +139,11 @@ def bleu_score(hypotheses, references, script_dir):
   try:
     p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
-    output, _ = p.communicate('\n'.join(hypotheses))
+    output, _ = p.communicate('\n'.join(hypotheses).encode())
   finally:
     os.unlink(f.name)
+
+  output = output.decode()
 
   m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
   bleu, penalty, ratio = [float(m.group(i)) for i in range(1, 4)]
@@ -166,8 +161,8 @@ def multi_score(hypotheses, references, script_dir):
   :param script_dir: directory containing the evaluation script
   :return: a pair (BLEU score, additional scoring information)
   """
-  with tempfile.NamedTemporaryFile(delete=False) as f1, \
-       tempfile.NamedTemporaryFile(delete=False) as f2:
+  with tempfile.NamedTemporaryFile(delete=False, mode='w') as f1, \
+       tempfile.NamedTemporaryFile(delete=False, mode='w') as f2:
     for ref in references:
       f1.write(ref + '\n')
     for hyp in hypotheses:
@@ -175,7 +170,7 @@ def multi_score(hypotheses, references, script_dir):
 
   scoring_script = os.path.join(script_dir, 'score.py')
   try:
-    output = subprocess.check_output([scoring_script, f2.name, f1.name])
+    output = subprocess.check_output([scoring_script, f2.name, f1.name]).decode()
   finally:
     os.unlink(f1.name)
     os.unlink(f2.name)
@@ -213,7 +208,7 @@ def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
 
       d = dict((line[0], np.array(map(float, line[1:]))) for line in lines)
 
-    for word, index in vocab.vocab.iteritems():
+    for word, index in vocab.vocab.items():
       if word in d:
         embedding[index] = d[word]
       else:
@@ -238,7 +233,7 @@ def read_binary_features(filename):
 
   with open(filename, 'rb') as f:
     lines, dim = struct.unpack('ii', f.read(8))
-    for _ in xrange(lines):
+    for _ in range(lines):
       frames, = struct.unpack('i', f.read(4))
       n = frames * dim
       feats = struct.unpack('f' * n, f.read(4 * n))
@@ -262,7 +257,7 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
 
     inputs = [
       sentence_to_token_ids(input_, vocab.vocab, character_level=char_level)
-      if vocab is not None and isinstance(input_, basestring)
+      if vocab is not None and isinstance(input_, str)
       else input_
       for input_, vocab, ext, char_level in zip(inputs, vocabs, extensions, character_level)
     ]
@@ -276,7 +271,7 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
   debug('size: {}'.format(len(data_set)))
 
   if sort_by_length:
-    data_set.sort(key=lambda lines: map(len, lines))
+    data_set.sort(key=lambda lines: list(map(len, lines)))
 
   return data_set
 
@@ -289,7 +284,7 @@ def bucket_batch_iterator(data, batch_size, bucket_count=10, key=None):
   if bucket_size < batch_size:
     raise Exception('buckets are too small')
 
-  data.sort(key=lambda lines: key(map(len, lines)))
+  data.sort(key=lambda lines: key(list(map(len, lines))))
 
   buckets = [
     data[i * bucket_size:(i + 1) * bucket_size] for i in range(bucket_count)
@@ -376,7 +371,7 @@ def read_lines(paths, extensions, binary_input=None):
     for ext, filename, binary in zip(extensions, paths, binary_input)
   ]
 
-  return izip(*iterators)
+  return zip(*iterators)
 
 
 def read_ngrams(lm_path, vocab):
@@ -400,7 +395,7 @@ def read_ngrams(lm_path, vocab):
 
   for kgrams in ngram_list:
     d = {}
-    for seq, probas in kgrams.iteritems():
+    for seq, probas in kgrams.items():
       ids = tuple(vocab.get(mappings.get(w, w)) for w in seq.split())
       if any(id_ is None for id_ in ids):
         continue
@@ -456,9 +451,6 @@ def heatmap(xlabels=None, ylabels=None, weights=None,
   xlabels = xlabels or []
   ylabels = ylabels or []
 
-  xlabels = [label.decode('utf-8') for label in xlabels]
-  ylabels = [label.decode('utf-8') for label in ylabels]
-
   if wav_file is None:
     _, ax = plt.subplots()
   else:
@@ -490,7 +482,7 @@ def heatmap(xlabels=None, ylabels=None, weights=None,
 
   ax.set_xticklabels(xlabels, minor=False)
   ax.set_yticklabels(ylabels, minor=False)
-  ax.tick_params(axis=u'both', which=u'both', length=0)
+  ax.tick_params(axis='both', which='both', length=0)
 
   if wav_file is None:
     plt.xticks(rotation=90, fontsize=20)

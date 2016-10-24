@@ -5,10 +5,6 @@ See the following papers for more information on neural translation models
  * http://arxiv.org/abs/1409.0473
  * http://arxiv.org/abs/1412.2007
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import logging
@@ -114,7 +110,7 @@ def main(args=None):
 
   utils.log(' '.join(sys.argv))  # print command line
   try:                           # print git hash
-    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
     utils.log('commit hash {}'.format(commit_hash))
   except:
     pass

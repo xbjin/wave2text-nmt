@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 import math
 import numpy as np
@@ -22,7 +18,7 @@ class MultiTaskModel(BaseTranslationModel):
       self.checkpoint_dir = checkpoint_dir
       # merging both dictionaries (task parameters have a higher precedence)
       kwargs_ = dict(task)
-      for k, v in kwargs.iteritems():
+      for k, v in kwargs.items():
         kwargs_.setdefault(k, v)
 
       model = TranslationModel(checkpoint_dir=None, keep_best=keep_best, **kwargs_)

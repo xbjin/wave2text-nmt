@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 import functools
 import math
@@ -44,7 +40,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None,
 
         # TODO: use state_is_tuple=True
         if encoder.use_lstm:
-          cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
+          cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
         else:
           cell = rnn_cell.GRUCell(encoder.cell_size)
 
@@ -239,8 +235,8 @@ def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
   Same as `attention` except that prev_weights, hidden_states and encoders
   are lists whose length is the number of encoders.
   """
-  ds, weights = zip(*[attention(state, weights_, hidden, encoder)
-                      for weights_, hidden, encoder in zip(prev_weights, hidden_states, encoders)])
+  ds, weights = list(zip(*[attention(state, weights_, hidden, encoder)
+                     for weights_, hidden, encoder in zip(prev_weights, hidden_states, encoders)]))
 
   return tf.concat(1, ds), list(weights)
 
@@ -265,7 +261,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                                     initializer=embedding_initializer)
 
   if decoder.use_lstm:
-    cell = rnn_cell.BasicLSTMCell(decoder.cell_size)
+    cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
   else:
     cell = rnn_cell.GRUCell(decoder.cell_size)
 
@@ -403,7 +399,7 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
                                     shape=embedding_shape,
                                     initializer=embedding_initializer)
   if decoder.use_lstm:
-    cell = rnn_cell.BasicLSTMCell(decoder.cell_size)
+    cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
   else:
     cell = rnn_cell.GRUCell(decoder.cell_size)
 
@@ -453,31 +449,30 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
 
 def sequence_loss(logits, targets, weights,
                   average_across_timesteps=True, average_across_batch=True,
-                  softmax_loss_function=None, name=None):
-  with tf.op_scope([logits, targets, weights], name, "sequence_loss"):
-    time_steps = tf.shape(targets)[0]
+                  softmax_loss_function=None):
+  time_steps = tf.shape(targets)[0]
+  batch_size = tf.shape(targets)[1]
+
+  logits_ = tf.reshape(logits, tf.pack([time_steps * batch_size, logits.get_shape()[2].value]))
+  targets_ = tf.reshape(targets, tf.pack([time_steps * batch_size]))
+
+  if softmax_loss_function is None:
+    crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_, targets_)
+  else:
+    crossent = softmax_loss_function(logits_, targets_)
+
+  crossent = tf.reshape(crossent, tf.pack([time_steps, batch_size]))
+  log_perp = tf.reduce_sum(crossent * weights, 0)
+
+  if average_across_timesteps:
+    total_size = tf.reduce_sum(weights, 0)
+    total_size += 1e-12  # just to avoid division by 0 for all-0 weights
+    log_perp /= total_size
+
+  cost = tf.reduce_sum(log_perp)
+
+  if average_across_batch:
     batch_size = tf.shape(targets)[1]
-
-    logits_ = tf.reshape(logits, tf.pack([time_steps * batch_size, logits.get_shape()[2].value]))
-    targets_ = tf.reshape(targets, tf.pack([time_steps * batch_size]))
-
-    if softmax_loss_function is None:
-      crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_, targets_)
-    else:
-      crossent = softmax_loss_function(logits_, targets_)
-
-    crossent = tf.reshape(crossent, tf.pack([time_steps, batch_size]))
-    log_perp = tf.reduce_sum(crossent * weights, 0)
-
-    if average_across_timesteps:
-      total_size = tf.reduce_sum(weights, 0)
-      total_size += 1e-12  # just to avoid division by 0 for all-0 weights
-      log_perp /= total_size
-
-    cost = tf.reduce_sum(log_perp)
-
-    if average_across_batch:
-      batch_size = tf.shape(targets)[1]
-      return cost / tf.cast(batch_size, tf.float32)
-    else:
-      return cost
+    return cost / tf.cast(batch_size, tf.float32)
+  else:
+    return cost

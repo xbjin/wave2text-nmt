@@ -15,12 +15,7 @@
 
 """Sequence-to-sequence model with an attention mechanism."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import re
 
@@ -198,7 +193,7 @@ class Seq2SeqModel(object):
     tf.get_variable_scope().reuse_variables()
 
     input_feed = {}
-    for i in xrange(self.encoder_count):
+    for i in range(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
       input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
 
@@ -223,7 +218,7 @@ class Seq2SeqModel(object):
       [token_ids + [[]]], decoding=True)
 
     input_feed = {}
-    for i in xrange(self.encoder_count):
+    for i in range(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
       input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
 
@@ -246,13 +241,13 @@ class Seq2SeqModel(object):
     data = [token_ids + [[]]]
     encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length = self.get_batch(data, decoding=True)
     input_feed = {}
-    for i in xrange(self.encoder_count):
+    for i in range(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
       input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
 
     output_feed = [self.encoder_state] + self.attention_states
     res = [session_.run(output_feed, input_feed) for session_ in session]
-    state, attn_states = zip(*[(res_[0], res_[1:]) for res_ in res])
+    state, attn_states = list(zip(*[(res_[0], res_[1:]) for res_ in res]))
 
     attns = [None for _ in session]
     attn_weights = [None for _ in session]
@@ -295,11 +290,11 @@ class Seq2SeqModel(object):
       )
 
       res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
-      decoder_output, decoder_state, attns, attn_weights = zip(*[(res_.decoder_output,
-                                                                  res_.decoder_state,
-                                                                  res_.attns,
-                                                                  res_.attn_weights)
-                                                                 for res_ in res])
+      decoder_output, decoder_state, attns, attn_weights = list(zip(*[(res_.decoder_output,
+                                                                    res_.decoder_state,
+                                                                    res_.attns,
+                                                                    res_.attn_weights)
+                                                                    for res_ in res]))
       # hypotheses, list of tokens ids of shape (beam_size, previous_len)
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
@@ -412,7 +407,7 @@ class Seq2SeqModel(object):
       data = [[x[:n] for x, n in zip(data_, self.buckets[-1])] for data_ in data]
 
     # maximum sentence length of each encoder in this batch
-    max_input_len = [max(len(data[k][i]) for k in xrange(batch_size)) for i in range(self.encoder_count)]
+    max_input_len = [max(len(data[k][i]) for k in range(batch_size)) for i in range(self.encoder_count)]
     if self.max_input_len is not None:
       max_input_len = [min(len_, self.max_input_len) for len_ in max_input_len]
 
@@ -425,11 +420,11 @@ class Seq2SeqModel(object):
     if decoding:
       max_output_len = self.max_output_len if matching_bucket is None else matching_bucket[-1]
     else:
-      max_output_len = max(len(data[k][-1]) for k in xrange(batch_size)) + 1   # + 1 for EOS
+      max_output_len = max(len(data[k][-1]) for k in range(batch_size)) + 1   # + 1 for EOS
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
-    for k in xrange(batch_size):
+    for k in range(batch_size):
       sentences = data[k]
 
       src_sentences = sentences[0:-1]
@@ -469,17 +464,17 @@ class Seq2SeqModel(object):
       batch_encoder_inputs.append(encoder_inputs_)
 
     # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
-    for length_idx in xrange(max_output_len):
+    for length_idx in range(max_output_len):
       batch_decoder_inputs.append(
           np.array([decoder_inputs[batch_idx][length_idx]
-                    for batch_idx in xrange(batch_size)], dtype=np.int32))
+                    for batch_idx in range(batch_size)], dtype=np.int32))
       batch_targets.append(
           np.array([decoder_inputs[batch_idx][length_idx + 1]
-                    for batch_idx in xrange(batch_size)], dtype=np.int32))
+                    for batch_idx in range(batch_size)], dtype=np.int32))
 
       # Create target_weights to be 0 for targets that are padding.
       batch_weight = np.ones(batch_size, dtype=np.float32)
-      for batch_idx in xrange(batch_size):
+      for batch_idx in range(batch_size):
         # We set weight to 0 if the corresponding target is a PAD symbol.
         # The corresponding target is decoder_input shifted by 1 forward.
         if length_idx < max_output_len:
