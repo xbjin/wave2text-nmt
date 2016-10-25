@@ -40,10 +40,10 @@ Example model:
 * Detailed logging
 * Periodic BLEU evaluation
 * Periodic checkpoints
-* Multi-task training
+* Multi-task training: train on several tasks at once (e.g. French->English and German->English MT)
 * Subwords training and decoding
 * Input binary features instead of text
-* Pre-processing script: We provide a fully-featured Python script for data pre-processing: vocabulary creation, lowercasing, tokenizing, filtering, corpus splitting, etc.
+* Pre-processing script: we provide a fully-featured Python script for data pre-processing (vocabulary creation, lowercasing, tokenizing, filtering, splitting, etc.)
 * Dynamic RNNs: we use symbolic loops instead of statically unrolled RNNs. This means faster model creation, and that we don't need buckets
 
 
