@@ -43,17 +43,8 @@ Example model:
 * Multi-task training
 * Subwords training and decoding
 * Input binary features instead of text
-* <details>
-  <summary>Pre-processing script</summary>
-  We provide a fully-featured Python script for data pre-processing (`utils/prepare-data.py`): vocabulary creation, lowercasing,
-  tokenizing, filtering, corpus splitting, etc.
-</details>
-* <details>
-  <summary>Dynamic RNNs</summary>
-  Our implementation uses symbolic loops instead of statically unrolled RNNs.
-  This means faster model creation, and that we don't need buckets (like TensorFlow's implementation).
-</details>
-
+* Pre-processing script: We provide a fully-featured Python script for data pre-processing: vocabulary creation, lowercasing, tokenizing, filtering, corpus splitting, etc.
+* Dynamic RNNs: we use symbolic loops instead of statically unrolled RNNs. This means faster model creation, and that we don't need buckets
 
 
 ## Credits
