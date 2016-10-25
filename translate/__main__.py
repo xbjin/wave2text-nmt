@@ -28,9 +28,9 @@ parser.add_argument('--reset-learning-rate', help='reset learning rate', action=
 parser.add_argument('--purge', help='remove previous model files', action='store_true')
 
 # Available actions (exclusive)
-parser.add_argument('--decode', help='translate this corpus')
-parser.add_argument('--align', help='translate and show alignments by the attention mechanism')
-parser.add_argument('--eval', help='compute BLEU score on this corpus')
+parser.add_argument('--decode', help='translate this corpus', nargs='*')
+parser.add_argument('--align', help='translate and show alignments by the attention mechanism', nargs='+')
+parser.add_argument('--eval', help='compute BLEU score on this corpus', nargs='+')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
 
 # Tensorflow configuration
@@ -92,10 +92,8 @@ def main(args=None):
   # enforce parameter constraints
   assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
     'steps-per-eval should be a multiple of steps-per-checkpoint')
-  assert args.decode or args.eval or args.train or args.align, (
+  assert args.decode is not None or args.eval or args.train or args.align, (
     'you need to specify at least one action (decode, eval, align, or train)')
-  assert args.train or 'tasks' not in args or len(args.tasks) == 1, (
-    'you cannot set multiple tasks in decode and eval modes')
 
   if args.purge:
     utils.log('deleting previous model')
@@ -176,7 +174,7 @@ def main(args=None):
     # all parameters except source embeddings and bias variables are initialized with this
     # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
     with tf.variable_scope('seq2seq', initializer=initializer):
-      decode_only = args.decode or args.eval or args.align # exempt from creating gradient ops
+      decode_only = args.decode is not None or args.eval or args.align # exempt from creating gradient ops
       model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
@@ -190,12 +188,12 @@ def main(args=None):
   with tf.Session(config=tf_config) as sess:
     best_checkpoint = os.path.join(checkpoint_dir, 'best')
 
-    if config.ensemble and (args.eval or args.decode):
+    if config.ensemble and (args.eval or args.decode is not None):
       # create one session for each model in the ensemble
       sess = [tf.Session() for _ in config.checkpoints]
       for sess_, checkpoint in zip(sess, config.checkpoints):
         model.initialize(sess_, [checkpoint], reset=True)
-    elif not config.checkpoints and not args.reset and (args.eval or args.decode or args.align) \
+    elif not config.checkpoints and not args.reset and (args.eval or args.decode is not None or args.align) \
             and os.path.isfile(best_checkpoint):
       # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
       # try to load the best checkpoint)
@@ -208,7 +206,7 @@ def main(args=None):
     # tf.get_variable_scope().reuse_variables()
     # import pdb; pdb.set_trace()
 
-    if args.decode:
+    if args.decode is not None:
       model.decode(sess, **config)
     elif args.eval:
       model.evaluate(sess, on_dev=False, **config)

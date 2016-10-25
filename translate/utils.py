@@ -106,16 +106,17 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
   dev_path = [os.path.join(data_dir, prefix) for prefix in dev_prefix]
   vocab_path = os.path.join(data_dir, vocab_prefix)
   embedding_path = os.path.join(data_dir, embedding_prefix)
-  test_path = kwargs.get('decode')  # `decode` or `eval` or None
-  test_path = test_path if test_path is not None else kwargs.get('eval')
-  test_path = test_path if test_path is not None else kwargs.get('align')
   lm_path = lm_file
 
   train = ['{}.{}'.format(train_path, ext) for ext in extensions]
   dev = [['{}.{}'.format(path, ext) for ext in extensions] for path in dev_path]
   vocab = ['{}.{}'.format(vocab_path, ext) for ext in extensions]
   embeddings = ['{}.{}'.format(embedding_path, ext) for ext in extensions]
-  test = test_path and ['{}.{}'.format(test_path, ext) for ext in extensions]
+
+  test = kwargs.get('decode')  # empty list means we decode from standard input
+  if test is None:
+    test = test or kwargs.get('eval')
+    test = test or kwargs.get('align')
 
   filenames = namedtuple('filenames', ['train', 'dev', 'test', 'vocab', 'lm_path', 'embeddings'])
   return filenames(train, dev, test, vocab, lm_path, embeddings)
@@ -314,6 +315,9 @@ def get_batches(data, batch_size, batches=10, allow_smaller=True):
 
 
 def read_lines(paths, extensions, binary_input=None):
+  if not paths:
+    raise NotImplementedError
+
   binary_input = binary_input or [False] * len(extensions)
 
   iterators = [

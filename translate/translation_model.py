@@ -188,6 +188,9 @@ class TranslationModel(BaseTranslationModel):
     if len(self.src_ext) != 1:
       raise NotImplementedError
 
+    if len(self.filenames.test) != len(self.extensions):
+      raise Exception('wrong number of input files')
+
     for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input), 1):
       token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                    if vocab is not None else sentence
@@ -216,11 +219,19 @@ class TranslationModel(BaseTranslationModel):
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
     utils.log('starting decoding')
+
+    # empty `test` means that we read from standard input, which is not possible with multiple encoders
+    assert len(self.src_ext) == 1 or self.filenames.test
+    # we can't read binary data from standard input
+    assert self.filenames.test or self.src_ext[0] not in self.binary_input
+    # check that there is the right number of files for decoding
+    assert not self.filenames.test or len(self.filenames.test) == len(self.src_ext)
+
     output_file = None
     try:
       output_file = sys.stdout if output is None else open(output, 'w')
 
-      for lines in utils.read_lines(self.filenames.test[:-1], self.src_ext, self.binary_input):
+      for lines in utils.read_lines(self.filenames.test, self.src_ext, self.binary_input):
         trg_sentence = self._decode_sentence(sess, lines, beam_size, remove_unk)
         output_file.write(trg_sentence + '\n')
         output_file.flush()
@@ -234,6 +245,8 @@ class TranslationModel(BaseTranslationModel):
     utils.log('starting decoding')
     if self.ngrams is not None:
       utils.debug('using external language model')
+
+    assert on_dev or len(self.filenames.test) == len(self.extensions)
 
     filenames = self.filenames.dev if on_dev else [self.filenames.test]
     scores = []
