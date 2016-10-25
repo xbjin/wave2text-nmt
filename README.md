@@ -20,6 +20,13 @@ Translate text using an existing model:
     python3 -m translate <your_config.yaml> --decode <corpus_to_translate> --output <output_file>
 
 
+Example model:
+
+    experiments/WMT14/download.sh    # will download WMT14 data into data/raw
+    experiments/WMT14/prepare.sh     # will preprocess the data, and copy the files to experiments/WMT14/data
+    python3 -m translate experiments/WMT14/baseline.yaml --train -v   # will train a baseline model on this data
+
+
 ## Features
 
 * YAML configuration files
