@@ -77,9 +77,8 @@ class BaseTranslationModel(object):
 class TranslationModel(BaseTranslationModel):
   def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
                learning_rate_decay_factor, batch_size, keep_best=1,
-               load_embeddings=None, buckets=None, optimizer='sgd', **kwargs):
+               load_embeddings=None, optimizer='sgd', **kwargs):
     self.batch_size = batch_size
-    self.buckets = buckets
     self.src_ext = [encoder.get('ext') or encoder.name for encoder in encoders]
     self.trg_ext = decoder.get('ext') or decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
@@ -108,8 +107,7 @@ class TranslationModel(BaseTranslationModel):
 
     # main model
     utils.debug('creating model {}'.format(name))
-    self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, buckets=buckets,
-                              optimizer=optimizer, **kwargs)
+    self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, optimizer=optimizer, **kwargs)
 
     super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
 
@@ -121,10 +119,7 @@ class TranslationModel(BaseTranslationModel):
     train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs,
                                    max_size=max_train_size, binary_input=self.binary_input,
                                    character_level=self.character_level)
-    if self.buckets is not None:
-      self.batch_iterator = utils.bucket_iterator(train_set, self.batch_size, self.buckets)
-    else:
-      self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
+    self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=10)
 
     utils.debug('reading development data')
     dev_sets = [
@@ -171,8 +166,7 @@ class TranslationModel(BaseTranslationModel):
     if beam_size <= 1 and not isinstance(sess, list):
       trg_token_ids, _ = self.model.greedy_decoding(sess, token_ids)
     else:
-      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
-                                                           reverse_vocab=self.trg_vocab.reverse)
+      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams)
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output

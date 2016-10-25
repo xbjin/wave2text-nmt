@@ -9,6 +9,18 @@ from collections import namedtuple
 
 def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None,
                   **kwargs):
+  """
+  Build multiple encoders according to the configuration in `encoders`, reading from `encoder_inputs`.
+  The result is a list of the outputs produced by those encoders (for each time-step), and their final state.
+
+  :param encoder_inputs: list of tensors of shape (batch_size, input_length) (one tensor for each encoder)
+  :param encoders: list of encoder configurations
+  :param encoder_input_length: list of tensors of shape (batch_size) (one tensor for each encoder)
+  :param dropout: scalar tensor or None, specifying the keep probability (1 - dropout)
+  :return:
+    encoder outputs: a list of tensors of shape (batch_size, input_length, encoder_cell_size)
+    encoder state: concatenation of the final states of all encoders, tensor of shape (batch_size, sum_of_state_sizes)
+  """
   assert len(encoder_inputs) == len(encoders)
   encoder_states = []
   encoder_outputs = []
@@ -246,8 +258,28 @@ def decoder(*args, **kwargs):
 
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder,
-                      decoder_input_length=None, attention_weights=None, output_projection=None,
+                      decoder_input_length=None, output_projection=None,
                       dropout=None, feed_previous=0.0, **kwargs):
+  """
+
+  :param decoder_inputs: tensor of shape (batch_size, output_length)
+  :param initial_state: initial state of the decoder (usually the final state of the encoder),
+    as a tensor of shape (batch_size, initial_state_size). This state is mapped to the
+    correct state size for the decoder.
+  :param attention_states: list of tensors of shape (batch_size, input_length, encoder_cell_size),
+    usually the encoder outputs (one tensor for each encoder).
+  :param encoders: configuration of the encoders
+  :param decoder: configuration of the decoder
+  :param decoder_input_length:
+  :param output_projection: None if no softmax sampling, or tuple (weight matrix, bias vector)
+  :param dropout: scalar tensor or None, specifying the keep probability (1 - dropout)
+  :param feed_previous: scalar tensor corresponding to the probability to use previous decoder output
+    instead of the groundtruth as input for the decoder (1 when decoding, between 0 and 1 when training)
+  :return:
+    outputs of the decoder as a tensor of shape (batch_size, output_length, decoder_cell_size)
+    attention weights as a tensor of shape (output_length, encoders, batch_size, input_length)
+  """
+  # TODO: dropout instead of keep probability
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -322,18 +354,15 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
 
-    state_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
     output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False)
     input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps).unpack(decoder_inputs)
     attn_weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
-
-    if attention_weights is None:
-      attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
+    attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
     attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
     attns.set_shape([None, attn_size])
 
-    def _time_step(time, state, _, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
+    def _time_step(time, state, _, attn_weights, output_ta_t, attn_weights_ta_t):
       input_t = input_ta.read(time)
       # restore some shape information
       r = tf.random_uniform([])
@@ -357,7 +386,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       else:
         output, new_state = call_cell()
 
-      state_ta_t = state_ta_t.write(time, new_state)
       attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
       # using decoder state instead of decoder output in the attention model seems
       # to give much better results
@@ -367,25 +395,32 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
         output = linear_unsafe([output, new_attns], output_size, True)
 
       output_ta_t = output_ta_t.write(time, output)
-      return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t
+      return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, attn_weights_ta_t
 
-    _, _, _, _, output_final_ta, state_final_ta, attn_weights_final = tf.while_loop(
+    _, _, _, _, output_final_ta, attn_weights_final = tf.while_loop(
       cond=lambda time, *_: time < time_steps,
       body=_time_step,
-      loop_vars=(time, state, attns, attention_weights, output_ta, state_ta, attn_weights_ta),
+      loop_vars=(time, state, attns, attention_weights, output_ta, attn_weights_ta),
       parallel_iterations=decoder.parallel_iterations,
       swap_memory=decoder.swap_memory)
 
     outputs = output_final_ta.pack()
-    decoder_states = state_final_ta.pack()
 
     # shape (time_steps, encoders, batch_size, input_time_steps)
     attention_weights = tf.slice(attn_weights_final.pack(), [1, 0, 0, 0], [-1, -1, -1, -1])
-    return outputs, decoder_states, attention_weights
+    return outputs, attention_weights
 
 
 def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder,
                         output_projection=None, dropout=None, **kwargs):
+  """
+  Same as `attention_decoder`, except that it only performs one step of the decoder.
+
+  :param decoder_input: tensor of size (batch_size), corresponding to the previous output of the decoder
+  :return:
+    current output of the decoder
+    tuple of (state, new_state, attn_weights, new_attn_weights, attns, new_attns)
+  """
   # TODO: code refactoring with `attention_decoder`
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding

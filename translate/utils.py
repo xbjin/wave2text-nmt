@@ -275,26 +275,6 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
   return data_set
 
 
-def bucket_batch_iterator(data, batch_size, bucket_count=10, key=None):
-  if key is None:
-    key = lambda x: x
-
-  bucket_size = len(data) // bucket_count
-  if bucket_size < batch_size:
-    raise Exception('buckets are too small')
-
-  data.sort(key=lambda lines: key(list(map(len, lines))))
-
-  buckets = [
-    data[i * bucket_size:(i + 1) * bucket_size] for i in range(bucket_count)
-  ]
-  buckets[-1] = data[(bucket_count - 1) * bucket_size:]
-
-  while True:
-    bucket = random.choice(buckets)
-    yield random.sample(bucket, batch_size)
-
-
 def random_batch_iterator(data, batch_size):
   while True:
     yield random.sample(data, batch_size)
@@ -309,7 +289,7 @@ def cycling_batch_iterator(data, batch_size):
       yield data[i * batch_size:(i + 1) * batch_size]
 
 
-def sequential_sorted_batch_iterator(data, batch_size, read_ahead=10):
+def read_ahead_batch_iterator(data, batch_size, read_ahead=10):
   iterator = cycling_batch_iterator(data, batch_size)
   while True:
     batches = [next(iterator) for _ in range(read_ahead)]
@@ -317,15 +297,6 @@ def sequential_sorted_batch_iterator(data, batch_size, read_ahead=10):
     batches = [data_[i * batch_size:(i + 1) * batch_size] for i in range(read_ahead)]
     for batch in batches:
       yield batch
-
-
-def random_sorted_batch_iterator(data, batch_size):
-  # this iterator is seriously bad (prefer the read_ahead iterator)
-  data.sort(key=lambda lines: len(lines[-1]))  # sort according to output length
-  while True:
-    i = random.randrange(len(data) - batch_size)
-    batch = data[i:i + batch_size]
-    yield batch
 
 
 def get_batches(data, batch_size, batches=10, allow_smaller=True):
@@ -340,26 +311,6 @@ def get_batches(data, batch_size, batches=10, allow_smaller=True):
   random.shuffle(data)
   batches = [data[i * batch_size:(i + 1) * batch_size] for i in range(batches)]
   return batches
-
-
-def bucket_iterator(data, batch_size, buckets):
-  data_ = [[] for _ in buckets]
-  for lines in data:
-    try:
-      i = next(i for i, bucket in enumerate(buckets)
-               if all(len(line) <= b for line, b in zip(lines, bucket)))
-    except StopIteration:
-      continue
-
-    data_[i].append(lines)
-
-  p = [len(bucket) / sum(map(len, data_)) for bucket in data_]
-  p_ = [sum(p[:i + 1]) for i in range(len(p))]
-  while True:
-    r = random.random()
-    bucket_id = next(i for i, r_ in enumerate(p_) if r_ >= r)
-    sample = [random.choice(data_[bucket_id]) for _ in range(batch_size)]
-    yield sample
 
 
 def read_lines(paths, extensions, binary_input=None):
