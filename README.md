@@ -22,13 +22,12 @@ Translate text using an existing model:
 
 Example model:
 
-    experiments/WMT14/download.sh    # will download WMT14 data into data/raw
-    experiments/WMT14/prepare.sh     # will preprocess the data, and copy the files to experiments/WMT14/data
-    python3 -m translate experiments/WMT14/baseline.yaml --train -v   # will train a baseline model on this data
+    experiments/WMT14/download.sh    # download WMT14 data into data/raw
+    experiments/WMT14/prepare.sh     # preprocess the data, and copy the files to experiments/WMT14/data
+    python3 -m translate experiments/WMT14/baseline.yaml --train -v   # train a baseline model on this data
 
 
 ## Features
-
 * YAML configuration files
 * Beam-search decoder
 * External language models
@@ -44,8 +43,16 @@ Example model:
 * Multi-task training
 * Subwords training and decoding
 * Input binary features instead of text
-* Pre-processing script
-* Dynamic RNNs
+* <details>
+  <summary>Pre-processing script</summary>
+  We provide a fully-featured Python script for data pre-processing (`utils/prepare-data.py`): vocabulary creation, lowercasing,
+  tokenizing, filtering, corpus splitting, etc.
+</details>
+* <details>
+  <summary>Dynamic RNNs</summary>
+  Our implementation uses symbolic loops instead of statically unrolled RNNs.
+  This means faster model creation, and that we don't need buckets (like TensorFlow's implementation).
+</details>
 
 
 
