@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import subprocess
 import tempfile
@@ -315,13 +316,14 @@ def get_batches(data, batch_size, batches=10, allow_smaller=True):
 
 
 def read_lines(paths, extensions, binary_input=None):
-  if not paths:
-    raise NotImplementedError
-
   binary_input = binary_input or [False] * len(extensions)
 
+  if not paths:   # read from stdin (only works with one encoder with text input)
+    assert len(extensions) == 1 and not any(binary_input)
+    paths = [None]
+
   iterators = [
-    read_binary_features(filename) if binary else open(filename)
+    sys.stdin if filename is None else read_binary_features(filename) if binary else open(filename)
     for ext, filename, binary in zip(extensions, paths, binary_input)
   ]
 

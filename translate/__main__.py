@@ -28,12 +28,12 @@ parser.add_argument('--reset-learning-rate', help='reset learning rate', action=
 parser.add_argument('--purge', help='remove previous model files', action='store_true')
 
 # Available actions (exclusive)
-parser.add_argument('--decode', help='translate this corpus', nargs='*')
-parser.add_argument('--align', help='translate and show alignments by the attention mechanism', nargs='+')
-parser.add_argument('--eval', help='compute BLEU score on this corpus', nargs='+')
+parser.add_argument('--decode', help='translate this corpus (one filename for each encoder)', nargs='*')
+parser.add_argument('--align', help='translate and show alignments by the attention mechanism', nargs=2)
+parser.add_argument('--eval', help='compute BLEU score on this corpus (source files and target file)', nargs='+')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
 
-# Tensorflow configuration
+# TensorFlow configuration
 parser.add_argument('--gpu-id', type=int, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', action='store_true', help='run on CPU')
 

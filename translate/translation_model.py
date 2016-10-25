@@ -191,7 +191,7 @@ class TranslationModel(BaseTranslationModel):
     if len(self.filenames.test) != len(self.extensions):
       raise Exception('wrong number of input files')
 
-    for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input), 1):
+    for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input)):
       token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                    if vocab is not None else sentence
                    for vocab, sentence, char_level in zip(self.vocabs, lines, self.character_level)]
@@ -214,7 +214,7 @@ class TranslationModel(BaseTranslationModel):
       else:
         wav_file = None
 
-      output_file = '{}.{}.svg'.format(output, line_id) if output is not None else None
+      output_file = '{}.{}.svg'.format(output, line_id + 1) if output is not None else None
       utils.heatmap(src_tokens, trg_tokens, weights.T, wav_file=wav_file, output_file=output_file)
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
