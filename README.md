@@ -3,11 +3,8 @@ Attention-based sequence to sequence learning
 
 ## Dependencies
 
-* [TensorFlow for Python 3](www.tensorflow.org/versions/r0.11/get_started/os_setup.html)
-* YAML and Matplotlib modules for Python 3:
-
-
-    sudo apt-get install python3-yaml python3-matplotlib
+* [TensorFlow for Python 3](https://www.tensorflow.org/versions/r0.11/get_started/os_setup.html)
+* YAML and Matplotlib modules for Python 3: `sudo apt-get install python3-yaml python3-matplotlib`
 
 
 ## How to use
@@ -47,6 +44,6 @@ Translate text using an existing model:
 
 ## Credits
 
-* This project is based on [TensorFlow's reference implementation](github.com/tensorflow/tensorflow/tree/master/tensorflow/models/rnn)
+* This project is based on [TensorFlow's reference implementation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/models/rnn)
 * We include some of the pre-processing scripts from [Moses](http://www.statmt.org/moses/)
-* The scripts for subword units come from [github.com/rsennrich/subword-nmt](github.com/rsennrich/subword-nmt)
+* The scripts for subword units come from [github.com/rsennrich/subword-nmt](https://github.com/rsennrich/subword-nmt)
