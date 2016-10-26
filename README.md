@@ -31,23 +31,23 @@ Example model:
 
 
 ## Features
-* YAML configuration files
-* Beam-search decoder
-* External language models
-* Ensemble decoding
-* Multiple encoders
-* Hierarchical encoder
-* Bidirectional encoder
-* Local attention model
-* Convolutional attention model
-* Detailed logging
-* Periodic BLEU evaluation
-* Periodic checkpoints
-* Multi-task training: *train on several tasks at once (e.g. French->English and German->English MT)*
-* Subwords training and decoding
-* Input binary features instead of text
-* Pre-processing script: *we provide a fully-featured Python script for data pre-processing (vocabulary creation, lowercasing, tokenizing, splitting, etc.)*
-* Dynamic RNNs: *we use symbolic loops instead of statically unrolled RNNs. This means faster model creation, and that we don't need buckets*
+* **YAML configuration files**
+* **Beam-search decoder**
+* **External language model**
+* **Ensemble decoding**
+* **Multiple encoders**
+* **Hierarchical encoder**
+* **Bidirectional encoder**
+* **Local attention model**
+* **Convolutional attention model**
+* **Detailed logging**
+* **Periodic BLEU evaluation**
+* **Periodic checkpoints**
+* **Multi-task training:** train on several tasks at once (e.g. French->English and German->English MT)
+* **Subwords training and decoding**
+* **Input binary features instead of text**
+* **Pre-processing script:** we provide a fully-featured Python script for data pre-processing (vocabulary creation, lowercasing, tokenizing, splitting, etc.)
+* **Dynamic RNNs:** we use symbolic loops instead of statically unrolled RNNs. This means faster model creation, and that we don't need buckets
 
 
 ## Credits
