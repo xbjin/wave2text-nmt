@@ -57,8 +57,6 @@ Benchmarks:
 - replicate the experiments of the WMT paper on neural post-editing
 
 TODO:
-- residual connections in encoder and decoder
-- possibility to read stream instead of corpus when decoding
 - reading files as a stream when decoding (useful for large files)
 - symbolic beam-search
 - possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers

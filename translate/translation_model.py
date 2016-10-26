@@ -242,22 +242,48 @@ class TranslationModel(BaseTranslationModel):
   def evaluate(self, sess, beam_size, score_function, on_dev=True, output=None,
                remove_unk=False, auxiliary_score_function=None, script_dir='scripts',
                **kwargs):
+    """
+    :param score_function: name of the scoring function used to score and rank models
+      (typically 'bleu_score')
+    :param on_dev: if True, evaluate the dev corpus, otherwise evaluate the test corpus
+    :param output: save the hypotheses to this file
+    :param remove_unk: remove the UNK symbols from the output
+    :param auxiliary_score_function: optional scoring function used to display a more
+      detailed summary.
+    :param script_dir: parameter of scoring functions
+    :return: scores of each corpus to evaluate
+    """
     utils.log('starting decoding')
-    if self.ngrams is not None:
-      utils.debug('using external language model')
-
     assert on_dev or len(self.filenames.test) == len(self.extensions)
 
     filenames = self.filenames.dev if on_dev else [self.filenames.test]
+
+    # convert `output` into a list, for zip
+    if isinstance(output, str):
+      output = [output]
+    elif output is None:
+      output = [None] * len(filenames)
+
     scores = []
 
-    for filenames_ in filenames:
+    for filenames_, output_ in zip(filenames, output):  # evaluation on multiple corpora
       lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
 
-      hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
-                    for lines_ in lines]
+      hypotheses = []
+      references = []
 
-      references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
+      try:
+        output_file = open(output_, 'w') if output_ is not None else None
+
+        for *src_sentences, trg_sentence in lines:
+          hypotheses.append(self._decode_sentence(sess, src_sentences, beam_size, remove_unk))
+          references.append(trg_sentence.strip().replace('@@ ', ''))
+          if output_file is not None:
+            output_file.write(hypotheses[-1] + '\n')
+            output_file.flush()
+
+      finally:
+        output_file.close()
 
       # main score function (used to choose which checkpoints to keep)
       # default is utils.bleu_score
@@ -279,11 +305,6 @@ class TranslationModel(BaseTranslationModel):
         score_info.append(score_summary)
 
       utils.log(' '.join(map(str, score_info)))
-
-      if output is not None:
-        with open(output, 'w') as f:
-          f.writelines(line + '\n' for line in hypotheses)
-
       scores.append(score)
 
     return scores

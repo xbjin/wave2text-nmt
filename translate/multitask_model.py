@@ -83,8 +83,18 @@ class MultiTaskModel(BaseTranslationModel):
         score = 0
 
         for ratio, model_ in zip(self.ratios, self.models):
-          output = None if eval_output is None else '{}.{}.{}'.format(eval_output, model_.name,
-                                                                      model_.global_step.eval(sess))
+          if eval_output is None:
+            output = None
+          elif len(model_.filenames.dev) > 1:
+            # if there are several dev files, we define several output files
+            # TODO: put dev_prefix into the name of the output file (also in the logging output)
+            output = [
+              '{}.{}.{}.{}'.format(eval_output, i + 1, model_.name, model_.global_step.eval(sess))
+              for i in range(len(model_.filenames.dev))
+            ]
+          else:
+            output = '{}.{}.{}'.format(eval_output, model_.name, model_.global_step.eval(sess))
+
           scores_ = model_.evaluate(sess, beam_size, on_dev=True, output=output,
                                     score_function=score_function,
                                     auxiliary_score_function=auxiliary_score_function,
