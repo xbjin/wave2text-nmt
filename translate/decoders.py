@@ -370,6 +370,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                         lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
                         lambda: input_t)
       input_t.set_shape(decoder_inputs.get_shape()[1:])
+      # the code from TensorFlow used a concatenation of input_t and attns as input here
+      # TODO: evaluate the impact of this
       call_cell = lambda: unsafe_decorator(cell)(input_t, state)
 
       if sequence_length is not None:

@@ -30,7 +30,7 @@ UNK_ID = 3
 def open_files(names, mode='r'):
   """ Safely open a list of files in a context manager.
   Example:
-  >>> with open_files(['foo.txt', 'bar.csv']) as f:
+  >>> with open_files(['foo.txt', 'bar.csv']) as (f1, f2):
   ...   pass
   """
 
@@ -44,30 +44,33 @@ def open_files(names, mode='r'):
       file_.close()
 
 
-class AttrDict(dict):   # magical dict
+class AttrDict(dict):
+  """
+  Dictionary whose keys can be accessed as attributes.
+  Example:
+  >>> d = AttrDict(x=1, y=2)
+  >>> d.x
+  1
+  >>> d.y = 3
+  """
   def __init__(self, *args, **kwargs):
     super(AttrDict, self).__init__(*args, **kwargs)
-    self.__dict__ = self
+    self.__dict__ = self  # dark magic
 
 
 def initialize_vocabulary(vocabulary_path):
-  """Initialize vocabulary from file.
+  """
+  Initialize vocabulary from file.
 
   We assume the vocabulary is stored one-item-per-line, so a file:
     dog
     cat
-  will result in a vocabulary {"dog": 0, "cat": 1}, and this function will
-  also return the reversed-vocabulary ["dog", "cat"].
+  will result in a vocabulary {'dog': 0, 'cat': 1}, and a reversed vocabulary ['dog', 'cat'].
 
-  Args:
-    vocabulary_path: path to the file containing the vocabulary.
-
-  Returns:
-    a pair: the vocabulary (a dictionary mapping string to integers), and
+  :param vocabulary_path: path to the file containing the vocabulary.
+  :return:
+    the vocabulary (a dictionary mapping string to integers), and
     the reversed vocabulary (a list, which reverses the vocabulary mapping).
-
-  Raises:
-    ValueError: if the provided vocabulary_path does not exist.
   """
   if os.path.exists(vocabulary_path):
     rev_vocab = []
@@ -81,20 +84,18 @@ def initialize_vocabulary(vocabulary_path):
 
 
 def sentence_to_token_ids(sentence, vocabulary, character_level=False):
-  """Convert a string to list of integers representing token-ids.
+  """
+  Convert a string to list of integers representing token-ids.
 
   For example, a sentence "I have a dog" may become tokenized into
   ["I", "have", "a", "dog"] and with vocabulary {"I": 1, "have": 2,
   "a": 4, "dog": 7"} this function will return [1, 2, 4, 7].
 
-  Args:
-    sentence: a string, the sentence to convert to token-ids.
-    vocabulary: a dictionary mapping tokens to integers.
-    character_level: consider sentence as a string of characters, and
-      not as a string of words.
-
-  Returns:
-    a list of integers, the token-ids for the sentence.
+  :param sentence: a string, the sentence to convert to token-ids
+  :param vocabulary: a dictionary mapping tokens to integers
+  :param character_level: treat sentence as a string of characters, and
+      not as a string of words
+  :return: a list of integers, the token-ids for the sentence.
   """
   sentence = sentence.rstrip('\n') if character_level else sentence.split()
   return [vocabulary.get(w, UNK_ID) for w in sentence]
@@ -102,7 +103,20 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
 
 def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
                   embedding_prefix, lm_file=None, **kwargs):
-  """ Last extension is always assumed to be the target """
+  """
+  Get a bunch of file prefixes and extensions, and output the list of filenames to be used
+  by the model.
+
+  :param data_dir: directory where all the the data is stored
+  :param extensions: list of file extensions, in the right order (last extension is always the target)
+  :param train_prefix: name of the training corpus (usually 'train')
+  :param dev_prefix: name of the dev corpus (usually 'dev')
+  :param vocab_prefix: prefix of the vocab files (usually 'vocab')
+  :param embedding_prefix: prefix of the embedding files
+  :param lm_file: full path to a language model file in the ARPA format
+  :param kwargs: optional contains an additional 'decode', 'eval' or 'align' parameter
+  :return: namedtuple containing the filenames
+  """
   train_path = os.path.join(data_dir, train_prefix)
   dev_path = [os.path.join(data_dir, prefix) for prefix in dev_prefix]
   vocab_path = os.path.join(data_dir, vocab_prefix)
@@ -125,7 +139,7 @@ def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix,
 
 def bleu_score(hypotheses, references, script_dir):
   """
-  Scoring function which calls the `multi-bleu.perl` script.
+  Scoring function which calls the 'multi-bleu.perl' script.
 
   :param hypotheses: list of translation hypotheses
   :param references: list of translation references
@@ -154,7 +168,7 @@ def bleu_score(hypotheses, references, script_dir):
 
 def multi_score(hypotheses, references, script_dir):
   """
-  Scoring function which calls the `score.py` script, to get
+  Scoring function which calls the 'score.py' script, to get
   BLEU, NIST, and TER scores.
 
   :param hypotheses: list of translation hypotheses
@@ -183,6 +197,14 @@ def multi_score(hypotheses, references, script_dir):
 
 
 def nltk_bleu_score(hypotheses, references, **kwargs):
+  """
+  Scoring function using NLTK to compute the BLEU score.
+  Warning: this doesn't produce the same BLEU score as 'multi-bleu.perl' and 'score.py'
+
+  :param hypotheses: list of translation hypotheses
+  :param references: list of translation references
+  :return: a pair (BLEU score, None)
+  """
   import nltk
   bleus = [nltk.bleu_score.bleu([ref.split()], hyp.split(), [1.0 / 3]*3)
            for ref, hyp in zip(references, hypotheses)]
@@ -223,12 +245,15 @@ def read_embeddings(embedding_filenames, encoders_and_decoder, load_embeddings,
 
 def read_binary_features(filename):
   """
-  Reads a binary file containing vector features. First two numbers correspond to
+  Reads a binary file containing vector features. First two (int32) numbers correspond to
   number of entries (lines), and dimension of the vectors.
   Each entry starts with a 32 bits integer indicating the number of frames, followed by
-  (frames x dimension) 32 bits floating point numbers.
+  (frames * dimension) 32 bits floats.
 
-  @Returns: list of (frames x dimension) shaped arrays
+  Use `scripts/extract-audio-features.py` to create such a file for audio (MFCCs).
+
+  :param filename: path to the binary file containing the features
+  :return: list of arrays of shape (frames, dimension)
   """
   all_feats = []
 
@@ -278,11 +303,26 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
 
 
 def random_batch_iterator(data, batch_size):
+  """
+  The most basic form of batch iterator.
+
+  :param data: the dataset to segment into batches
+  :param batch_size: the size of a batch
+  :return: an iterator which yields random batches (indefinitely)
+  """
   while True:
     yield random.sample(data, batch_size)
 
 
 def cycling_batch_iterator(data, batch_size):
+  """
+  Indefinitely cycle through a dataset and yield batches (the dataset is shuffled
+  at each new epoch)
+
+  :param data: the dataset to segment into batches
+  :param batch_size: the size of a batch
+  :return: an iterator which yields batches (indefinitely)
+  """
   while True:
     random.shuffle(data)
 
@@ -292,16 +332,44 @@ def cycling_batch_iterator(data, batch_size):
 
 
 def read_ahead_batch_iterator(data, batch_size, read_ahead=10):
+  """
+  Same iterator as `cycling_batch_iterator`, except that it reads a number of batches
+  at once, and sorts their content according to their size.
+
+  This is useful for training, where all the sequences in one batch need to be padded
+   to the same length as the longest sequence in the batch.
+
+  :param data: the dataset to segment into batches
+  :param batch_size: the size of a batch
+  :param read_ahead: number of batches to read ahead of time and sort (larger numbers
+    mean faster training, but less random behavior)
+  :return: an iterator which yields batches (indefinitely)
+  """
   iterator = cycling_batch_iterator(data, batch_size)
   while True:
     batches = [next(iterator) for _ in range(read_ahead)]
     data_ = sorted(sum(batches, []), key=lambda lines: len(lines[-1]))
     batches = [data_[i * batch_size:(i + 1) * batch_size] for i in range(read_ahead)]
+    random.shuffle(batches)
     for batch in batches:
       yield batch
 
 
 def get_batches(data, batch_size, batches=10, allow_smaller=True):
+  """
+  Segment `data` into a given number of fixed-size batches. The dataset is automatically shuffled.
+
+  This function is for smaller datasets, when you need access to the entire dataset at once (e.g. dev set).
+  For larger (training) datasets, where you may want to lazily iterate over batches
+  and cycle several times through the entire dataset, prefer batch iterators
+  (such as `cycling_batch_iterator`).
+
+  :param data: the dataset to segment into batches (a list of data points)
+  :param batch_size: the size of a batch
+  :param batches: number of batches to return (0 for the largest possible number)
+  :param allow_smaller: allow the last batch to be smaller
+  :return: a list of batches (which are lists of `batch_size` data points)
+  """
   if not allow_smaller:
     max_batches = len(data) // batch_size
   else:
@@ -331,6 +399,15 @@ def read_lines(paths, extensions, binary_input=None):
 
 
 def read_ngrams(lm_path, vocab):
+  """
+  Read a language model from a file in the ARPA format,
+  and return it as a list of dicts.
+
+  :param lm_path: full path to language model file
+  :param vocab: vocabulary used to map words from the LM to token ids
+  :return: one dict for each ngram order, containing mappings from
+    ngram (as a sequence of token ids) to (log probability, backoff weight)
+  """
   ngram_list = []
   with open(lm_path) as f:
     for line in f:
@@ -340,7 +417,7 @@ def read_ngrams(lm_path, vocab):
       elif not line or line == '\\end\\':
         continue
       elif ngram_list:
-        arr = map(str.rstrip, line.split('\t'))
+        arr = list(map(str.rstrip, line.split('\t')))
         ngram = arr.pop(1)
         ngram_list[-1][ngram] = list(map(float, arr))
 
@@ -360,7 +437,13 @@ def read_ngrams(lm_path, vocab):
   return ngrams
 
 
-def create_logger(log_file=None):                
+def create_logger(log_file=None):
+  """
+  Initialize global logger and return it.
+
+  :param log_file: log to this file, or to standard output if None
+  :return: created logger
+  """
   formatter = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%m/%d %H:%M:%S')
   if log_file is not None:
     log_dir = os.path.dirname(log_file)
@@ -384,6 +467,12 @@ def warn(msg): log(msg, level=logging.WARN)
 
 def estimate_lm_score(sequence, ngrams):
   """
+  Compute the log score of a sequence according to given language model.
+
+  :param sequence: list of token ids
+  :param ngrams: list of dicts, as returned by `read_ngrams`
+  :return: log probability of `sequence`
+
   P(w_3 | w_1, w_2) =
       log_prob(w_1 w_2 w_3)             } if (w_1 w_2 w_3) in language model
       P(w_3 | w_2) + backoff(w_1 w_2)   } otherwise
@@ -404,6 +493,15 @@ def estimate_lm_score(sequence, ngrams):
 
 def heatmap(xlabels=None, ylabels=None, weights=None,
             output_file=None, wav_file=None):
+  """
+  Draw a heatmap showing the alignment between two sequences.
+
+  :param xlabels: input words or None if binary input (use `wav_file` for audio)
+  :param ylabels: output words
+  :param weights: numpy array of shape (len(xlabels), len(ylabels))
+  :param output_file: write the figure to this file, or show it into a window if None
+  :param wav_file: plot the waveform of this audio file on the x axis
+  """
   import matplotlib.pyplot as plt
   xlabels = xlabels or []
   ylabels = ylabels or []
