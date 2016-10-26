@@ -10,14 +10,17 @@ Attention-based sequence to sequence learning
 ## How to use
 
 
-Train a model:
+Train a model (CONFIG is a YAML configuration file, such as `config/default.yaml`):
 
-    python3 -m translate <your_config.yaml> --train -v 
+    python3 -m translate CONFIG --train -v 
 
 
 Translate text using an existing model:
 
-    python3 -m translate <your_config.yaml> --decode <corpus_to_translate> --output <output_file>
+    python3 -m translate CONFIG --decode FILE_TO_TRANSLATE --output OUTPUT_FILE
+or for interactive decoding:
+
+    python3 -m translate CONFIG --decode
 
 
 Example model:
@@ -28,23 +31,23 @@ Example model:
 
 
 ## Features
-* YAML configuration files
-* Beam-search decoder
-* External language models
-* Ensemble decoding
-* Multiple encoders
-* Hierarchical encoder
-* Bidirectional encoder
-* Local attention model
-* Convolutional attention model
-* Detailed logging
-* Periodic BLEU evaluation
-* Periodic checkpoints
-* Multi-task training: train on several tasks at once (e.g. French->English and German->English MT)
-* Subwords training and decoding
-* Input binary features instead of text
-* Pre-processing script: we provide a fully-featured Python script for data pre-processing (vocabulary creation, lowercasing, tokenizing, filtering, splitting, etc.)
-* Dynamic RNNs: we use symbolic loops instead of statically unrolled RNNs. This means faster model creation, and that we don't need buckets
+* **YAML configuration files**
+* **Beam-search decoder**
+* **External language model**
+* **Ensemble decoding**
+* **Multiple encoders**
+* **Hierarchical encoder**
+* **Bidirectional encoder**
+* **Local attention model**
+* **Convolutional attention model**
+* **Detailed logging**
+* **Periodic BLEU evaluation**
+* **Periodic checkpoints**
+* **Multi-task training:** train on several tasks at once (e.g. French->English and German->English MT)
+* **Subwords training and decoding**
+* **Input binary features instead of text**
+* **Pre-processing script:** we provide a fully-featured Python script for data pre-processing (vocabulary creation, lowercasing, tokenizing, splitting, etc.)
+* **Dynamic RNNs:** we use symbolic loops instead of statically unrolled RNNs. This means faster model creation, and that we don't need buckets
 
 
 ## Credits
