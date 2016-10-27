@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <iomanip>
 
 using namespace std;
 
@@ -38,6 +39,7 @@ int main(int argc, char *argv[])
     string hyp_word;
     string ref_word;
 
+    int total = 0;
     int match = 0;
 
     bool found = false;
@@ -64,12 +66,20 @@ int main(int argc, char *argv[])
             }
             if (!found)
             {
+                hyp_line_stream.clear();
                 hyp_line_stream.seekg(position);
+            }
+            if (is_synset(ref_word))
+            {
+                total += 1;
             }
         }
     }
 
-    cout << match;
+    float precision = static_cast<float>(match) / static_cast<float>(total);
+    precision *= 100.f;
+
+    cout << fixed << setprecision(2) << precision;
     cout.flush();
 
     return 0;
