@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <iomanip>
 
 using namespace std;
 
@@ -10,7 +11,6 @@ string extract_lemma(string token)
 {
     auto lemma_sense_delimiter_position = token.find_first_of('%');
     string lemma = token.substr(0, lemma_sense_delimiter_position);
-    //cout << "lemma : " << lemma << endl;
     return lemma;
 }
 
@@ -30,7 +30,6 @@ string extract_sense(string token)
     {
         sense = token.substr(lemma_sense_delimiter_position + 1);
     }
-    //cout << "sense : " << sense << endl;
     return sense;
 }
 
@@ -48,15 +47,16 @@ int main(int argc, char *argv[])
     ifstream hyp_file(hyp_file_path);
     ifstream ref_file(ref_file_path);
 
+    string hyp_line;
+    string ref_line;
+
     string hyp_word;
     string ref_word;
 
+    int total = 0;
     int match = 0;
 
     bool found = false;
-
-    string hyp_line;
-    string ref_line;
 
     while (getline(ref_file, ref_line))
     {
@@ -84,12 +84,20 @@ int main(int argc, char *argv[])
             }
             if (!found)
             {
+                hyp_line_stream.clear();
                 hyp_line_stream.seekg(position);
+            }
+            if (ref_sense != "")
+            {
+                total += 1;
             }
         }
     }
 
-    cout << match;
+    float precision = static_cast<float>(match) / static_cast<float>(total);
+    precision *= 100.f;
+
+    cout << fixed << setprecision(2) << precision;
     cout.flush();
 
     return 0;
