@@ -1,4 +1,4 @@
 #!/bin/sh
 cd $(dirname $0)
 cd ..
-python2 -m translate config/wsd.yaml --train
+python2 -m translate wsd/config/wsd.yaml --train
