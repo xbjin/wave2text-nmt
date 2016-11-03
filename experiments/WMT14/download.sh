@@ -19,6 +19,6 @@ rename s@dev/ntst1213@ntst1213.fr-en@ dev/*
 rename s@dev/ntst14@ntst14.fr-en@ dev/*
 rmdir dev
 
-rm bitexts.tgz dev+test.tgz
+#rm bitexts.tgz dev+test.tgz
 
 cd ${cur_dir}

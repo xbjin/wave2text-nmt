@@ -35,6 +35,6 @@ tar xzf test.tgz
 ${cur_dir}/scripts/strip-xml.perl < test/newsdiscusstest2015-fren-ref.en.sgm | grep -v "^\s*$" > newstest2015.fr-en.en
 ${cur_dir}/scripts/strip-xml.perl < test/newsdiscusstest2015-fren-src.fr.sgm | grep -v "^\s*$" > newstest2015.fr-en.fr
 rm -rf test
-# rm training-parallel-europarl-v7.tgz training-parallel-nc-v10.tgz dev-v2.tgz test.tgz
+#rm training-parallel-europarl-v7.tgz training-parallel-nc-v10.tgz dev-v2.tgz test.tgz
 
 cd ${cur_dir}
