@@ -55,3 +55,8 @@ Example model:
 * This project is based on [TensorFlow's reference implementation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/models/rnn)
 * We include some of the pre-processing scripts from [Moses](http://www.statmt.org/moses/)
 * The scripts for subword units come from [github.com/rsennrich/subword-nmt](https://github.com/rsennrich/subword-nmt)
+
+## Troubleshoots
+
+* For an obscure reason, when running _seq2seq_ with Python 3.4, TensorFlow's `rnn._dynamic_rnn_loop` throws an exception. Works fine with Python 3.5.
+
