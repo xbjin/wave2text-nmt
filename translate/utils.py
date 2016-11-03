@@ -169,23 +169,23 @@ def bleu_score(hypotheses, references, script_dir):
 
 def wsd_score(hypotheses, references, script_dir):
 
-  with tempfile.NamedTemporaryFile(delete=False, mode='w') as f1, \
-       tempfile.NamedTemporaryFile(delete=False, mode='w') as f2:
-    for ref in references:
-      f1.write(ref + '\n')
-    for hyp in hypotheses:
-      f2.write(hyp + '\n')
-
-  scoring_script = os.path.join(script_dir, 'score')
-  try:
-    output = subprocess.check_output([scoring_script, f2.name, f1.name]).decode()
-  finally:
-    os.unlink(f1.name)
-    os.unlink(f2.name)
-
-  score = float(output)
-
-  return score, None
+    with tempfile.NamedTemporaryFile(delete=False, mode='w') as f1, \
+         tempfile.NamedTemporaryFile(delete=False, mode='w') as f2:
+        for ref in references:
+            f1.write(ref + '\n')
+        for hyp in hypotheses:
+            f2.write(hyp + '\n')
+            
+    scoring_script = os.path.join(script_dir, 'score')
+    try:
+        output = subprocess.check_output([scoring_script, f2.name, f1.name]).decode()
+    finally:
+        os.unlink(f1.name)
+        os.unlink(f2.name)
+        
+    score = float(output)
+    
+    return score, None
 
 
 def multi_score(hypotheses, references, script_dir):
