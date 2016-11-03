@@ -1,14 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 import os
-import cPickle
+import pickle
 import time
 import sys
 import math
-import numpy as np
 import shutil
 from translate import utils
 from translate.seq2seq_model import Seq2SeqModel
@@ -22,7 +17,7 @@ class BaseTranslationModel(object):
     self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
 
   def manage_best_checkpoints(self, step, score):
-    score_filename = os.path.join(self.checkpoint_dir, 'bleu-scores.txt')
+    score_filename = os.path.join(self.checkpoint_dir, 'scores.txt')
     # try loading previous scores
     try:
       with open(score_filename) as f:
@@ -32,7 +27,7 @@ class BaseTranslationModel(object):
       scores = []
 
     if any(step_ >= step for _, step_ in scores):
-      utils.warn('inconsistent bleu-scores.txt file')
+      utils.warn('inconsistent scores.txt file')
 
     best_scores = sorted(scores, reverse=True)[:self.keep_best]
 
@@ -82,11 +77,10 @@ class BaseTranslationModel(object):
 class TranslationModel(BaseTranslationModel):
   def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
                learning_rate_decay_factor, batch_size, keep_best=1,
-               load_embeddings=None, buckets=None, optimizer='sgd', **kwargs):
+               load_embeddings=None, optimizer='sgd', **kwargs):
     self.batch_size = batch_size
-    self.buckets = buckets
-    self.src_ext = [encoder.name for encoder in encoders]
-    self.trg_ext = decoder.name
+    self.src_ext = [encoder.get('ext') or encoder.name for encoder in encoders]
+    self.trg_ext = decoder.get('ext') or decoder.name
     self.extensions = self.src_ext + [self.trg_ext]
 
     encoders_and_decoder = encoders + [decoder]
@@ -113,8 +107,7 @@ class TranslationModel(BaseTranslationModel):
 
     # main model
     utils.debug('creating model {}'.format(name))
-    self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, buckets=buckets,
-                              optimizer=optimizer, **kwargs)
+    self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, optimizer=optimizer, **kwargs)
 
     super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
 
@@ -126,10 +119,7 @@ class TranslationModel(BaseTranslationModel):
     train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs,
                                    max_size=max_train_size, binary_input=self.binary_input,
                                    character_level=self.character_level)
-    if self.buckets is not None:
-      self.batch_iterator = utils.bucket_iterator(train_set, self.batch_size, self.buckets)
-    else:
-      self.batch_iterator = utils.sequential_sorted_batch_iterator(train_set, self.batch_size, read_ahead=10)
+    self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=10)
 
     utils.debug('reading development data')
     dev_sets = [
@@ -149,61 +139,17 @@ class TranslationModel(BaseTranslationModel):
     self.trg_vocab = self.vocabs[-1]
     self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
 
-  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
-            max_train_size=None, max_dev_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
-    utils.log('reading training and development data')
-    self.read_data(max_train_size, max_dev_size)
-    previous_losses = []
-
-    loss, time_, steps = 0, 0, 0
-
-    utils.log('starting training')
-    while True:
-      start_time = time.time()
-      step_loss = self.train_step(sess)
-
-      time_  += (time.time() - start_time)
-      loss += step_loss
-      steps += 1
-
-      global_step = self.global_step.eval(sess)
-
-      if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
-        loss_ = loss / steps
-        perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
-
-        utils.log('global step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
-          global_step, self.model.learning_rate.eval(), time_ / steps, perplexity))
-
-        # decay learning rate when loss is worse than last losses
-        if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-          utils.debug('decreasing learning rate')
-          sess.run(self.learning_rate_decay_op)
-
-        previous_losses.append(loss)
-        loss, time_, steps = 0, 0, 0
-
-        self.eval_step(sess)
-        self.save(sess)
-
-      if steps_per_eval and scoring_script and global_step % steps_per_eval == 0:
-        output = None if eval_output is None else '{}.{}'.format(eval_output, global_step)
-        scores = self.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
-                               remove_unk=remove_unk)
-        self.manage_best_checkpoints(global_step, scores[0])  # FIXME: for now, only first dev set is used
-
-      if 0 < max_steps < global_step:
-        utils.log('finished training')
-        return
+  def train(self, *args, **kwargs):
+    raise NotImplementedError('use MultiTaskModel')
 
   def train_step(self, sess):
-    return self.model.step(sess, next(self.batch_iterator))[0]
+    return self.model.step(sess, next(self.batch_iterator)).loss
 
   def eval_step(self, sess):
     # compute perplexity on dev set
     for dev_batches in self.dev_batches:
       eval_loss = sum(
-        self.model.step(sess, batch, forward_only=True)[0] * len(batch)
+        self.model.step(sess, batch, forward_only=True).loss * len(batch)
         for batch in dev_batches
       )
       eval_loss /= sum(map(len, dev_batches))
@@ -220,8 +166,7 @@ class TranslationModel(BaseTranslationModel):
     if beam_size <= 1 and not isinstance(sess, list):
       trg_token_ids, _ = self.model.greedy_decoding(sess, token_ids)
     else:
-      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams,
-                                                           reverse_vocab=self.trg_vocab.reverse)
+      hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams)
       trg_token_ids = hypotheses[0]   # first hypothesis is the highest scoring one
 
     # remove EOS symbols from output
@@ -239,11 +184,14 @@ class TranslationModel(BaseTranslationModel):
     else:
       return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
-  def align(self, sess, output=None, **kwargs):
+  def align(self, sess, output=None, wav_files=None, **kwargs):
     if len(self.src_ext) != 1:
       raise NotImplementedError
 
-    for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input), 1):
+    if len(self.filenames.test) != len(self.extensions):
+      raise Exception('wrong number of input files')
+
+    for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input)):
       token_ids = [utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
                    if vocab is not None else sentence
                    for vocab, sentence, char_level in zip(self.vocabs, lines, self.character_level)]
@@ -252,7 +200,8 @@ class TranslationModel(BaseTranslationModel):
       trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
                     for i in token_ids[-1]]
 
-      weights = weights.squeeze()[2:len(trg_tokens)+2,::-1].T
+      weights = weights.squeeze()[:len(trg_tokens),::-1].T
+
       max_len = weights.shape[0]
 
       if self.binary_input[0]:
@@ -260,21 +209,29 @@ class TranslationModel(BaseTranslationModel):
       else:
         src_tokens = lines[0].split()[:max_len]
 
-      utils.heatmap(src_tokens, trg_tokens, weights.T)
-
-      import matplotlib.pyplot as plt
-      if output is None:
-        plt.show()
+      if wav_files is not None:
+        wav_file = wav_files[line_id]
       else:
-        plt.savefig('{}.{}.jpg'.format(output, line_id))
+        wav_file = None
+
+      output_file = '{}.{}.svg'.format(output, line_id + 1) if output is not None else None
+      utils.heatmap(src_tokens, trg_tokens, weights.T, wav_file=wav_file, output_file=output_file)
 
   def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
     utils.log('starting decoding')
+
+    # empty `test` means that we read from standard input, which is not possible with multiple encoders
+    assert len(self.src_ext) == 1 or self.filenames.test
+    # we can't read binary data from standard input
+    assert self.filenames.test or self.src_ext[0] not in self.binary_input
+    # check that there is the right number of files for decoding
+    assert not self.filenames.test or len(self.filenames.test) == len(self.src_ext)
+
     output_file = None
     try:
       output_file = sys.stdout if output is None else open(output, 'w')
 
-      for lines in utils.read_lines(self.filenames.test[:-1], self.src_ext, self.binary_input):
+      for lines in utils.read_lines(self.filenames.test, self.src_ext, self.binary_input):
         trg_sentence = self._decode_sentence(sess, lines, beam_size, remove_unk)
         output_file.write(trg_sentence + '\n')
         output_file.flush()
@@ -282,34 +239,75 @@ class TranslationModel(BaseTranslationModel):
       if output_file is not None:
         output_file.close()
 
-  def evaluate(self, sess, beam_size, scoring_script, on_dev=True, output=None, remove_unk=False, **kwargs):
+  def evaluate(self, sess, beam_size, score_function, on_dev=True, output=None,
+               remove_unk=False, auxiliary_score_function=None, script_dir='scripts',
+               **kwargs):
+    """
+    :param score_function: name of the scoring function used to score and rank models
+      (typically 'bleu_score')
+    :param on_dev: if True, evaluate the dev corpus, otherwise evaluate the test corpus
+    :param output: save the hypotheses to this file
+    :param remove_unk: remove the UNK symbols from the output
+    :param auxiliary_score_function: optional scoring function used to display a more
+      detailed summary.
+    :param script_dir: parameter of scoring functions
+    :return: scores of each corpus to evaluate
+    """
     utils.log('starting decoding')
-    if self.ngrams is not None:
-      utils.debug('using external language model')
+    assert on_dev or len(self.filenames.test) == len(self.extensions)
 
     filenames = self.filenames.dev if on_dev else [self.filenames.test]
-    bleu_scores = []
 
-    for filenames_ in filenames:
+    # convert `output` into a list, for zip
+    if isinstance(output, str):
+      output = [output]
+    elif output is None:
+      output = [None] * len(filenames)
+
+    scores = []
+
+    for filenames_, output_ in zip(filenames, output):  # evaluation on multiple corpora
       lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
 
-      hypotheses = [self._decode_sentence(sess, lines_[:-1], beam_size, remove_unk)
-                    for lines_ in lines]
+      hypotheses = []
+      references = []
 
-      references = [lines_[-1].strip().replace('@@ ', '') for lines_ in lines]
+      try:
+        output_file = open(output_, 'w') if output_ is not None else None
 
-      # score = utils.bleu_score(bleu_script, hypotheses, references)
-      score = utils.scoring(scoring_script, hypotheses, references)
-      summary = score if self.name is None else '{} {}'.format(self.name, score)
-      utils.log(summary)
+        for *src_sentences, trg_sentence in lines:
+          hypotheses.append(self._decode_sentence(sess, src_sentences, beam_size, remove_unk))
+          references.append(trg_sentence.strip().replace('@@ ', ''))
+          if output_file is not None:
+            output_file.write(hypotheses[-1] + '\n')
+            output_file.flush()
 
-      if output is not None:
-        with open(output, 'w') as f:
-          f.writelines(line + '\n' for line in hypotheses)
+      finally:
+        output_file.close()
 
-      bleu_scores.append(score.wsd)
+      # main score function (used to choose which checkpoints to keep)
+      # default is utils.bleu_score
+      score, score_summary = getattr(utils, score_function)(hypotheses, references, script_dir)
 
-    return bleu_scores
+      # optionally use an auxiliary function to get different score information
+      if auxiliary_score_function is not None and auxiliary_score_function != score_function:
+        try:
+          _, score_summary = getattr(utils, auxiliary_score_function)(hypotheses, references, script_dir)
+        except:
+          pass
+
+      # print the scoring information
+      score_info = []
+      if self.name is not None:
+        score_info.append(self.name)
+      score_info.append('score={}'.format(score))
+      if score_summary:
+        score_info.append(score_summary)
+
+      utils.log(' '.join(map(str, score_info)))
+      scores.append(score)
+
+    return scores
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
@@ -329,7 +327,7 @@ def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):
   
   if os.path.exists(var_file):
     with open(var_file, 'rb') as f:
-      var_names = cPickle.load(f)    
+      var_names = pickle.load(f)
       variables = [var for var in tf.all_variables() if var.name in var_names]
   else:
     variables = tf.all_variables()
@@ -357,7 +355,7 @@ def save_checkpoint(sess, saver, checkpoint_dir, step=None, name=None):
   
   with open(var_file, 'wb') as f:
     var_names = [var.name for var in tf.all_variables()]
-    cPickle.dump(var_names, f)
+    pickle.dump(var_names, f)
   
   utils.log('saving model to {}'.format(checkpoint_dir))
   checkpoint_path = os.path.join(checkpoint_dir, name)

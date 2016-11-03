@@ -8,7 +8,7 @@ bidir: True
 use_lstm: True
 steps_per_checkpoint: 100
 steps_per_eval: 200
-max_steps: 50000
+max_steps: 20000
 max_output_len: 20
 
 data_dir: data/btec
@@ -19,13 +19,12 @@ num_samples: 512
 
 optimizer: 'adam'
 learning_rate: 0.001
-initial_state_attention: True
-residual_connections: True
 
 encoders:
   - name: fr
-    vocab_size: 9218
+    vocab_size: 10000
 
 decoder:
     name: en
-    vocab_size: 7186
+    ext: en
+    vocab_size: 10000

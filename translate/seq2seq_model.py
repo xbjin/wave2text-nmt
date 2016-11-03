@@ -15,12 +15,7 @@
 
 """Sequence-to-sequence model with an attention mechanism."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import re
 
@@ -48,10 +43,9 @@ class Seq2SeqModel(object):
 
   def __init__(self, encoders, decoder, learning_rate, global_step, max_gradient_norm,
                num_samples=512, dropout_rate=0.0, freeze_variables=None, lm_weight=None,
-               max_output_len=50, attention=True, buckets=None, feed_previous=0.0,
+               max_output_len=50, attention=True, feed_previous=0.0,
                optimizer='sgd', max_input_len=None, decode_only=False,
-               initial_state_attention=True, len_normalization=1.0,
-               residual_connections=False, **kwargs):
+               len_normalization=1.0, **kwargs):
     self.lm_weight = lm_weight
     self.encoders = encoders
     self.decoder = decoder
@@ -66,7 +60,6 @@ class Seq2SeqModel(object):
 
     self.max_output_len = max_output_len
     self.max_input_len = max_input_len
-    self.buckets = buckets
     self.len_normalization = len_normalization
 
     # if we use sampled softmax, we need an output projection
@@ -127,10 +120,12 @@ class Seq2SeqModel(object):
     self.targets = tf.placeholder(tf.int32, shape=[None, None],
                                   name="target_{}".format(self.decoder.name))
 
+    self.decoder_input_length = tf.placeholder(tf.int64, shape=[None],
+                                               name="decoder_{}_length".format(decoder.name))
+
     parameters = dict(
       encoders=encoders, decoder=decoder,
-      dropout=self.dropout, output_projection=output_projection,
-      initial_state_attention=initial_state_attention
+      dropout=self.dropout, output_projection=output_projection
     )
 
     self.attention_states, self.encoder_state = decoders.multi_encoder(
@@ -140,9 +135,10 @@ class Seq2SeqModel(object):
 
     decoder = decoders.attention_decoder if attention else decoders.decoder
 
-    self.outputs, self.decoder_states, self.attention_weights = decoder(
+    self.outputs, self.attention_weights = decoder(
       attention_states=self.attention_states, initial_state=self.encoder_state,
-      decoder_inputs=self.decoder_inputs, feed_previous=self.feed_previous, **parameters
+      decoder_inputs=self.decoder_inputs, feed_previous=self.feed_previous,
+      decoder_input_length=self.decoder_input_length, **parameters
     )
 
     self.beam_output, self.beam_tensors = decoders.beam_search_decoder(
@@ -196,16 +192,17 @@ class Seq2SeqModel(object):
     if self.dropout is not None:
       session.run(self.dropout_on)
 
-    encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length = self.get_batch(data)
+    encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length, decoder_input_length = self.get_batch(data)
     tf.get_variable_scope().reuse_variables()
 
     input_feed = {}
-    for i in xrange(self.encoder_count):
+    for i in range(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
       input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
 
     input_feed[self.target_weights] = target_weights
     input_feed[self.decoder_inputs] = decoder_inputs
+    input_feed[self.decoder_input_length] = decoder_input_length
     input_feed[self.targets] = targets
 
     output_feed = {'loss': self.loss}
@@ -215,29 +212,30 @@ class Seq2SeqModel(object):
       output_feed['attn_weights'] = self.attention_weights
 
     res = session.run(output_feed, input_feed)
-    return res['loss'], res.get('attn_weights')
+    return namedtuple('output', 'loss attn_weights')(res['loss'], res.get('attn_weights'))
 
   def greedy_decoding(self, session, token_ids):
     if self.dropout is not None:
       session.run(self.dropout_off)
 
-    encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length = self.get_batch(
+    encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length, decoder_input_length = self.get_batch(
       [token_ids + [[]]], decoding=True)
 
     input_feed = {}
-    for i in xrange(self.encoder_count):
+    for i in range(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
       input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
 
     input_feed[self.target_weights] = target_weights
     input_feed[self.decoder_inputs] = decoder_inputs
+    input_feed[self.decoder_input_length] = decoder_input_length
     input_feed[self.targets] = targets
     input_feed[self.feed_previous] = 1.0
 
     outputs, attn_weights = session.run([self.outputs, self.attention_weights], input_feed)
     return [int(np.argmax(logit, axis=1)) for logit in outputs], attn_weights  # greedy decoder
 
-  def beam_search_decoding(self, session, token_ids, beam_size, ngrams=None, weights=None, reverse_vocab=None):
+  def beam_search_decoding(self, session, token_ids, beam_size, ngrams=None, weights=None):
     if not isinstance(session, list):
       session = [session]
 
@@ -246,15 +244,15 @@ class Seq2SeqModel(object):
         session_.run(self.dropout_off)
 
     data = [token_ids + [[]]]
-    encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length = self.get_batch(data, decoding=True)
+    encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length, _ = self.get_batch(data, decoding=True)
     input_feed = {}
-    for i in xrange(self.encoder_count):
+    for i in range(self.encoder_count):
       input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
       input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
 
     output_feed = [self.encoder_state] + self.attention_states
     res = [session_.run(output_feed, input_feed) for session_ in session]
-    state, attn_states = zip(*[(res_[0], res_[1:]) for res_ in res])
+    state, attn_states = list(zip(*[(res_[0], res_[1:]) for res_ in res]))
 
     attns = [None for _ in session]
     attn_weights = [None for _ in session]
@@ -297,11 +295,11 @@ class Seq2SeqModel(object):
       )
 
       res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
-      decoder_output, decoder_state, attns, attn_weights = zip(*[(res_.decoder_output,
-                                                                  res_.decoder_state,
-                                                                  res_.attns,
-                                                                  res_.attn_weights)
-                                                                 for res_ in res])
+      decoder_output, decoder_state, attns, attn_weights = list(zip(*[(res_.decoder_output,
+                                                                       res_.decoder_state,
+                                                                       res_.attns,
+                                                                       res_.attn_weights)
+                                                                      for res_ in res]))
       # hypotheses, list of tokens ids of shape (beam_size, previous_len)
       # decoder_output, shape=(beam_size, trg_vocab_size)
       # decoder_state, shape=(beam_size, cell.state_size)
@@ -357,10 +355,6 @@ class Seq2SeqModel(object):
         hypothesis = hypotheses[hyp_id] + [token_id]
         score = scores_[flat_id]
 
-        # for debugging purposes
-        # if reverse_vocab:
-        #   hyp_str = ' '.join(reverse_vocab[id_] if 0 < id_ < len(reverse_vocab) else utils._UNK for id_ in hypothesis)
-
         if token_id == utils.EOS_ID:
           # early stop: hypothesis is finished, it is thus unnecessary to keep expanding it
           beam_size -= 1  # number of possible hypotheses is reduced by one
@@ -403,95 +397,69 @@ class Seq2SeqModel(object):
     return hypotheses, scores
 
   def get_batch(self, data, decoding=False):
-    decoder_inputs = []
-    batch_size = len(data)
-
+    """
+    :param data:
+    :param decoding: set this parameter to True to output dummy
+      data for the decoder side (using the maximum output size)
+    :return:
+    """
     encoder_inputs = [[] for _ in range(self.encoder_count)]
     encoder_input_length = [[] for _ in range(self.encoder_count)]
+    decoder_inputs = []
+    decoder_input_length = []
 
-    if self.buckets is not None:
-      # truncate too long sentences
-      data = [[x[:n] for x, n in zip(data_, self.buckets[-1])] for data_ in data]
-
-    # maximum sentence length of each encoder in this batch
-    max_input_len = [max(len(data[k][i]) for k in xrange(batch_size)) for i in range(self.encoder_count)]
+    # maximum input length of each encoder in this batch
+    max_input_len = [max(len(data_[i]) for data_ in data) for i in range(self.encoder_count)]
     if self.max_input_len is not None:
       max_input_len = [min(len_, self.max_input_len) for len_ in max_input_len]
+    # maximum output length in this batch
+    max_output_len = min(max(len(data_[-1]) for data_ in data), self.max_output_len)
 
-    if self.buckets is not None:
-      matching_bucket = next(bucket for bucket in self.buckets
-                             if all(a <= b for a, b in zip(max_input_len, bucket)))
-    else:
-      matching_bucket = None
-
-    if decoding:
-      max_output_len = self.max_output_len if matching_bucket is None else matching_bucket[-1]
-    else:
-      max_output_len = max(len(data[k][-1]) for k in xrange(batch_size)) + 1   # + 1 for EOS
-
-    # Get a random batch of encoder and decoder inputs from data,
-    # pad them if needed, reverse encoder inputs and add GO to decoder.
-    for k in xrange(batch_size):
-      sentences = data[k]
-
-      src_sentences = sentences[0:-1]
-      trg_sentence = sentences[-1] + [utils.EOS_ID]
-
+    for *src_sentences, trg_sentence in data:
       for i, (encoder, src_sentence) in enumerate(zip(self.encoders, src_sentences)):
         if encoder.binary:
+          # when using binary input, the input sequence is a sequence of vectors,
+          # instead of a sequence of indices
           pad = np.zeros([encoder.embedding_size], dtype=np.float32)
         else:
           pad = utils.PAD_ID
 
-        if len(src_sentence) > max_input_len[i]:
-          src_sentence = src_sentence[:max_input_len[i]]
-
+        # pad sequences so that all sequences in the same batch have the same length
+        src_sentence = src_sentence[:max_input_len[i]]
         encoder_pad = [pad] * (max_input_len[i] - len(src_sentence))
+        # reversing the input used to give better results (not sure this is still the case with attention)
         reversed_sentence = list(reversed(src_sentence)) + encoder_pad
 
         encoder_inputs[i].append(reversed_sentence)
         encoder_input_length[i].append(len(src_sentence))
 
-      # Decoder inputs get an extra "GO" symbol, and are padded then.
-      decoder_pad_size = max_output_len - len(trg_sentence)
-      decoder_inputs.append([utils.BOS_ID] + trg_sentence +
-                            [utils.PAD_ID] * decoder_pad_size)
-
-    # Now we create batch-major vectors from the data selected above.
-    batch_decoder_inputs, batch_targets, batch_weights = [], [], []
-
-    encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
-
-    batch_encoder_inputs = []
-    for i, ext in enumerate(self.encoder_names):
-      if ext in self.binary_input:
-        encoder_inputs_ = np.array(encoder_inputs[i], dtype=np.float32)
+      trg_sentence = trg_sentence[:max_output_len]
+      if decoding:
+        # maximum output length doesn't account for the final EOS symbol
+        decoder_input_length.append(self.max_output_len + 1)
+        decoder_inputs.append([utils.BOS_ID] + [utils.PAD_ID] * (self.max_output_len + 1))
       else:
-        encoder_inputs_ = np.array(encoder_inputs[i], dtype=np.int32)
-      batch_encoder_inputs.append(encoder_inputs_)
+        decoder_pad_size = max_output_len - len(trg_sentence)
+        decoder_input_length.append(len(trg_sentence) + 1)
+        trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [utils.PAD_ID] * decoder_pad_size
+        decoder_inputs.append(trg_sentence)
 
-    # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
-    for length_idx in xrange(max_output_len):
-      batch_decoder_inputs.append(
-          np.array([decoder_inputs[batch_idx][length_idx]
-                    for batch_idx in xrange(batch_size)], dtype=np.int32))
-      batch_targets.append(
-          np.array([decoder_inputs[batch_idx][length_idx + 1]
-                    for batch_idx in xrange(batch_size)], dtype=np.int32))
+    # convert lists to numpy arrays
+    encoder_input_length = [np.array(input_length_, dtype=np.int32) for input_length_ in encoder_input_length]
+    decoder_input_length = np.array(decoder_input_length, dtype=np.int32)
+    batch_encoder_inputs = [
+      np.array(encoder_inputs_, dtype=(np.float32 if ext in self.binary_input else np.int32))
+      for ext, encoder_inputs_ in zip(self.encoder_names, encoder_inputs)
+    ]  # for binary input, the data type is float32
 
-      # Create target_weights to be 0 for targets that are padding.
-      batch_weight = np.ones(batch_size, dtype=np.float32)
-      for batch_idx in xrange(batch_size):
-        # We set weight to 0 if the corresponding target is a PAD symbol.
-        # The corresponding target is decoder_input shifted by 1 forward.
-        if length_idx < max_output_len:
-          target = decoder_inputs[batch_idx][length_idx + 1]
-        if target == utils.PAD_ID:
-          batch_weight[batch_idx] = 0.0
+    # time-major vectors: shape is (time, batch_size)
+    batch_decoder_inputs = np.array(decoder_inputs)[:,:-1].T     # with BOS symbol, without EOS symbol
+    batch_targets = np.array(decoder_inputs)[:,1:].T             # without BOS symbol, with EOS symbol
+    batch_weights = (batch_targets != utils.PAD_ID).astype(np.float32)  # PAD symbols don't count for training
 
-      batch_weights.append(batch_weight)
-
-    batch_targets = np.array(batch_targets)
-    batch_decoder_inputs = np.array(batch_decoder_inputs)
-    batch_weights = np.array(batch_weights)
-    return batch_encoder_inputs, batch_decoder_inputs, batch_targets, batch_weights, encoder_input_length
+    return (batch_encoder_inputs,
+            batch_decoder_inputs,
+            batch_targets,
+            batch_weights,
+            encoder_input_length,
+            decoder_input_length)

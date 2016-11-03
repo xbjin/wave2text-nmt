@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 import math
 import numpy as np
@@ -22,7 +18,7 @@ class MultiTaskModel(BaseTranslationModel):
       self.checkpoint_dir = checkpoint_dir
       # merging both dictionaries (task parameters have a higher precedence)
       kwargs_ = dict(task)
-      for k, v in kwargs.iteritems():
+      for k, v in kwargs.items():
         kwargs_.setdefault(k, v)
 
       model = TranslationModel(checkpoint_dir=None, keep_best=keep_best, **kwargs_)
@@ -36,8 +32,10 @@ class MultiTaskModel(BaseTranslationModel):
     self.global_step = 0  # steps of all tasks combined
     super(MultiTaskModel, self).__init__(name, checkpoint_dir, keep_best)
 
-  def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, scoring_script=None,
-            max_train_size=None, max_dev_size=None, eval_output=None, remove_unk=False, max_steps=0, **kwargs):
+  def train(self, sess, beam_size, steps_per_checkpoint, score_function,
+            steps_per_eval=None, max_train_size=None, max_dev_size=None,
+            eval_output=None, max_steps=0, auxiliary_score_function=None,
+            script_dir='scripts', **kwargs):
     utils.log('reading training and development data')
 
     self.global_step = 0
@@ -81,15 +79,27 @@ class MultiTaskModel(BaseTranslationModel):
 
         self.save(sess)
 
-      if steps_per_eval and scoring_script and self.global_step % steps_per_eval == 0:
+      if steps_per_eval and self.global_step % steps_per_eval == 0:
         score = 0
 
         for ratio, model_ in zip(self.ratios, self.models):
-          output = None if eval_output is None else '{}.{}.{}'.format(eval_output, model_.name,
-                                                                      model_.global_step.eval(sess))
-          scores_ = model_.evaluate(sess, beam_size, scoring_script, on_dev=True, output=output,
-                                    remove_unk=remove_unk)
-          score_ = scores_[0]
+          if eval_output is None:
+            output = None
+          elif len(model_.filenames.dev) > 1:
+            # if there are several dev files, we define several output files
+            # TODO: put dev_prefix into the name of the output file (also in the logging output)
+            output = [
+              '{}.{}.{}.{}'.format(eval_output, i + 1, model_.name, model_.global_step.eval(sess))
+              for i in range(len(model_.filenames.dev))
+            ]
+          else:
+            output = '{}.{}.{}'.format(eval_output, model_.name, model_.global_step.eval(sess))
+
+          scores_ = model_.evaluate(sess, beam_size, on_dev=True, output=output,
+                                    score_function=score_function,
+                                    auxiliary_score_function=auxiliary_score_function,
+                                    script_dir=script_dir)
+          score_ = scores_[0]   # in case there are several dev files, only the first one counts
 
           # if there is a main task, pick best checkpoint according to its score
           # otherwise use the average score across tasks
@@ -105,19 +115,22 @@ class MultiTaskModel(BaseTranslationModel):
         return
 
   def decode(self, *args, **kwargs):
-    if len(self.models) == 1:
-      return self.models[0].decode(*args, **kwargs)
+    if self.main_task is not None:
+      model = next(model for model in self.models if model.name == self.main_task)
     else:
-      raise NotImplementedError
+      model = self.models[0]
+    return model.decode(*args, **kwargs)
 
   def evaluate(self, *args, **kwargs):
-    if len(self.models) == 1:
-      return self.models[0].evaluate(*args, **kwargs)
+    if self.main_task is not None:
+      model = next(model for model in self.models if model.name == self.main_task)
     else:
-      raise NotImplementedError
+      model = self.models[0]
+    return model.evaluate(*args, **kwargs)
 
   def align(self, *args, **kwargs):
-    if len(self.models) == 1:
-      return self.models[0].align(*args, **kwargs)
+    if self.main_task is not None:
+      model = next(model for model in self.models if model.name == self.main_task)
     else:
-      raise NotImplementedError
+      model = self.models[0]
+    return model.align(*args, **kwargs)

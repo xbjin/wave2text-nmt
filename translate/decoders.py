@@ -1,18 +1,26 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 import functools
 import math
 from tensorflow.python.ops import rnn_cell, rnn
-from translate.rnn import get_variable_unsafe, GRUCell_unsafe, BasicLSTMCell_unsafe, MultiRNNCell_unsafe, \
-  linear_unsafe, multi_rnn_unsafe, multi_bidirectional_rnn_unsafe, unsafe_decorator, MultiRNNCell
+from translate.rnn import get_variable_unsafe, linear_unsafe, multi_rnn_unsafe
+from translate.rnn import multi_bidirectional_rnn_unsafe, unsafe_decorator, MultiRNNCell
 from collections import namedtuple
 
 
 def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None,
                   **kwargs):
+  """
+  Build multiple encoders according to the configuration in `encoders`, reading from `encoder_inputs`.
+  The result is a list of the outputs produced by those encoders (for each time-step), and their final state.
+
+  :param encoder_inputs: list of tensors of shape (batch_size, input_length) (one tensor for each encoder)
+  :param encoders: list of encoder configurations
+  :param encoder_input_length: list of tensors of shape (batch_size) (one tensor for each encoder)
+  :param dropout: scalar tensor or None, specifying the keep probability (1 - dropout)
+  :return:
+    encoder outputs: a list of tensors of shape (batch_size, input_length, encoder_cell_size)
+    encoder state: concatenation of the final states of all encoders, tensor of shape (batch_size, sum_of_state_sizes)
+  """
   assert len(encoder_inputs) == len(encoders)
   encoder_states = []
   encoder_outputs = []
@@ -44,7 +52,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None,
 
         # TODO: use state_is_tuple=True
         if encoder.use_lstm:
-          cell = rnn_cell.BasicLSTMCell(encoder.cell_size)
+          cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
         else:
           cell = rnn_cell.GRUCell(encoder.cell_size)
 
@@ -54,7 +62,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None,
         embedding = embedding_variables[i]
 
         if embedding is not None or encoder.input_layers:
-          batch_size = tf.shape(encoder_inputs_)[0]   # TODO: fix this time major shit
+          batch_size = tf.shape(encoder_inputs_)[0]   # TODO: fix this time major stuff
           time_steps = tf.shape(encoder_inputs_)[1]
 
           if embedding is None:
@@ -116,7 +124,7 @@ def compute_energy(hidden, state, name, **kwargs):
 
   k = get_variable_unsafe('W_{}'.format(name), [attn_size, attn_size])
 
-  # dot product between tensors needs reshaping
+  # dot product between tensors requires reshaping
   hidden = tf.reshape(hidden, tf.pack([tf.mul(batch_size, time_steps), attn_size]))
   f = tf.matmul(hidden, k)
   f = tf.reshape(f, tf.pack([batch_size, time_steps, 1, attn_size]))
@@ -148,7 +156,7 @@ def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filt
 
   k = get_variable_unsafe('W_{}'.format(name), [attn_size, attn_size])
 
-  # dot product between tensors needs reshaping
+  # dot product between tensors requires reshaping
   hidden = tf.reshape(hidden, tf.pack([tf.mul(batch_size, time_steps), attn_size]))
   f = tf.matmul(hidden, k)
   f = tf.reshape(f, tf.pack([batch_size, time_steps, 1, attn_size]))
@@ -239,138 +247,39 @@ def multi_attention(state, prev_weights, hidden_states, encoders, **kwargs):
   Same as `attention` except that prev_weights, hidden_states and encoders
   are lists whose length is the number of encoders.
   """
-  ds, weights = zip(*[attention(state, weights_, hidden, encoder)
-                      for weights_, hidden, encoder in zip(prev_weights, hidden_states, encoders)])
+  ds, weights = list(zip(*[attention(state, weights_, hidden, encoder)
+                     for weights_, hidden, encoder in zip(prev_weights, hidden_states, encoders)]))
 
   return tf.concat(1, ds), list(weights)
 
 
-def decoder(decoder_inputs, initial_state, decoder, decoder_input_length=None, output_projection=None, dropout=None,
-            feed_previous=0.0, **kwargs):
+def decoder(*args, **kwargs):
   raise NotImplementedError
-  # TODO: code refactoring with `attention_decoder`
-  if decoder.get('embedding') is not None:
-    embedding_initializer = decoder.embedding
-    embedding_shape = None
-  else:
-    embedding_initializer = None
-    embedding_shape = [decoder.vocab_size, decoder.embedding_size]
-
-  with tf.device('/cpu:0'):
-    embedding = get_variable_unsafe('embedding_{}'.format(decoder.name),
-                                    shape=embedding_shape,
-                                    initializer=embedding_initializer)
-
-  if decoder.use_lstm:
-    cell = rnn_cell.BasicLSTMCell(decoder.cell_size)
-  else:
-    cell = rnn_cell.GRUCell(decoder.cell_size)
-
-  if dropout is not None:
-    cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
-
-  if decoder.layers > 1:
-    cell = rnn_cell.MultiRNNCell([cell] * decoder.layers)
-
-  if output_projection is None:
-    output_size = decoder.vocab_size
-  else:
-    output_size = cell.output_size
-    proj_weights = tf.convert_to_tensor(output_projection[0], dtype=tf.float32)
-    proj_weights.get_shape().assert_is_compatible_with([cell.output_size, decoder.vocab_size])
-    proj_biases = tf.convert_to_tensor(output_projection[1], dtype=tf.float32)
-    proj_biases.get_shape().assert_is_compatible_with([decoder.vocab_size])
-
-  with tf.variable_scope('decoder_{}'.format(decoder.name)):
-    def extract_argmax_and_embed(prev):
-      if output_projection is not None:
-        prev = tf.nn.xw_plus_b(prev, output_projection[0], output_projection[1])
-      prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
-      emb_prev = tf.nn.embedding_lookup(embedding, prev_symbol)
-      return emb_prev
-
-    if embedding is not None:
-      time_steps = tf.shape(decoder_inputs)[0]
-      batch_size = tf.shape(decoder_inputs)[1]
-      flat_inputs = tf.reshape(decoder_inputs, [tf.mul(batch_size, time_steps)])
-      flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
-      decoder_inputs = tf.reshape(flat_inputs, tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
-
-    if dropout is not None:
-      initial_state = tf.nn.dropout(initial_state, dropout)
-    state = tf.nn.tanh(
-      linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
-    )
-
-    sequence_length = decoder_input_length
-    if sequence_length is not None:
-      sequence_length = tf.to_int32(sequence_length)
-      min_sequence_length = tf.reduce_min(sequence_length)
-      max_sequence_length = tf.reduce_max(sequence_length)
-
-    time = tf.constant(0, dtype=tf.int32, name="time")
-
-    input_shape = tf.shape(decoder_inputs)
-    time_steps = input_shape[0]
-    batch_size = input_shape[1]
-    state_size = cell.state_size
-
-    zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
-
-    state_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
-    output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False)
-    input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps).unpack(decoder_inputs)
-
-    def _time_step(time, state, output_ta_t, state_ta_t):
-      input_t = input_ta.read(time)
-      # restore some shape information
-      r = tf.random_uniform([])
-      input_t = tf.cond(tf.logical_and(time > 0, r < feed_previous),
-                        lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
-                        lambda: input_t)
-      input_t.set_shape(decoder_inputs.get_shape()[1:])
-      x = linear_unsafe([input_t], input_t.get_shape()[1], True)
-      call_cell = lambda: unsafe_decorator(cell)(x, state)
-
-      if sequence_length is not None:
-        output, new_state = rnn._rnn_step(
-          time=time,
-          sequence_length=sequence_length,
-          min_sequence_length=min_sequence_length,
-          max_sequence_length=max_sequence_length,
-          zero_output=zero_output,
-          state=state,
-          call_cell=call_cell,
-          state_size=state_size,
-          skip_conditionals=True)
-      else:
-        output, new_state = call_cell()
-
-      state_ta_t = state_ta_t.write(time, new_state)
-
-      with tf.variable_scope('output_projection'):
-        output = linear_unsafe([output], output_size, True)
-
-      output_ta_t = output_ta_t.write(time, output)
-      return time + 1, new_state, output_ta_t, state_ta_t
-
-    _, _, output_final_ta, state_final_ta = tf.while_loop(
-      cond=lambda time, *_: time < time_steps,
-      body=_time_step,
-      loop_vars=(time, state, output_ta, state_ta),
-      parallel_iterations=decoder.parallel_iterations,
-      swap_memory=decoder.swap_memory)
-
-    outputs = output_final_ta.pack()
-    decoder_states = state_final_ta.pack()
-
-    return outputs, decoder_states, None
 
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder,
-                      decoder_input_length=None, attention_weights=None, output_projection=None,
-                      initial_state_attention=False, dropout=None,
-                      feed_previous=0.0, **kwargs):
+                      decoder_input_length=None, output_projection=None,
+                      dropout=None, feed_previous=0.0, **kwargs):
+  """
+
+  :param decoder_inputs: tensor of shape (batch_size, output_length)
+  :param initial_state: initial state of the decoder (usually the final state of the encoder),
+    as a tensor of shape (batch_size, initial_state_size). This state is mapped to the
+    correct state size for the decoder.
+  :param attention_states: list of tensors of shape (batch_size, input_length, encoder_cell_size),
+    usually the encoder outputs (one tensor for each encoder).
+  :param encoders: configuration of the encoders
+  :param decoder: configuration of the decoder
+  :param decoder_input_length:
+  :param output_projection: None if no softmax sampling, or tuple (weight matrix, bias vector)
+  :param dropout: scalar tensor or None, specifying the keep probability (1 - dropout)
+  :param feed_previous: scalar tensor corresponding to the probability to use previous decoder output
+    instead of the groundtruth as input for the decoder (1 when decoding, between 0 and 1 when training)
+  :return:
+    outputs of the decoder as a tensor of shape (batch_size, output_length, decoder_cell_size)
+    attention weights as a tensor of shape (output_length, encoders, batch_size, input_length)
+  """
+  # TODO: dropout instead of keep probability
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
     embedding_shape = None
@@ -384,7 +293,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                                     initializer=embedding_initializer)
 
   if decoder.use_lstm:
-    cell = rnn_cell.BasicLSTMCell(decoder.cell_size)
+    cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
   else:
     cell = rnn_cell.GRUCell(decoder.cell_size)
 
@@ -445,23 +354,15 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
     zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
 
-    state_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
     output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False)
     input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps).unpack(decoder_inputs)
     attn_weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
+    attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
-    # TODO: do attention on cell output instead of cell state
+    attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
+    attns.set_shape([None, attn_size])
 
-    if attention_weights is None:
-      attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
-
-    if initial_state_attention:
-      attns, attention_weights = attention_(state, prev_weights=attention_weights)
-    else:
-      attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
-      attns.set_shape([None, attn_size])
-
-    def _time_step(time, state, attns, attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t):
+    def _time_step(time, state, _, attn_weights, output_ta_t, attn_weights_ta_t):
       input_t = input_ta.read(time)
       # restore some shape information
       r = tf.random_uniform([])
@@ -469,8 +370,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                         lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
                         lambda: input_t)
       input_t.set_shape(decoder_inputs.get_shape()[1:])
-      x = linear_unsafe([input_t, attns], input_t.get_shape()[1], True)
-      call_cell = lambda: unsafe_decorator(cell)(x, state)
+      # the code from TensorFlow used a concatenation of input_t and attns as input here
+      # TODO: evaluate the impact of this
+      call_cell = lambda: unsafe_decorator(cell)(input_t, state)
 
       if sequence_length is not None:
         output, new_state = rnn._rnn_step(
@@ -486,38 +388,41 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
       else:
         output, new_state = call_cell()
 
-      state_ta_t = state_ta_t.write(time, new_state)
       attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
       # using decoder state instead of decoder output in the attention model seems
       # to give much better results
       new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
-      # TODO: this projection greatly affects results, figure out why
-      with tf.variable_scope('attention_output_projection'):
+      with tf.variable_scope('attention_output_projection'):   # this can take a lot of memory
         output = linear_unsafe([output, new_attns], output_size, True)
 
       output_ta_t = output_ta_t.write(time, output)
-      return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, state_ta_t, attn_weights_ta_t
+      return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, attn_weights_ta_t
 
-    _, _, _, _, output_final_ta, state_final_ta, attn_weights_final = tf.while_loop(
+    _, _, _, _, output_final_ta, attn_weights_final = tf.while_loop(
       cond=lambda time, *_: time < time_steps,
       body=_time_step,
-      loop_vars=(time, state, attns, attention_weights, output_ta, state_ta, attn_weights_ta),
+      loop_vars=(time, state, attns, attention_weights, output_ta, attn_weights_ta),
       parallel_iterations=decoder.parallel_iterations,
       swap_memory=decoder.swap_memory)
 
     outputs = output_final_ta.pack()
-    decoder_states = state_final_ta.pack()
 
     # shape (time_steps, encoders, batch_size, input_time_steps)
-    attention_weights = tf.concat(0, [tf.expand_dims(attention_weights, 0),
-                                      attn_weights_final.pack()])
-
-    return outputs, decoder_states, attention_weights
+    attention_weights = tf.slice(attn_weights_final.pack(), [1, 0, 0, 0], [-1, -1, -1, -1])
+    return outputs, attention_weights
 
 
-def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder, initial_state_attention,
+def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder,
                         output_projection=None, dropout=None, **kwargs):
+  """
+  Same as `attention_decoder`, except that it only performs one step of the decoder.
+
+  :param decoder_input: tensor of size (batch_size), corresponding to the previous output of the decoder
+  :return:
+    current output of the decoder
+    tuple of (state, new_state, attn_weights, new_attn_weights, attns, new_attns)
+  """
   # TODO: code refactoring with `attention_decoder`
   if decoder.get('embedding') is not None:
     embedding_initializer = decoder.embedding
@@ -531,7 +436,7 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
                                     shape=embedding_shape,
                                     initializer=embedding_initializer)
   if decoder.use_lstm:
-    cell = rnn_cell.BasicLSTMCell(decoder.cell_size)
+    cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
   else:
     cell = rnn_cell.GRUCell(decoder.cell_size)
 
@@ -567,14 +472,9 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     batch_size = tf.shape(decoder_input)[0]
     attn_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
-    if initial_state_attention:
-      attns, attn_weights = attention_(state, prev_weights=attn_weights)
-    else:
-      attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
+    attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
 
-    input_size = decoder_input.get_shape()[1]
-    x = linear_unsafe([decoder_input, attns], input_size, True)
-    cell_output, new_state = unsafe_decorator(cell)(x, state)
+    cell_output, new_state = unsafe_decorator(cell)(decoder_input, state)
     new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
 
     with tf.variable_scope('attention_output_projection'):
@@ -586,31 +486,30 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
 
 def sequence_loss(logits, targets, weights,
                   average_across_timesteps=True, average_across_batch=True,
-                  softmax_loss_function=None, name=None):
-  with tf.op_scope([logits, targets, weights], name, "sequence_loss"):
-    time_steps = tf.shape(targets)[0]
+                  softmax_loss_function=None):
+  time_steps = tf.shape(targets)[0]
+  batch_size = tf.shape(targets)[1]
+
+  logits_ = tf.reshape(logits, tf.pack([time_steps * batch_size, logits.get_shape()[2].value]))
+  targets_ = tf.reshape(targets, tf.pack([time_steps * batch_size]))
+
+  if softmax_loss_function is None:
+    crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_, targets_)
+  else:
+    crossent = softmax_loss_function(logits_, targets_)
+
+  crossent = tf.reshape(crossent, tf.pack([time_steps, batch_size]))
+  log_perp = tf.reduce_sum(crossent * weights, 0)
+
+  if average_across_timesteps:
+    total_size = tf.reduce_sum(weights, 0)
+    total_size += 1e-12  # just to avoid division by 0 for all-0 weights
+    log_perp /= total_size
+
+  cost = tf.reduce_sum(log_perp)
+
+  if average_across_batch:
     batch_size = tf.shape(targets)[1]
-
-    logits_ = tf.reshape(logits, tf.pack([time_steps * batch_size, logits.get_shape()[2].value]))
-    targets_ = tf.reshape(targets, tf.pack([time_steps * batch_size]))
-
-    if softmax_loss_function is None:
-      crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(logits_, targets_)
-    else:
-      crossent = softmax_loss_function(logits_, targets_)
-
-    crossent = tf.reshape(crossent, tf.pack([time_steps, batch_size]))
-    log_perp = tf.reduce_sum(crossent * weights, 0)
-
-    if average_across_timesteps:
-      total_size = tf.reduce_sum(weights, 0)
-      total_size += 1e-12  # just to avoid division by 0 for all-0 weights
-      log_perp /= total_size
-
-    cost = tf.reduce_sum(log_perp)
-
-    if average_across_batch:
-      batch_size = tf.shape(targets)[1]
-      return cost / tf.cast(batch_size, tf.float32)
-    else:
-      return cost
+    return cost / tf.cast(batch_size, tf.float32)
+  else:
+    return cost

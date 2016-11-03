@@ -1,12 +1,8 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-from __future__ import division
-from itertools import izip, islice
+#!/usr/bin/env python3
+from itertools import islice
 from random import shuffle
 from contextlib import contextmanager
 from collections import Counter
-from functools import partial
-import itertools
 import argparse
 import subprocess
 import tempfile
@@ -15,7 +11,6 @@ import logging
 import sys
 import shutil
 import codecs
-import shlex
 
 
 help_msg = """\
@@ -24,9 +19,9 @@ Prepare a parallel corpus for Neural Machine Translation.
 If a single corpus is specified, it will be split into train/dev/test corpora
 according to the given train/dev/test sizes.
 
-Additional pre-training can be applied to these files, using external (Moses)
+Additional pre-processing can be applied to these files, using external (Moses)
 scripts, such as tokenization, punctuation normalization or lowercasing.
-The corpus can be shuffled, and too long or too short sentences removed.
+The corpus can be shuffled, and lines can be filtered according to their length.
 
 Usage example:
     scripts/prepare-data.py data/news fr en output --dev-corpus data/news-dev\
@@ -53,9 +48,6 @@ EOS_ID = 2
 UNK_ID = 3
 
 temporary_files = []
-
-
-open = partial(codecs.open, encoding='utf8')
 
 
 @contextmanager
@@ -125,11 +117,11 @@ def process_file(filename, lang, ext, args):
 
         processes = [['cat']]   # just copy file if there is no other operation
 
+        if ext in args.unescape_special_chars:
+            processes.append([path_to('unescape-special-chars.perl')])
         if ext in args.normalize_punk:
             processes.append([path_to('normalize-punctuation.perl'), '-l',
                               lang])
-            # replace html entities: FIXME
-            # processes.append(shlex.split("perl -MHTML::Entities -pe 'decode_entities($_);'"))
         if args.normalize_moses:
             processes.append(['sed', 's/|//g'])
         if ext in args.subwords:
@@ -160,7 +152,7 @@ def process_file(filename, lang, ext, args):
 def filter_corpus(filenames, args):
     with open_files(filenames) as input_files, \
          open_temp_files(len(filenames)) as output_files:
-        for lines in izip(*input_files):
+        for lines in zip(*input_files):
             if all(min_ <= len(line.split()) <= max_ for line, min_, max_
                    in zip(lines, args.min, args.max)):
                 for line, output_file in zip(lines, output_files):
@@ -177,7 +169,7 @@ def process_corpus(filenames, args):
          open_temp_files(len(filenames)) as output_files:
 
         # (lazy) sequence of sentence tuples
-        all_lines = (lines for lines in izip(*input_files) if
+        all_lines = (lines for lines in zip(*input_files) if
                      all(min_ <= len(line.split()) <= max_ for line, min_, max_
                          in zip(lines, args.min, args.max)))
 
@@ -268,7 +260,7 @@ def process_corpora(args, corpora, output_corpora, sizes):
             bpe_filenames = [
                 os.path.join(args.output_dir, 'bpe.{}'.format(ext))
                 for ext in args.extensions
-                ]
+            ]
 
             # create subwords
             train_corpus = corpora[-1]
@@ -286,7 +278,7 @@ def process_corpora(args, corpora, output_corpora, sizes):
             filenames = [
                 apply_subwords(filename, bpe_filename) if ext in args.subwords else filename
                 for ext, filename, bpe_filename in zip(args.extensions, corpus, bpe_filenames)
-                ]
+            ]
 
             # filter lines by length again...
             filenames = filter_corpus(filenames, args)
@@ -335,8 +327,7 @@ if __name__ == '__main__':
 
     parser.add_argument('corpus', help='training corpus')
     parser.add_argument('extensions', nargs='+', help='list of extensions '
-                        '(first extension is the main source, '
-                        'last extension is the target)')
+                        '(last extension is the target)')
 
     parser.add_argument('output_dir',
                         help='directory where the files will be copied')
@@ -372,7 +363,7 @@ if __name__ == '__main__':
                         'a character-level vocabulary for the given extensions, '
                         'line length filtering is also performed at the '
                         'character level')
-    parser.add_argument('--subwords', nargs='*', help='convert words to subword'
+    parser.add_argument('--subwords', nargs='*', help='convert words to subword '
                         'units for the given extensions')
     parser.add_argument('--bpe-path', help='path to existing subword units (corpus prefix)')
 
@@ -381,6 +372,7 @@ if __name__ == '__main__':
     parser.add_argument('--lowercase', nargs='*', help='put everything to lowercase',)
     parser.add_argument('--no-tokenize', nargs='*', help='no tokenization')
     parser.add_argument('--escape-special-chars', nargs='*', help='escape special characters')
+    parser.add_argument('--unescape-special-chars', nargs='*', help='unescape special characters')
     parser.add_argument('--shuffle', help='shuffle the corpus', action='store_true')
 
     parser.add_argument('--normalize-moses', help='remove | symbols '
@@ -389,14 +381,14 @@ if __name__ == '__main__':
                         action='store_true')
     parser.add_argument('--remove-duplicate-lines', help='more restrictive '
                         'than --remove-duplicates, remove any pair of lines '
-                        'whose source or target side was already seen.')
+                        'whose source or target side was already seen', action='store_true')
 
     parser.add_argument('-v', '--verbose', help='verbose mode',
                         action='store_true')
 
     parser.add_argument('--min', nargs='+', type=int, default=[1],
                         help='min number of tokens per line')
-    parser.add_argument('--max', nargs='+', type=int, default=[50],
+    parser.add_argument('--max', nargs='+', type=int, default=[0],
                         help='max number of tokens per line (0 for no limit)')
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
                         'the vocabularies', default=[30000])

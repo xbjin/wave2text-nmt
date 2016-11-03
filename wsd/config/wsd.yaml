@@ -17,7 +17,7 @@ attention: True          # use an attention mechanism
 batch_size: 64           # training batch size
 cell_size: 256           # size of the RNN cells
 embedding_size: 256      # size of the embeddings
-layers: 1                # number of RNN layers per encoder and decoder
+layers: 2                # number of RNN layers per encoder and decoder
 bidir: True              # use bidirectional encoders
 attention_window_size: 0 # if positive, use a local attention mechanism with this window size
 attention_filters: 0     # number of convolution filters to use in the attention mechanism
@@ -31,12 +31,12 @@ load_embeddings: []      # load pre-trained embeddings for those extensions
 time_pooling: null       # ratios of time steps to skip between layers
 pooling_avg: False       # average previous steps instead of skipping them
 input_layers: []         # fully connected layers between the embeddings and the RNN
-initial_state_attention: False
 residual_connections: False
 
 # data
 data_dir: wsd/data
 model_dir: wsd/model
+script_dir: wsd/scorer/synset     
 train_prefix: train      # name of the training corpus
 dev_prefix: [dev]        # names of the development corpora
 vocab_prefix: vocab      # name of the vocabulary files
@@ -44,8 +44,8 @@ embedding_prefix: vectors  # name of the embeddings files
 checkpoints: []          # list of checkpoints to load (in this specific order) after main checkpoint
 
 # decoding
-bleu_script: scripts/multi-bleu.perl  # path to BLEU script
-scoring_script: wsd/scorer/synset/score      # path to scoring script
+score_function: wsd_score # path to BLEU script
+auxiliary_score_function: null   # name of the auxiliary scoring function (used for logging)
 remove_unk: False        # remove UNK symbols from the decoder output
 lm_file: null            # path to a language model file (in arpa format) to use during decoding
 lm_weight: 0.2           # weight of the language model in the log-linear model
@@ -64,6 +64,7 @@ mem_fraction: 1.0        # maximum fraction of GPU memory to use
 freeze_variables: []     # list of variables to freeze during training
 log_file: null           # log to this file instead of standard output
 parallel_iterations: 16
+swap_memory: True        # parameter of Tensorflow's while_loop
 
 encoders:
   - name: lem

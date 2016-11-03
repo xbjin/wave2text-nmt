@@ -1,0 +1,27 @@
+
+dropout_rate: 0.0
+cell_size: 1024
+embedding_size: 1024
+layers: 2
+bidir: True
+use_lstm: True
+steps_per_checkpoint: 1000
+steps_per_eval: 4000
+max_steps: 0
+optimizer: 'adam'
+learning_rate: 0.001
+num_samples: 1024
+
+data_dir: experiments/WMT14/data
+model_dir: experiments/WMT14/baseline
+log_file: experiments/WMT14/baseline/log.txt
+
+dev_prefix: dev.2000
+
+encoders:
+  - name: fr
+    vocab_size: 30000
+
+decoder:
+    name: en
+    vocab_size: 30000

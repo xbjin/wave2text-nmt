@@ -3,17 +3,15 @@
 from __future__ import division
 import argparse
 import numpy as np
-# sys.path.append('~/.yaafe/python_packages')
 import yaafelib
 import struct
 import sys
 from collections import Counter
-# import scipy.io.wavfile as wav
 
 parser = argparse.ArgumentParser()
 parser.add_argument('filenames', nargs='*', help='audio filenames corresponding to one line each')
 parser.add_argument('--output', dest='output_file', help='output file')
-parser.add_argument('--no-derivatives', action='store_false', dest='derivatives')
+parser.add_argument('--derivatives', action='store_true')
 
 args = parser.parse_args()
 

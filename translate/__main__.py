@@ -1,14 +1,10 @@
-"""Binary for training translation models and decoding from them
+"""Script for training translation models and decoding from them
 
 See the following papers for more information on neural translation models
  * http://arxiv.org/abs/1409.3215
  * http://arxiv.org/abs/1409.0473
  * http://arxiv.org/abs/1412.2007
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import logging
@@ -25,19 +21,19 @@ from translate.multitask_model import MultiTaskModel
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('config', help='load a configuration file in the YAML format')
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help='reset model (don\'t load any checkpoint)', action='store_true')
 parser.add_argument('--reset-learning-rate', help='reset learning rate', action='store_true')
 parser.add_argument('--purge', help='remove previous model files', action='store_true')
 
 # Available actions (exclusive)
-parser.add_argument('--decode', help='translate this corpus')
-parser.add_argument('--align', help='translate and show alignments by the attention mechanism')
-parser.add_argument('--eval', help='compute BLEU score on this corpus')
+parser.add_argument('--decode', help='translate this corpus (one filename for each encoder)', nargs='*')
+parser.add_argument('--align', help='translate and show alignments by the attention mechanism', nargs=2)
+parser.add_argument('--eval', help='compute BLEU score on this corpus (source files and target file)', nargs='+')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
-parser.add_argument('config', help='load a configuration file in the YAML format')
 
-# Tensorflow configuration
+# TensorFlow configuration
 parser.add_argument('--gpu-id', type=int, help='index of the GPU where to run the computation')
 parser.add_argument('--no-gpu', action='store_true', help='run on CPU')
 
@@ -51,24 +47,16 @@ parser.add_argument('--len-normalization', type=float)
 parser.add_argument('--output')
 parser.add_argument('--max-steps', type=int)
 parser.add_argument('--remove-unk', action='store_const', const=True)
+parser.add_argument('--wav-files', nargs='*')
 
 
 """
-Random thoughts
----------------
-
-data: http://www-lium.univ-lemans.fr/~schwenk/nnmt-shared-task/
-
 Benchmarks:
 - replicate Jean et al. (2015)'s results
 - replicate speech recognition results
-- analyze the impact of this initial_state_attention parameter
 - replicate the experiments of the WMT paper on neural post-editing
 
-TODO (by order of priority):
-- possibility to evaluate on multiple dev
-- residual connections in encoder and decoder
-- possibility to read stream instead of corpus when decoding
+TODO:
 - reading files as a stream when decoding (useful for large files)
 - symbolic beam-search
 - possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers
@@ -78,9 +66,6 @@ TODO (by order of priority):
 - possibility to run model on several GPUs
 - copy vocab and config to model dir
 - rename scopes to nicer names
-
-Evaluation with METEOR:
-java -jar scripts/meteor-1.5.jar {hyp} {ref} -l {trg_ext} -a ~servan/Tools/METEOR/data/paraphrase-en.gz
 """
 
 
@@ -105,10 +90,8 @@ def main(args=None):
   # enforce parameter constraints
   assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
     'steps-per-eval should be a multiple of steps-per-checkpoint')
-  assert args.decode or args.eval or args.train or args.align, (
+  assert args.decode is not None or args.eval or args.train or args.align, (
     'you need to specify at least one action (decode, eval, align, or train)')
-  assert args.train or 'tasks' not in args or len(args.tasks) == 1, (
-    'you cannot set multiple tasks in decode and eval modes')
 
   if args.purge:
     utils.log('deleting previous model')
@@ -121,7 +104,7 @@ def main(args=None):
 
   utils.log(' '.join(sys.argv))  # print command line
   try:                           # print git hash
-    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
     utils.log('commit hash {}'.format(commit_hash))
   except:
     pass
@@ -189,7 +172,7 @@ def main(args=None):
     # all parameters except source embeddings and bias variables are initialized with this
     # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
     with tf.variable_scope('seq2seq', initializer=initializer):
-      decode_only = args.decode or args.eval or args.align # exempt from creating gradient ops
+      decode_only = args.decode is not None or args.eval or args.align # exempt from creating gradient ops
       model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
   utils.log('model parameters ({})'.format(len(tf.all_variables())))
@@ -203,12 +186,12 @@ def main(args=None):
   with tf.Session(config=tf_config) as sess:
     best_checkpoint = os.path.join(checkpoint_dir, 'best')
 
-    if config.ensemble and (args.eval or args.decode):
+    if config.ensemble and (args.eval or args.decode is not None):
       # create one session for each model in the ensemble
       sess = [tf.Session() for _ in config.checkpoints]
       for sess_, checkpoint in zip(sess, config.checkpoints):
         model.initialize(sess_, [checkpoint], reset=True)
-    elif not config.checkpoints and not args.reset and (args.eval or args.decode or args.align) \
+    elif not config.checkpoints and not args.reset and (args.eval or args.decode is not None or args.align) \
             and os.path.isfile(best_checkpoint):
       # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
       # try to load the best checkpoint)
@@ -221,12 +204,12 @@ def main(args=None):
     # tf.get_variable_scope().reuse_variables()
     # import pdb; pdb.set_trace()
 
-    if args.decode:
+    if args.decode is not None:
       model.decode(sess, **config)
     elif args.eval:
       model.evaluate(sess, on_dev=False, **config)
     elif args.align:
-      model.align(sess, **config)
+      model.align(sess, wav_files=args.wav_files, **config)
     elif args.train:
       eval_output = os.path.join(config.model_dir, 'eval')
       try:

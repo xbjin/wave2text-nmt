@@ -1,9 +1,4 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+#!/usr/bin/env python3
 
 import argparse
 import subprocess
@@ -37,7 +32,7 @@ if __name__ == '__main__':
     parameters += ['--cased']
 
   devnull = open(os.devnull, 'w')
-  output = subprocess.check_output(parameters, stderr=devnull)
+  output = subprocess.check_output(parameters, stderr=devnull).decode()
   scores = output.split()
 
   print('BLEU={} NIST={} TER={} RATIO={}'.format(*scores))
