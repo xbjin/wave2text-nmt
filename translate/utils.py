@@ -182,9 +182,9 @@ def wsd_score(hypotheses, references, script_dir):
     os.unlink(f1.name)
     os.unlink(f2.name)
 
-  score = float(output.decode())
+  score = float(output)
 
-  return output, None
+  return score, None
 
 
 def multi_score(hypotheses, references, script_dir):
