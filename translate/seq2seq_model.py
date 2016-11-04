@@ -63,7 +63,7 @@ class Seq2SeqModel(object):
 
         # if we use sampled softmax, we need an output projection
         # sampled softmax only makes sense if we sample less than vocabulary size
-        if num_samples == 0 or num_samples > self.trg_vocab_size:
+        if num_samples == 0 or num_samples >= self.trg_vocab_size:
             output_projection = None
             softmax_loss_function = None
         else:
@@ -231,7 +231,7 @@ class Seq2SeqModel(object):
         outputs, attn_weights = session.run([self.outputs, self.attention_weights], input_feed)
         return [int(np.argmax(logit, axis=1)) for logit in outputs], attn_weights  # greedy decoder
 
-    def beam_search_decoding(self, session, token_ids, beam_size, ngrams=None, weights=None):
+    def beam_search_decoding(self, session, token_ids, beam_size, ngrams=None):
         if not isinstance(session, list):
             session = [session]
 
@@ -328,12 +328,11 @@ class Seq2SeqModel(object):
 
                     lm_score.append(score_)
                 lm_score = np.array(lm_score, dtype=np.float32)
+                lm_weight = self.lm_weight or 0.2
+                weights = [(1 - lm_weight) / len(session)] * len(session) + [lm_weight]
             else:
                 lm_score = np.zeros((1, self.trg_vocab_size))
-
-            lm_weight = self.lm_weight or 0.2
-            if ngrams is not None:
-                weights = [(1 - lm_weight) / len(session)] * len(session) + [lm_weight]
+                weights = None
 
             # FIXME: divide by zero encountered in log
             scores_ = scores[:, None] - np.average([np.log(decoder_output_) for decoder_output_ in decoder_output] +
@@ -370,8 +369,10 @@ class Seq2SeqModel(object):
                     new_input.append(token_id)
 
                     for session_id, attn_weights_ in enumerate(attn_weights):
-                        for j in range(len(self.encoders)):
-                            new_attn_weights[session_id][j].append(attn_weights_[j][hyp_id])
+                        for encoder_id in range(len(self.encoders)):
+                            new_attn_weights[session_id][encoder_id].append(
+                                attn_weights_[encoder_id][hyp_id]
+                            )
 
                     for session_id, attns_ in enumerate(attns):
                         new_attns[session_id].append(attns_[hyp_id])

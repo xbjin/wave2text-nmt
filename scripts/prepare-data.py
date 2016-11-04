@@ -82,7 +82,7 @@ def read_vocabulary(filename):
         return dict(map(reversed, enumerate(words)))
 
 
-def create_vocabulary(filename, output_filename, size, character_level=False):
+def create_vocabulary(filename, output_filename, size, character_level=False, min_count=1):
     logging.info('creating vocabulary {} from {}'.format(output_filename,
                                                          filename))
     vocab = Counter()
@@ -93,6 +93,9 @@ def create_vocabulary(filename, output_filename, size, character_level=False):
 
             for w in line:
                 vocab[w] += 1
+
+        if min_count > 1:
+            vocab = {w: c for (w, c) in vocab.items() if c >= min_count}
 
         vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
         if 0 < size < len(vocab_list):
@@ -313,12 +316,13 @@ def process_vocabularies(args, corpora):
     # training corpus is used to create vocabulary
     train_corpus = corpora[-1]
 
-    for filename, output_filename, size, ext in zip(train_corpus,
-                                                    vocab_output_filenames,
-                                                    args.vocab_size,
-                                                    args.extensions):
+    for filename, output_filename, size, ext, min_count in zip(train_corpus,
+                                                               vocab_output_filenames,
+                                                               args.vocab_size,
+                                                               args.extensions,
+                                                               args.min_count):
         character_level = ext in args.character_level
-        create_vocabulary(filename, output_filename, size, character_level)
+        create_vocabulary(filename, output_filename, size, character_level, min_count)
 
 
 if __name__ == '__main__':
@@ -392,6 +396,7 @@ if __name__ == '__main__':
                         help='max number of tokens per line (0 for no limit)')
     parser.add_argument('--vocab-size', nargs='+', type=int, help='size of '
                         'the vocabularies', default=[30000])
+    parser.add_argument('--min-count', nargs='+', type=int, help='minimum count words in vocabulary', default=[1])
     parser.add_argument('--vocab-path', help='path to existing vocabularies (corpus prefix)')
     parser.add_argument('--threads', type=int, default=16)
 
@@ -409,6 +414,7 @@ if __name__ == '__main__':
     args.min = fixed_length_arg('--min', args.min, n)
     args.max = fixed_length_arg('--max', args.max, n)
     args.vocab_size = fixed_length_arg('--vocab-size', args.vocab_size, n)
+    args.min_count = fixed_length_arg('--min-count', args.min_count, n)
     args.max = [i if i > 0 else float('inf') for i in args.max]
 
     def extension_arg(value):
@@ -426,6 +432,7 @@ if __name__ == '__main__':
     args.normalize_digits = extension_arg(args.normalize_digits)
     args.normalize_punk = extension_arg(args.normalize_punk)
     args.escape_special_chars = extension_arg(args.escape_special_chars)
+    args.unescape_special_chars = extension_arg(args.unescape_special_chars)
 
     if args.lang is None:
         args.lang = args.extensions

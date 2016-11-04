@@ -102,6 +102,10 @@ class TranslationModel(BaseTranslationModel):
         utils.debug('reading vocabularies')
         self._read_vocab()
 
+        for encoder_or_decoder, vocab in zip(encoders + [decoder], self.vocabs):
+            if encoder_or_decoder.vocab_size <= 0:
+                encoder_or_decoder.vocab_size = len(vocab.reverse)
+
         # this adds an `embedding' attribute to each encoder and decoder
         utils.read_embeddings(self.filenames.embeddings, encoders + [decoder], load_embeddings, self.vocabs)
 
