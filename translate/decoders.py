@@ -165,6 +165,11 @@ def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filt
     return tf.reduce_sum(v * tf.tanh(s), [2, 3])
 
 
+def mixer_attention(state, prev_weights, hidden_states):
+    with tf.variable_scope('attention'):
+        pass
+
+
 def global_attention(state, prev_weights, hidden_states, encoder, **kwargs):
     with tf.variable_scope('attention'):
         compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy
@@ -369,9 +374,19 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                               lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta_t.read(time - 1))),
                               lambda: input_t)
             input_t.set_shape(decoder_inputs.get_shape()[1:])
-            # the code from TensorFlow used a concatenation of input_t and attns as input here
-            # TODO: evaluate the impact of this
-            call_cell = lambda: unsafe_decorator(cell)(input_t, state)
+
+            output_t = tf.cond(time > 0,
+                               lambda: output_ta_t.read(time - 1),
+                               lambda: tf.zeros_like(input_t))
+            output_t.set_shape(input_t.get_shape())
+
+            # using decoder state instead of decoder output in the attention model seems
+            # to give much better results
+            attns, new_attn_weights = attention_(state, prev_weights=attn_weights)
+            attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
+
+            x = linear_unsafe([input_t, attns, output_t], state_size, True)
+            call_cell = lambda: unsafe_decorator(cell)(x, state)
 
             if sequence_length is not None:
                 output, new_state = rnn._rnn_step(
@@ -387,16 +402,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
             else:
                 output, new_state = call_cell()
 
-            attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
-            # using decoder state instead of decoder output in the attention model seems
-            # to give much better results
-            new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
-
             with tf.variable_scope('attention_output_projection'):  # this can take a lot of memory
-                output = linear_unsafe([output, new_attns], output_size, True)
+                attn_out = tf.nn.tanh(linear_unsafe(attns, state_size, True, scope='attn_proj'))
+                output = linear_unsafe([output, attn_out], output_size, True)
 
             output_ta_t = output_ta_t.write(time, output)
-            return time + 1, new_state, new_attns, new_attn_weights, output_ta_t, attn_weights_ta_t
+            return time + 1, new_state, attns, new_attn_weights, output_ta_t, attn_weights_ta_t
 
         _, _, _, _, output_final_ta, attn_weights_final = tf.while_loop(
             cond=lambda time, *_: time < time_steps,

@@ -134,10 +134,10 @@ class Seq2SeqModel(object):
             decoder_input_length=self.decoder_input_length, **parameters
         )
 
-        self.beam_output, self.beam_tensors = decoders.beam_search_decoder(
-            decoder_input=self.decoder_input, attention_states=self.attention_states, initial_state=self.encoder_state,
-            **parameters
-        )
+        # self.beam_output, self.beam_tensors = decoders.beam_search_decoder(
+        #     decoder_input=self.decoder_input, attention_states=self.attention_states, initial_state=self.encoder_state,
+        #     **parameters
+        # )
 
         self.loss = decoders.sequence_loss(
             logits=self.outputs, targets=self.targets, weights=self.target_weights,
@@ -179,9 +179,9 @@ class Seq2SeqModel(object):
         if output_projection is not None:
             w, b = output_projection
             self.outputs = tensor_prod(self.outputs, w, b)
-            self.beam_output = tf.nn.xw_plus_b(self.beam_output, w, b)
+            # self.beam_output = tf.nn.xw_plus_b(self.beam_output, w, b)
 
-        self.beam_output = tf.nn.softmax(self.beam_output)
+        # self.beam_output = tf.nn.softmax(self.beam_output)
 
     def step(self, session, data, forward_only=False, align=False):
         if self.dropout is not None:
