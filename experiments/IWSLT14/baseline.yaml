@@ -3,7 +3,7 @@
 # - different attention model
 # - different batch iteration method
 
-dropout_rate: 0.0
+dropout_rate: 0.5
 cell_size: 256
 embedding_size: 256
 layers: 1
@@ -12,18 +12,18 @@ use_lstm: True
 steps_per_checkpoint: 1000
 steps_per_eval: 4000
 max_steps: 0
-optimizer: 'sgd'
-learning_rate: 0.2
+optimizer: 'adam'
+learning_rate: 0.001
 num_samples: 0
-max_gradient_norm: 10    # TODO: check this
-batch_size: 32
+max_gradient_norm: 5
+batch_size: 64
 max_output_len: 25
 
 data_dir: experiments/IWSLT14/data
 model_dir: experiments/IWSLT14/baseline
 log_file: experiments/IWSLT14/baseline/log.txt
 max_dev_size: 2000
-vocab_size: 0   # read vocab size from vocabulary files
+vocab_size: 0
 
 encoders:
   - name: de
