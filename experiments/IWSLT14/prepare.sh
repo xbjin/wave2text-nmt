@@ -7,7 +7,7 @@ mkdir -p ${raw_data_dir} ${data_dir}
 cur_dir=`pwd`
 cd ${raw_data_dir}
 
-# wget "http://wit3.fbk.eu/archive/2014-01/texts/de/en/de-en.tgz"
+wget "http://wit3.fbk.eu/archive/2014-01/texts/de/en/de-en.tgz"
 tar xzf de-en.tgz
 
 for ext in de en; do
@@ -36,7 +36,6 @@ scripts/clean-corpus-n.perl -ratio 1.5 ${data_dir}/tmp/IWSLT14.tok de en ${data_
 for ext in de en; do
     awk '{if (NR%23 == 0) print $0; }' ${data_dir}/tmp/IWSLT14.clean.${ext} > ${data_dir}/dev.${ext}
     awk '{if (NR%23 != 0) print $0; }' ${data_dir}/tmp/IWSLT14.clean.${ext} > ${data_dir}/train.${ext}
-    head -n 2000 ${data_dir}/dev.${ext} > ${data_dir}/dev.2000.${ext}
 done
 rm -rf ${data_dir}/tmp
 
