@@ -359,14 +359,15 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
         zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
 
         output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False)
+
         input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps).unpack(decoder_inputs)
         attn_weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
         attention_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
 
-        attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
-        attns.set_shape([None, attn_size])
+        attns = tf.zeros(tf.pack([batch_size, cell.output_size]), dtype=tf.float32)
+        output = tf.zeros(tf.pack([batch_size, cell.output_size]), dtype=tf.float32)
 
-        def _time_step(time, state, _, attn_weights, output_ta_t, attn_weights_ta_t):
+        def _time_step(time, state, prev_output, _, attn_weights, output_ta_t, attn_weights_ta_t):
             input_t = input_ta.read(time)
             # restore some shape information
             r = tf.random_uniform([])
@@ -375,17 +376,12 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                               lambda: input_t)
             input_t.set_shape(decoder_inputs.get_shape()[1:])
 
-            output_t = tf.cond(time > 0,
-                               lambda: output_ta_t.read(time - 1),
-                               lambda: tf.zeros_like(input_t))
-            output_t.set_shape(input_t.get_shape())
-
             # using decoder state instead of decoder output in the attention model seems
             # to give much better results
             attns, new_attn_weights = attention_(state, prev_weights=attn_weights)
             attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
 
-            x = linear_unsafe([input_t, attns, output_t], state_size, True)
+            x = linear_unsafe([input_t, attns, prev_output], cell.output_size, True)
             call_cell = lambda: unsafe_decorator(cell)(x, state)
 
             if sequence_length is not None:
@@ -403,16 +399,16 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                 output, new_state = call_cell()
 
             with tf.variable_scope('attention_output_projection'):  # this can take a lot of memory
-                attn_out = tf.nn.tanh(linear_unsafe(attns, state_size, True, scope='attn_proj'))
-                output = linear_unsafe([output, attn_out], output_size, True)
+                attn_out = tf.nn.tanh(linear_unsafe(attns, cell.output_size, True, scope='attn_proj'))
+                output_ = linear_unsafe([output, attn_out], output_size, True)
 
-            output_ta_t = output_ta_t.write(time, output)
-            return time + 1, new_state, attns, new_attn_weights, output_ta_t, attn_weights_ta_t
+            output_ta_t = output_ta_t.write(time, output_)
+            return time + 1, new_state, output, attns, new_attn_weights, output_ta_t, attn_weights_ta_t
 
-        _, _, _, _, output_final_ta, attn_weights_final = tf.while_loop(
+        _, _, _, _, _, output_final_ta, attn_weights_final = tf.while_loop(
             cond=lambda time, *_: time < time_steps,
             body=_time_step,
-            loop_vars=(time, state, attns, attention_weights, output_ta, attn_weights_ta),
+            loop_vars=(time, state, output, attns, attention_weights, output_ta, attn_weights_ta),
             parallel_iterations=decoder.parallel_iterations,
             swap_memory=decoder.swap_memory)
 
