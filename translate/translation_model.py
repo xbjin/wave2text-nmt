@@ -248,7 +248,7 @@ class TranslationModel(BaseTranslationModel):
             if output_file is not None:
                 output_file.close()
 
-    def evaluate(self, sess, beam_size, score_function, on_dev=True, output=None, remove_unk=False,
+    def evaluate(self, sess, beam_size, score_function, on_dev=True, output=None, remove_unk=False, max_dev_size=None,
                  auxiliary_score_function=None, script_dir='scripts', **kwargs):
         """
         :param score_function: name of the scoring function used to score and rank models
@@ -256,6 +256,7 @@ class TranslationModel(BaseTranslationModel):
         :param on_dev: if True, evaluate the dev corpus, otherwise evaluate the test corpus
         :param output: save the hypotheses to this file
         :param remove_unk: remove the UNK symbols from the output
+        :param max_dev_size: maximum number of lines to read from dev files
         :param auxiliary_score_function: optional scoring function used to display a more
           detailed summary.
         :param script_dir: parameter of scoring functions
@@ -276,6 +277,8 @@ class TranslationModel(BaseTranslationModel):
 
         for filenames_, output_ in zip(filenames, output):  # evaluation on multiple corpora
             lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
+            if max_dev_size:
+                lines = lines[:max_dev_size]
 
             hypotheses = []
             references = []
