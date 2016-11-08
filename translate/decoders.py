@@ -113,6 +113,63 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
         return encoder_outputs, encoder_state
 
 
+def mixer_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, window_size=5, max_input_len=200,
+                  **kwargs):
+    assert len(encoder_inputs) == len(encoders)
+    assert window_size % 2 == 1
+    half_window = window_size // 2
+    encoder_outputs = []
+
+    # create embeddings in the global scope (allows sharing between encoder and decoder)
+    for i, encoder in enumerate(encoders):
+        # inputs are token ids, which need to be mapped to vectors (embeddings)
+        initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+        # initializer = None
+        embedding_shape = [encoder.vocab_size, encoder.embedding_size]
+
+        with tf.device('/cpu:0'):
+            embedding = get_variable_unsafe('embedding_{}'.format(encoder.name), shape=embedding_shape,
+                                            initializer=initializer)
+            pos_embedding = get_variable_unsafe('pos_embedding_{}'.format(encoder.name),
+                                                shape=[max_input_len, encoder.embedding_size],
+                                                initializer=initializer)
+
+        with tf.variable_scope('mixer_encoder'):
+            # TODO: MIXER uses a constant (non-trainable) array of ones here, see which one is better
+            filter_shape = [window_size, 1, 1, 1]
+            filter_ = get_variable_unsafe('filter_{}'.format(encoder.name), filter_shape)
+
+        encoder_inputs_ = encoder_inputs[i]
+        # input_length_ = encoder_input_length[i]
+
+        batch_size = tf.shape(encoder_inputs_)[0]
+        time_steps = tf.shape(encoder_inputs_)[1]
+        # positions start at `1`, `0` is reserved for dummy words
+        positions = tf.range(1, time_steps + 1)
+        positions = tf.tile(positions, [batch_size])
+        positions = tf.reshape(positions, tf.pack([batch_size, time_steps]))
+
+        # this only works because _PAD symbol's index in the vocabulary is 0
+        # for other values substract before padding, then add after padding
+        # TODO: maybe use a different symbol than _PAD here, this has a different semantic
+        encoder_inputs_ = tf.pad(encoder_inputs_, [[0, 0], [half_window, half_window]])
+        # `0` position for dummy words
+        # TODO: use mask to put 0 for each _PAD symbol
+        positions = tf.pad(positions, [[0, 0], [half_window, half_window]])
+
+        inputs_ = tf.nn.embedding_lookup(embedding, encoder_inputs_)   # batch_size * time_steps * embedding_size
+        positions = tf.nn.embedding_lookup(pos_embedding, positions)
+        inputs_ = inputs_ + positions
+
+        inputs_ = tf.expand_dims(inputs_, 3)  # add 1 dimension (`in_channels`) for conv2d
+
+        outputs_ = tf.nn.conv2d(inputs_, filter_, [1, 1, 1, 1], 'VALID') / window_size
+        outputs_ = tf.squeeze(outputs_, [3])
+        encoder_outputs.append(outputs_)
+
+    return encoder_outputs, None
+
+
 def compute_energy(hidden, state, name, **kwargs):
     attn_size = hidden.get_shape()[3].value
     batch_size = tf.shape(hidden)[0]
@@ -165,13 +222,22 @@ def compute_energy_with_filter(hidden, state, name, prev_weights, attention_filt
     return tf.reduce_sum(v * tf.tanh(s), [2, 3])
 
 
-def mixer_attention(state, prev_weights, hidden_states):
-    with tf.variable_scope('attention'):
-        pass
+def compute_energy_mixer(hidden, state, *args, **kwargs):
+    attn_size = hidden.get_shape()[3].value
+    batch_size = tf.shape(hidden)[0]
+    time_steps = tf.shape(hidden)[1]
+
+    state = tf.reshape(state, [tf.mul(batch_size, attn_size), 1])
+    hidden = tf.transpose(hidden, perm=[1, 0, 2, 3])   # time_steps x batch_size x 1 x attn_size
+    hidden = tf.reshape(hidden, tf.pack([time_steps, tf.mul(batch_size, attn_size)]))
+    f = tf.matmul(hidden, state)
+    f = tf.transpose(f, perm=[1, 0])  # switch time_steps with batch_size
+    return f
 
 
 def global_attention(state, prev_weights, hidden_states, encoder, **kwargs):
     with tf.variable_scope('attention'):
+        # TODO: choose energy function inside config
         compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy
         e = compute_energy_(
             hidden_states, state, encoder.name, prev_weights=prev_weights, attention_filters=encoder.attention_filters,
@@ -331,17 +397,25 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                                         tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
 
         attn_lengths = [tf.shape(states)[1] for states in attention_states]
-        attn_size = sum(states.get_shape()[2].value for states in attention_states)
 
         hidden_states = [tf.expand_dims(states, 2) for states in attention_states]
         attention_ = functools.partial(multi_attention, hidden_states=hidden_states, encoders=encoders)
 
-        if dropout is not None:
-            initial_state = tf.nn.dropout(initial_state, dropout)
+        input_shape = tf.shape(decoder_inputs)
+        time_steps = input_shape[0]
+        batch_size = input_shape[1]
+        state_size = cell.state_size
 
-        state = tf.nn.tanh(
-            linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
-        )
+        if initial_state is not None:
+            if dropout is not None:
+                initial_state = tf.nn.dropout(initial_state, dropout)
+
+            state = tf.nn.tanh(
+                linear_unsafe(initial_state, state_size, False, scope='initial_state_projection')
+            )
+        else:
+            # if not initial state, initialize with zeroes (this is the case for MIXER)
+            state = tf.zeros([batch_size, state_size], dtype=tf.float32)
 
         sequence_length = decoder_input_length
         if sequence_length is not None:
@@ -350,11 +424,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
             max_sequence_length = tf.reduce_max(sequence_length)
 
         time = tf.constant(0, dtype=tf.int32, name='time')
-
-        input_shape = tf.shape(decoder_inputs)
-        time_steps = input_shape[0]
-        batch_size = input_shape[1]
-        state_size = cell.state_size
 
         zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
 
@@ -378,7 +447,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
             # using decoder state instead of decoder output in the attention model seems
             # to give much better results
-            attns, new_attn_weights = attention_(state, prev_weights=attn_weights)
+            attns, new_attn_weights = attention_(prev_output, prev_weights=attn_weights)
             attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
 
             x = linear_unsafe([input_t, attns, prev_output], cell.output_size, True)
