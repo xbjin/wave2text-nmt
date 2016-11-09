@@ -51,7 +51,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
 
                 # TODO: use state_is_tuple=True
                 if encoder.use_lstm:
-                    cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
+                    # cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
+                    cell = rnn_cell.LSTMCell(encoder.cell_size, state_is_tuple=False)
                 else:
                     cell = rnn_cell.GRUCell(encoder.cell_size)
 
@@ -361,7 +362,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                                         initializer=embedding_initializer)
 
     if decoder.use_lstm:
-        cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
+        # cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
+        cell = rnn_cell.LSTMCell(decoder.cell_size, state_is_tuple=False)
     else:
         cell = rnn_cell.GRUCell(decoder.cell_size)
 
@@ -447,7 +449,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
             # using decoder state instead of decoder output in the attention model seems
             # to give much better results
-            attns, new_attn_weights = attention_(prev_output, prev_weights=attn_weights)
+            attns, new_attn_weights = attention_(state, prev_weights=attn_weights)
             attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
 
             x = linear_unsafe([input_t, attns, prev_output], cell.output_size, True)

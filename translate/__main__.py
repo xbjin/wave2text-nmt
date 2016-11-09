@@ -55,6 +55,7 @@ Benchmarks:
 - replicate the experiments of the WMT paper on neural post-editing
 
 TODO:
+- pervasive dropout (dropout in the recurrent connections)
 - reading files as a stream when decoding (useful for large files)
 - symbolic beam-search
 - possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers
