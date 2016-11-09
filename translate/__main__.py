@@ -170,9 +170,12 @@ def main(args=None):
 
     with tf.device(device):
         checkpoint_dir = os.path.join(config.model_dir, 'checkpoints')
-        initializer = None  # default initializer
+        # initializer = None  # default initializer
         # all parameters except source embeddings and bias variables are initialized with this
-        # initializer = tf.random_normal_initializer(stddev=0.05)
+        if config.initializer:
+            initializer = tf.random_normal_initializer(stddev=0.05)
+        else:
+            initializer = None
 
         with tf.variable_scope('seq2seq', initializer=initializer):
             decode_only = args.decode is not None or args.eval or args.align  # exempt from creating gradient ops

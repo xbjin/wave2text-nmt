@@ -34,6 +34,7 @@ time_pooling: null       # ratios of time steps to skip between layers
 pooling_avg: False       # average previous steps instead of skipping them
 input_layers: []         # fully connected layers between the embeddings and the RNN
 residual_connections: False  # connections between nth and nth+2 layer for easier gradient flow
+initializer: null        # if not null, initialize all weights to a normal distribution with this stdev
 
 # data
 data_dir: data           # directory containing the training data

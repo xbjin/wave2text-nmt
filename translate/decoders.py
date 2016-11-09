@@ -51,8 +51,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
 
                 # TODO: use state_is_tuple=True
                 if encoder.use_lstm:
-                    # cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
-                    cell = rnn_cell.LSTMCell(encoder.cell_size, state_is_tuple=False)
+                    cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
+                    # cell = rnn_cell.LSTMCell(encoder.cell_size, state_is_tuple=False)
                 else:
                     cell = rnn_cell.GRUCell(encoder.cell_size)
 
@@ -124,8 +124,8 @@ def mixer_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
     # create embeddings in the global scope (allows sharing between encoder and decoder)
     for i, encoder in enumerate(encoders):
         # inputs are token ids, which need to be mapped to vectors (embeddings)
-        initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
-        # initializer = None
+        # initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+        initializer = None
         embedding_shape = [encoder.vocab_size, encoder.embedding_size]
 
         with tf.device('/cpu:0'):
@@ -239,7 +239,7 @@ def compute_energy_mixer(hidden, state, *args, **kwargs):
 def global_attention(state, prev_weights, hidden_states, encoder, **kwargs):
     with tf.variable_scope('attention'):
         # TODO: choose energy function inside config
-        compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy
+        compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy_mixer
         e = compute_energy_(
             hidden_states, state, encoder.name, prev_weights=prev_weights, attention_filters=encoder.attention_filters,
             attention_filter_length=encoder.attention_filter_length
@@ -362,8 +362,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                                         initializer=embedding_initializer)
 
     if decoder.use_lstm:
-        # cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
-        cell = rnn_cell.LSTMCell(decoder.cell_size, state_is_tuple=False)
+        cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
+        # cell = rnn_cell.LSTMCell(decoder.cell_size, state_is_tuple=False)
     else:
         cell = rnn_cell.GRUCell(decoder.cell_size)
 
@@ -449,10 +449,11 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
 
             # using decoder state instead of decoder output in the attention model seems
             # to give much better results
-            attns, new_attn_weights = attention_(state, prev_weights=attn_weights)
+            attns, new_attn_weights = attention_(prev_output, prev_weights=attn_weights)
             attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
 
-            x = linear_unsafe([input_t, attns, prev_output], cell.output_size, True)
+            # x = linear_unsafe([input_t, attns], cell.output_size, True)
+            x = linear_unsafe([input_t, attns], cell.output_size, False)
             call_cell = lambda: unsafe_decorator(cell)(x, state)
 
             if sequence_length is not None:
@@ -470,7 +471,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                 output, new_state = call_cell()
 
             with tf.variable_scope('attention_output_projection'):  # this can take a lot of memory
-                attn_out = tf.nn.tanh(linear_unsafe(attns, cell.output_size, True, scope='attn_proj'))
+                attn_out = tf.nn.sigmoid(linear_unsafe(attns, cell.output_size, True, scope='attn_proj'))
                 output_ = linear_unsafe([output, attn_out], output_size, True)
 
             output_ta_t = output_ta_t.write(time, output_)

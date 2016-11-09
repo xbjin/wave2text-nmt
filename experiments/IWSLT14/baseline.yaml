@@ -1,7 +1,10 @@
 # Same parameters as: https://github.com/facebookresearch/MIXER
 # FIXME:
-# - different attention model
 # - different batch iteration method
+# - additional projection before LSTM (instead of using custom LSTM)
+# - possibly broken attention mechanism (especially energy function)
+# TODO:
+# - compare results with torch code
 
 dropout_rate: 0.0
 cell_size: 256
@@ -12,8 +15,11 @@ use_lstm: True
 steps_per_checkpoint: 1000
 steps_per_eval: 4000
 max_steps: 0
-optimizer: 'adam'
-learning_rate: 0.001
+# optimizer: 'adam'
+# learning_rate: 0.001
+optimizer: 'sgd'
+learning_rate: 0.2
+initializer: 0.05
 num_samples: 0
 max_gradient_norm: 10
 batch_size: 32
