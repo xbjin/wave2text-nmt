@@ -491,6 +491,14 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
         return outputs, attention_weights
 
 
+def bahdanau_decoder(decoder_inputs, initial_state, attention_states, encoders, decoder, decoder_input_length=None,
+                      output_projection=None, dropout=None, feed_previous=0.0, **kwargs):
+    """
+    Parameters of the model:
+    """
+    pass
+
+
 def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder, output_projection=None,
                         dropout=None, **kwargs):
     """

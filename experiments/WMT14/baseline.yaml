@@ -8,8 +8,9 @@ use_lstm: False
 steps_per_checkpoint: 1000
 steps_per_eval: 4000
 max_steps: 0
-optimizer: 'adam'
+optimizer: 'adadelta'
 learning_rate: 0.001
+batch_size: 80
 num_samples: 0
 
 data_dir: experiments/WMT14/data

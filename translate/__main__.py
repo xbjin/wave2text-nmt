@@ -50,9 +50,19 @@ parser.add_argument('--wav-files', nargs='*')
 
 """
 Benchmarks:
-- replicate Jean et al. (2015)'s results
 - replicate speech recognition results
 - replicate the experiments of the WMT paper on neural post-editing
+
+Scores on English->French WMT14 (ntst14)
+- Bahdanau et al.:  28.45 (shallow attention-based MT with max-out layer, 30k vocabulary)
+- Baseline (Moses): 33.30
+- Sutskever et al.: 30.59 (deep LSTMs with large vocab, huge model but without attention)
+- Jean et al.:      29.97 (same model as Bahdanau et al. + tuning while freezing embeddings)
+                    32.68 (with larger vocabulary + sampled softmax)
+
+Sutskever and Jean use a beam-size of 12, while Bahdanau uses beam-search with unspecified beam-size (might explain
+the difference in score in addition to tuning)
+
 
 TODO:
 - pervasive dropout (dropout in the recurrent connections)

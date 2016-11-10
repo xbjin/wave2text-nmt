@@ -160,7 +160,8 @@ class Seq2SeqModel(object):
             params = [var for var in tf.trainable_variables() if var.name not in frozen_parameters]
 
             if optimizer.lower() == 'adadelta':
-                opt = tf.train.AdadeltaOptimizer(learning_rate=learning_rate)
+                # same epsilon and rho as Bahdanau et al. 2015
+                opt = tf.train.AdadeltaOptimizer(learning_rate=learning_rate, epsilon=1e-06, rho=0.95)
             elif optimizer.lower() == 'adagrad':
                 opt = tf.train.AdagradOptimizer(learning_rate=learning_rate)
             elif optimizer.lower() == 'adam':
