@@ -104,7 +104,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                     time_steps = shape[1]
                     dim = encoder_outputs_.get_shape()[2]
                     outputs_ = tf.reshape(encoder_outputs_, tf.pack([tf.mul(batch_size, time_steps), dim]))
-                    outputs_ = linear_unsafe(outputs_, cell.output_size, False, scope='bidir_projection')
+                    outputs_ = linear_unsafe(outputs_, cell.output_size, False, scope='bidir_projection')  # FIXME
                     encoder_outputs_ = tf.reshape(outputs_, tf.pack([batch_size, time_steps, cell.output_size]))
 
                 encoder_outputs.append(encoder_outputs_)
@@ -171,15 +171,15 @@ def mixer_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
     return encoder_outputs, None
 
 
-def compute_energy(hidden, state, name, **kwargs):
-    attn_size = hidden.get_shape()[3].value
+def compute_energy(hidden, state, name, attn_size, **kwargs):
+    input_size = hidden.get_shape()[3].value
     batch_size = tf.shape(hidden)[0]
     time_steps = tf.shape(hidden)[1]
 
     y = linear_unsafe(state, attn_size, True, scope=name)
-    y = tf.reshape(y, [-1, 1, 1, attn_size])
+    y = tf.reshape(y, [-1, 1, 1, input_size])
 
-    k = get_variable_unsafe('W_{}'.format(name), [attn_size, attn_size])
+    k = get_variable_unsafe('W_{}'.format(name), [input_size, attn_size])
 
     # dot product between tensors requires reshaping
     hidden = tf.reshape(hidden, tf.pack([tf.mul(batch_size, time_steps), attn_size]))
@@ -239,10 +239,10 @@ def compute_energy_mixer(hidden, state, *args, **kwargs):
 def global_attention(state, prev_weights, hidden_states, encoder, **kwargs):
     with tf.variable_scope('attention'):
         # TODO: choose energy function inside config
-        compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy_mixer
+        compute_energy_ = compute_energy_with_filter if encoder.attention_filters > 0 else compute_energy
         e = compute_energy_(
             hidden_states, state, encoder.name, prev_weights=prev_weights, attention_filters=encoder.attention_filters,
-            attention_filter_length=encoder.attention_filter_length
+            attention_filter_length=encoder.attention_filter_length, attn_size=encoder.attn_size
         )
         weights = tf.nn.softmax(e)
 
@@ -452,8 +452,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
             attns, new_attn_weights = attention_(prev_output, prev_weights=attn_weights)
             attn_weights_ta_t = attn_weights_ta_t.write(time, attn_weights)
 
-            # x = linear_unsafe([input_t, attns], cell.output_size, True)
-            x = linear_unsafe([input_t, attns], cell.output_size, False)
+            x = tf.concat(1, [input_t, attns])
             call_cell = lambda: unsafe_decorator(cell)(x, state)
 
             if sequence_length is not None:

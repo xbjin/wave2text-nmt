@@ -122,12 +122,12 @@ class Seq2SeqModel(object):
         parameters = dict(encoders=encoders, decoder=decoder, dropout=self.dropout,
                           output_projection=output_projection)
 
-        # self.attention_states, self.encoder_state = decoders.multi_encoder(
-        #     self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
-        # )
-        self.attention_states, self.encoder_state = decoders.mixer_encoder(
+        self.attention_states, self.encoder_state = decoders.multi_encoder(
             self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
         )
+        # self.attention_states, self.encoder_state = decoders.mixer_encoder(
+        #     self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
+        # )
 
         decoder = decoders.attention_decoder if attention else decoders.decoder
 
