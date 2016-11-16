@@ -90,11 +90,14 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
             )
 
             if encoder.bidir:
-                encoder_outputs_, _, encoder_state_ = multi_bidirectional_rnn_unsafe(
+                encoder_outputs_, _, _ = multi_bidirectional_rnn_unsafe(
                     cells=[(cell, cell)] * encoder.layers, **parameters)
+                # Like Bahdanau et al., we use the first annotation h_1 of the backward encoder
+                encoder_state_ = encoder_outputs_[:, 0, encoder.cell_size:]
             else:
                 encoder_outputs_, encoder_state_ = multi_rnn_unsafe(
                     cells=[cell] * encoder.layers, **parameters)
+                encoder_state_ = encoder_outputs_[:, -1, :]
 
             encoder_outputs.append(encoder_outputs_)
             encoder_states.append(encoder_state_)
@@ -470,7 +473,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
             output_ = linear_unsafe([new_output, input_, context_vector], decoder.cell_size, True,
                                     scope='maxout')  # U_o, V_o and C_o parameters
             output_ = tf.maximum(*tf.split(1, 2, output_))
-            output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
+
+            with tf.device('/cpu:0'):
+                output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
 
             output_ta = output_ta.write(time, output_)
             return time + 1, new_state, new_output, context_vector, new_weights, output_ta, weights_ta
