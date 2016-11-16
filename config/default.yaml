@@ -13,6 +13,7 @@ max_steps: 0             # maximum number of updates before stopping
 keep_best: 4             # number of best checkpoints to keep
 feed_previous: 0.0       # randomly feed previous output instead of groundtruth to decoder during training
 optimizer: 'sgd'         # 'sgd', 'adadelta', 'adagrad' or 'adam'
+read_ahead: 10           # number of batches to read ahead and sort
 
 # model (each one of these settings can be defined specifically in `encoders` and `decoder`, or generally here)
 attention: True          # use an attention mechanism
@@ -21,13 +22,13 @@ cell_size: 1024          # size of the RNN cells
 embedding_size: 1024     # size of the embeddings
 attn_size: 1024          # size of the attention layer
 layers: 1                # number of RNN layers per encoder and decoder
-bidir: False             # use bidirectional encoders
+bidir: True              # use bidirectional encoders
 attention_window_size: 0 # if positive, use a local attention mechanism with this window size
 attention_filters: 0     # number of convolution filters to use in the attention mechanism
 attention_filter_length: 0  # length of the convolution filters
-vocab_size: 40000        # number of symbols of each encoder and decoder
+vocab_size: 30000        # number of symbols of each encoder and decoder
 use_lstm: False          # use LSTM units instead of GRU units
-num_samples: 512         # number of samples for sampled softmax (0 for standard softmax)
+num_samples: 0           # number of samples for sampled softmax (0 for standard softmax)
 binary: False            # input file is binary (contains vector features)
 character_level: False   # input sequence is at the character level
 load_embeddings: []      # load pre-trained embeddings for those extensions

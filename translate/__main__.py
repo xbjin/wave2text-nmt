@@ -183,13 +183,13 @@ def main(args=None):
         # initializer = None  # default initializer
         # all parameters except source embeddings and bias variables are initialized with this
         if config.initializer:
-            initializer = tf.random_normal_initializer(stddev=0.05)
+            initializer = tf.random_normal_initializer(stddev=config.initializer)
         else:
             initializer = None
 
-        with tf.variable_scope('seq2seq', initializer=initializer):
-            decode_only = args.decode is not None or args.eval or args.align  # exempt from creating gradient ops
-            model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
+        tf.get_variable_scope().set_initializer(initializer)
+        decode_only = args.decode is not None or args.eval or args.align  # exempt from creating gradient ops
+        model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
     for var in tf.all_variables():

@@ -15,4 +15,5 @@ mkdir -p ${data_dir}
 scripts/prepare-data.py ${raw_data_dir}/WMT14.fr-en fr en ${data_dir} --no-tokenize \
 --dev-corpus ${raw_data_dir}/ntst1213.fr-en \
 --test-corpus ${raw_data_dir}/ntst14.fr-en \
---vocab-size 30000 --unescape-special-chars --normalize-punk
+--vocab-size 30000
+# --unescape-special-chars --normalize-punk

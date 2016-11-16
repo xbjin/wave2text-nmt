@@ -119,11 +119,11 @@ class TranslationModel(BaseTranslationModel):
         self.batch_iterator = None
         self.dev_batches = None
 
-    def read_data(self, max_train_size, max_dev_size):
+    def read_data(self, max_train_size, max_dev_size, read_ahead=10):
         utils.debug('reading training data')
         train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, max_size=max_train_size,
                                        binary_input=self.binary_input, character_level=self.character_level)
-        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=10)
+        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=read_ahead)
 
         utils.debug('reading development data')
         dev_sets = [
@@ -277,7 +277,7 @@ class TranslationModel(BaseTranslationModel):
 
         for filenames_, output_ in zip(filenames, output):  # evaluation on multiple corpora
             lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
-            if max_dev_size:
+            if on_dev and max_dev_size:
                 lines = lines[:max_dev_size]
 
             hypotheses = []

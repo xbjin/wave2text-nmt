@@ -11,13 +11,16 @@ steps_per_eval: 4000
 max_steps: 0
 optimizer: 'adadelta'
 learning_rate: 0.001
+initializer: 0.01
 batch_size: 80
 num_samples: 0
+read_ahead: 20
+max_output_len: 50
+max_gradient_norm: 1
 
 data_dir: experiments/WMT14/data
 model_dir: experiments/WMT14/baseline
-# log_file: experiments/WMT14/baseline/log.txt
-log_file: null
+log_file: experiments/WMT14/baseline/log.txt
 
 max_dev_size: 2000
 

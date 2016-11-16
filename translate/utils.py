@@ -347,6 +347,10 @@ def read_ahead_batch_iterator(data, batch_size, read_ahead=10):
     :return: an iterator which yields batches (indefinitely)
     """
     iterator = cycling_batch_iterator(data, batch_size)
+    if read_ahead <= 1:
+        while True:
+            yield next(iterator)
+
     while True:
         batches = [next(iterator) for _ in range(read_ahead)]
         data_ = sorted(sum(batches, []), key=lambda lines: len(lines[-1]))
