@@ -180,10 +180,11 @@ def main(args=None):
 
     with tf.device(device):
         checkpoint_dir = os.path.join(config.model_dir, 'checkpoints')
-        # initializer = None  # default initializer
-        # all parameters except source embeddings and bias variables are initialized with this
-        if config.initializer:
-            initializer = tf.random_normal_initializer(stddev=config.initializer)
+        # All parameters except recurrent connexions and attention parameters are initialized with this.
+        # Recurrent connexions are initialized with orthogonal matrices, and the parameters of the attention model
+        # with a standard deviation of 0.001
+        if config.weight_scale:
+            initializer = tf.random_normal_initializer(stddev=config.weight_scale)
         else:
             initializer = None
 

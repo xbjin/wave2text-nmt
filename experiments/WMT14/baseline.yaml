@@ -6,12 +6,13 @@ embedding_size: 620
 layers: 1
 bidir: True
 use_lstm: False
+eval_burn_in: 40000
 steps_per_checkpoint: 1000
 steps_per_eval: 4000
 max_steps: 0
 optimizer: 'adadelta'
 learning_rate: 0.001
-initializer: 0.01
+weight_scale: 0.01
 batch_size: 80
 num_samples: 0
 read_ahead: 20

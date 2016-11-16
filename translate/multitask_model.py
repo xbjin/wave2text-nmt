@@ -34,7 +34,7 @@ class MultiTaskModel(BaseTranslationModel):
 
     def train(self, sess, beam_size, steps_per_checkpoint, score_function, steps_per_eval=None, max_train_size=None,
               max_dev_size=None, eval_output=None, max_steps=0, auxiliary_score_function=None, script_dir='scripts',
-              read_ahead=10, **kwargs):
+              read_ahead=10, eval_burn_in=0, **kwargs):
         utils.log('reading training and development data')
 
         self.global_step = 0
@@ -78,7 +78,7 @@ class MultiTaskModel(BaseTranslationModel):
 
                 self.save(sess)
 
-            if steps_per_eval and self.global_step % steps_per_eval == 0:
+            if (steps_per_eval and self.global_step % steps_per_eval == 0 and 0 < eval_burn_in <= self.global_step):
                 score = 0
 
                 for ratio, model_ in zip(self.ratios, self.models):
