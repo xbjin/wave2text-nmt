@@ -16,7 +16,8 @@ weight_scale: 0.01
 batch_size: 80
 num_samples: 0
 read_ahead: 20
-max_output_len: 50
+max_output_len: 50    # faster decoding
+max_input_len: 50     # limit memory usage
 max_gradient_norm: 1
 
 data_dir: experiments/WMT14/data
