@@ -474,8 +474,8 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                                     scope='maxout')  # U_o, V_o and C_o parameters
             output_ = tf.maximum(*tf.split(1, 2, output_))
 
-            with tf.device('/cpu:0'):
-                output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
+            # with tf.device('/cpu:0'):
+            output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
 
             output_ta = output_ta.write(time, output_)
             return time + 1, new_state, new_output, context_vector, new_weights, output_ta, weights_ta
@@ -542,26 +542,34 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
         attn_size = sum(states.get_shape()[2].value for states in attention_states)
         hidden_states = [tf.expand_dims(states, 2) for states in attention_states]
         attention_ = functools.partial(multi_attention, hidden_states=hidden_states, encoders=encoders)
+        batch_size = tf.shape(decoder_input)[0]
+        state_size = cell.state_size
 
+        # if initial_state is not None:
         if dropout is not None:
             initial_state = tf.nn.dropout(initial_state, dropout)
+
         state = tf.nn.tanh(
             linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
         )
 
-        batch_size = tf.shape(decoder_input)[0]
-        attn_weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
+        weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
+        # attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
+        output = tf.zeros(tf.pack([batch_size, cell.output_size]), dtype=tf.float32)
 
-        attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
+        context_vector, new_weights = attention_(output, prev_weights=weights)
+        x = tf.concat(1, [decoder_input, context_vector])
+        new_output, new_state = unsafe_decorator(cell)(x, state)
 
-        cell_output, new_state = unsafe_decorator(cell)(decoder_input, state)
-        new_attns, new_attn_weights = attention_(new_state, prev_weights=attn_weights)
+        new_output = linear_unsafe([new_output, decoder_input, context_vector], decoder.cell_size, True,
+                                scope='maxout')
+        new_output = tf.maximum(*tf.split(1, 2, new_output))
+        new_output = linear_unsafe(new_output, output_size, True, scope='output_projection')
+        # with tf.variable_scope('attention_output_projection'):
+        #    output = linear_unsafe([cell_output, new_attns], output_size, True)
 
-        with tf.variable_scope('attention_output_projection'):
-            output = linear_unsafe([cell_output, new_attns], output_size, True)
-
-        beam_tensors = namedtuple('beam_tensors', 'state new_state attn_weights new_attn_weights attns new_attns')
-        return output, beam_tensors(state, new_state, attn_weights, new_attn_weights, attns, new_attns)
+        beam_tensors = namedtuple('beam_tensors', 'state new_state prev_output')
+        return new_output, beam_tensors(state, new_state, output)
 
 
 def sequence_loss(logits, targets, weights, average_across_timesteps=True, average_across_batch=True,

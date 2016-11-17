@@ -78,7 +78,7 @@ class MultiTaskModel(BaseTranslationModel):
 
                 self.save(sess)
 
-            if (steps_per_eval and self.global_step % steps_per_eval == 0 and 0 < eval_burn_in <= self.global_step):
+            if steps_per_eval and self.global_step % steps_per_eval == 0 and 0 <= eval_burn_in <= self.global_step:
                 score = 0
 
                 for ratio, model_ in zip(self.ratios, self.models):
@@ -96,7 +96,8 @@ class MultiTaskModel(BaseTranslationModel):
 
                     scores_ = model_.evaluate(
                         sess, beam_size, on_dev=True, output=output, score_function=score_function,
-                        auxiliary_score_function=auxiliary_score_function, script_dir=script_dir
+                        auxiliary_score_function=auxiliary_score_function, script_dir=script_dir,
+                        max_dev_size=max_dev_size
                     )
                     score_ = scores_[0]  # in case there are several dev files, only the first one counts
 

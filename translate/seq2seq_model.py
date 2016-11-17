@@ -137,10 +137,10 @@ class Seq2SeqModel(object):
             decoder_input_length=self.decoder_input_length, **parameters
         )
 
-        # self.beam_output, self.beam_tensors = decoders.beam_search_decoder(
-        #     decoder_input=self.decoder_input, attention_states=self.attention_states, initial_state=self.encoder_state,
-        #     **parameters
-        # )
+        self.beam_output, self.beam_tensors = decoders.beam_search_decoder(
+            decoder_input=self.decoder_input, attention_states=self.attention_states, initial_state=self.encoder_state,
+            **parameters
+        )
 
         self.loss = decoders.sequence_loss(
             logits=self.outputs, targets=self.targets, weights=self.target_weights,
@@ -183,9 +183,9 @@ class Seq2SeqModel(object):
         if output_projection is not None:
             w, b = output_projection
             self.outputs = tensor_prod(self.outputs, w, b)
-            # self.beam_output = tf.nn.xw_plus_b(self.beam_output, w, b)
+            self.beam_output = tf.nn.xw_plus_b(self.beam_output, w, b)
 
-        # self.beam_output = tf.nn.softmax(self.beam_output)
+        self.beam_output = tf.nn.softmax(self.beam_output)
 
     def step(self, session, data, forward_only=False, align=False):
         if self.dropout is not None:
@@ -255,9 +255,6 @@ class Seq2SeqModel(object):
         res = [session_.run(output_feed, input_feed) for session_ in session]
         state, attn_states = list(zip(*[(res_[0], res_[1:]) for res_ in res]))
 
-        attns = [None for _ in session]
-        attn_weights = [None for _ in session]
-
         decoder_input = decoder_inputs[0]  # BOS symbol
 
         finished_hypotheses = []
@@ -270,7 +267,7 @@ class Seq2SeqModel(object):
         state = [session_.run(self.beam_tensors.state, {self.encoder_state: state_})
                  for session_, state_ in zip(session, state)]
 
-        for _ in range(self.max_output_len):
+        for i in range(self.max_output_len):
             # each session/model has its own input and output
             # in beam-search decoder, we only feed the first input
             input_feed = [
@@ -278,31 +275,28 @@ class Seq2SeqModel(object):
                 for state_ in state
             ]
 
+            if i > 0:
+                for input_feed_, state_ in zip(input_feed, state):
+                    input_feed_[self.beam_tensors.prev_output] = state_
+
             batch_size = decoder_input.shape[0]
 
-            for input_feed_, attn_states_, attns_, attn_weights_ in zip(input_feed, attn_states, attns, attn_weights):
+            for input_feed_, attn_states_ in zip(input_feed, attn_states):
                 for i in range(self.encoder_count):
                     input_feed_[self.attention_states[i]] = attn_states_[i].repeat(batch_size, axis=0)
-                    if attn_weights_ is not None:
-                        input_feed_[self.beam_tensors.attn_weights[i]] = attn_weights_[i]
 
-                if attns_ is not None:
-                    input_feed_[self.beam_tensors.attns] = attns_
-
-            output_feed = namedtuple('beam_output', 'decoder_output decoder_state attns attn_weights')(
+            output_feed = namedtuple('beam_output', 'decoder_output decoder_state')(
                 self.beam_output,
                 self.beam_tensors.new_state,
-                self.beam_tensors.new_attns,
-                self.beam_tensors.new_attn_weights
             )
 
             res = [session_.run(output_feed, input_feed_) for session_, input_feed_ in zip(session, input_feed)]
 
             res_transpose = list(
-                zip(*[(res_.decoder_output, res_.decoder_state, res_.attns, res_.attn_weights) for res_ in res])
+                zip(*[(res_.decoder_output, res_.decoder_state) for res_ in res])
             )
 
-            decoder_output, decoder_state, attns, attn_weights = res_transpose
+            decoder_output, decoder_state = res_transpose
             # hypotheses, list of tokens ids of shape (beam_size, previous_len)
             # decoder_output, shape=(beam_size, trg_vocab_size)
             # decoder_state, shape=(beam_size, cell.state_size)
@@ -351,8 +345,6 @@ class Seq2SeqModel(object):
             new_scores = []
             new_state = [[] for _ in session]
             new_input = []
-            new_attns = [[] for _ in session]
-            new_attn_weights = [[[] for _ in self.encoders] for _ in session]
 
             for flat_id, hyp_id, token_id in zip(flat_ids, hyp_ids, token_ids_):
                 hypothesis = hypotheses[hyp_id] + [token_id]
@@ -372,20 +364,8 @@ class Seq2SeqModel(object):
                     new_scores.append(score)
                     new_input.append(token_id)
 
-                    for session_id, attn_weights_ in enumerate(attn_weights):
-                        for encoder_id in range(len(self.encoders)):
-                            new_attn_weights[session_id][encoder_id].append(
-                                attn_weights_[encoder_id][hyp_id]
-                            )
-
-                    for session_id, attns_ in enumerate(attns):
-                        new_attns[session_id].append(attns_[hyp_id])
-
             hypotheses = new_hypotheses
             state = [np.array(new_state_) for new_state_ in new_state]
-            attn_weights = [[np.array(attn_weights_) for attn_weights_ in session_attn_weights]
-                            for session_attn_weights in new_attn_weights]
-            attns = [np.array(attns_) for attns_ in new_attns]
             scores = np.array(new_scores)
             decoder_input = np.array(new_input, dtype=np.int32)
 
