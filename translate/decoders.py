@@ -86,7 +86,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
             parameters = dict(
                 inputs=encoder_inputs_, sequence_length=sequence_length, time_pooling=encoder.time_pooling,
                 pooling_avg=encoder.pooling_avg, dtype=tf.float32, swap_memory=encoder.swap_memory,
-                parallel_iterations=encoder.parallel_iterations, residual_connections=encoder.residual_connections
+                parallel_iterations=encoder.parallel_iterations, residual_connections=encoder.residual_connections,
+                trainable_initial_state=True
             )
 
             if encoder.bidir:
@@ -94,6 +95,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                     cells=[(cell, cell)] * encoder.layers, **parameters)
                 # Like Bahdanau et al., we use the first annotation h_1 of the backward encoder
                 encoder_state_ = encoder_outputs_[:, 0, encoder.cell_size:]
+                # TODO: if multiple layers combine last states with a Maxout layer
             else:
                 encoder_outputs_, encoder_state_ = multi_rnn_unsafe(
                     cells=[cell] * encoder.layers, **parameters)
@@ -410,7 +412,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                 initial_state = tf.nn.dropout(initial_state, dropout)
 
             state = tf.nn.tanh(
-                linear_unsafe(initial_state, state_size, False, scope='initial_state_projection')
+                linear_unsafe(initial_state, state_size, True, scope='initial_state_projection')
             )
         else:
             # if not initial state, initialize with zeroes (this is the case for MIXER)
@@ -550,7 +552,7 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
             initial_state = tf.nn.dropout(initial_state, dropout)
 
         state = tf.nn.tanh(
-            linear_unsafe(initial_state, cell.state_size, False, scope='initial_state_projection')
+            linear_unsafe(initial_state, cell.state_size, True, scope='initial_state_projection')
         )
 
         weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]

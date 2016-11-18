@@ -3,9 +3,9 @@ import numpy as np
 from tensorflow.python.ops import rnn, rnn_cell
 
 
-def multi_bidirectional_rnn(cells, inputs, sequence_length=None, initial_state_fw=None, initial_state_bw=None,
-                            dtype=None, parallel_iterations=None, swap_memory=False, time_major=False,
-                            time_pooling=None, pooling_avg=None, residual_connections=False, **kwargs):
+def multi_bidirectional_rnn(cells, inputs, sequence_length=None, dtype=None, parallel_iterations=None,
+                            swap_memory=False, time_major=False, time_pooling=None, pooling_avg=None,
+                            residual_connections=False, trainable_initial_state=True, **kwargs):
     if not time_major:
         time_dim = 1
         batch_dim = 0
@@ -13,13 +13,22 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None, initial_state_f
         time_dim = 0
         batch_dim = 1
 
+    batch_size = tf.shape(inputs)[batch_dim]
+
     output_states_fw = []
     output_states_bw = []
     for i, (cell_fw, cell_bw) in enumerate(cells):
         # forward direction
         with tf.variable_scope('forward_{}'.format(i + 1)) as fw_scope:
+            if trainable_initial_state:
+                initial_state = get_variable_unsafe('initial_state', [cell_fw.state_size], dtype=dtype)
+                initial_state = tf.reshape(tf.tile(initial_state, [batch_size]),
+                                           shape=[batch_size, cell_fw.state_size])
+            else:
+                initial_state = None
+
             inputs_fw, output_state_fw = rnn.dynamic_rnn(
-                cell=cell_fw, inputs=inputs, sequence_length=sequence_length, initial_state=initial_state_fw,
+                cell=cell_fw, inputs=inputs, sequence_length=sequence_length, initial_state=initial_state,
                 dtype=dtype, parallel_iterations=parallel_iterations, swap_memory=swap_memory,
                 time_major=time_major, scope=fw_scope
             )
@@ -30,8 +39,15 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None, initial_state_f
         )
 
         with tf.variable_scope('backward_{}'.format(i + 1)) as bw_scope:
+            if trainable_initial_state:
+                initial_state = get_variable_unsafe('initial_state', [cell_fw.state_size], dtype=dtype)
+                initial_state = tf.reshape(tf.tile(initial_state, [batch_size]),
+                                           shape=[batch_size, cell_fw.state_size])
+            else:
+                initial_state = None
+
             inputs_bw, output_state_bw = rnn.dynamic_rnn(
-                cell=cell_bw, inputs=inputs_reversed, sequence_length=sequence_length, initial_state=initial_state_bw,
+                cell=cell_bw, inputs=inputs_reversed, sequence_length=sequence_length, initial_state=initial_state,
                 dtype=dtype, parallel_iterations=parallel_iterations, swap_memory=swap_memory, time_major=time_major,
                 scope=bw_scope
             )
@@ -59,14 +75,23 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None, initial_state_f
     return inputs, tf.concat(1, output_states_fw), tf.concat(1, output_states_bw)
 
 
-def multi_rnn(cells, inputs, sequence_length=None, initial_state=None, dtype=None, parallel_iterations=None,
-              swap_memory=False, time_major=False, time_pooling=None, pooling_avg=None, residual_connections=False,
-              **kwargs):
+def multi_rnn(cells, inputs, sequence_length=None, dtype=None, parallel_iterations=None, swap_memory=False,
+              time_major=False, time_pooling=None, pooling_avg=None, residual_connections=False,
+              trainable_initial_state=True, **kwargs):
     assert time_pooling is None or len(time_pooling) == len(cells) - 1
+
+    batch_size = tf.shape(inputs)[0]     # TODO: Fix time major stuff
 
     output_states = []
     for i, cell in enumerate(cells):
         with tf.variable_scope('forward_{}'.format(i + 1)) as scope:
+            if trainable_initial_state:
+                initial_state = get_variable_unsafe('initial_state', [cell.state_size], dtype=dtype)
+                initial_state = tf.reshape(tf.tile(initial_state, [batch_size]),
+                                           shape=[batch_size, cell.state_size])
+            else:
+                initial_state = None
+
             new_inputs, output_state = rnn.dynamic_rnn(
                 cell=cell, inputs=inputs, sequence_length=sequence_length, initial_state=initial_state, dtype=dtype,
                 parallel_iterations=parallel_iterations, swap_memory=swap_memory, time_major=time_major, scope=scope
