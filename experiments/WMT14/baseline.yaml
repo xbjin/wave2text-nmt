@@ -11,7 +11,6 @@ steps_per_checkpoint: 1000
 steps_per_eval: 4000
 max_steps: 0
 optimizer: 'adadelta'
-learning_rate: 0.001
 weight_scale: 0.01
 batch_size: 80
 num_samples: 0

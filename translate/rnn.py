@@ -21,7 +21,8 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None, dtype=None, par
         # forward direction
         with tf.variable_scope('forward_{}'.format(i + 1)) as fw_scope:
             if trainable_initial_state:
-                initial_state = get_variable_unsafe('initial_state', [cell_fw.state_size], dtype=dtype)
+                initial_state = get_variable_unsafe('initial_state', initializer=tf.zeros([cell_fw.state_size]),
+                                                    dtype=dtype)
                 initial_state = tf.reshape(tf.tile(initial_state, [batch_size]),
                                            shape=[batch_size, cell_fw.state_size])
             else:
@@ -40,9 +41,10 @@ def multi_bidirectional_rnn(cells, inputs, sequence_length=None, dtype=None, par
 
         with tf.variable_scope('backward_{}'.format(i + 1)) as bw_scope:
             if trainable_initial_state:
-                initial_state = get_variable_unsafe('initial_state', [cell_fw.state_size], dtype=dtype)
+                initial_state = get_variable_unsafe('initial_state', initializer=tf.zeros([cell_bw.state_size]),
+                                                    dtype=dtype)
                 initial_state = tf.reshape(tf.tile(initial_state, [batch_size]),
-                                           shape=[batch_size, cell_fw.state_size])
+                                           shape=[batch_size, cell_bw.state_size])
             else:
                 initial_state = None
 
@@ -86,7 +88,8 @@ def multi_rnn(cells, inputs, sequence_length=None, dtype=None, parallel_iteratio
     for i, cell in enumerate(cells):
         with tf.variable_scope('forward_{}'.format(i + 1)) as scope:
             if trainable_initial_state:
-                initial_state = get_variable_unsafe('initial_state', [cell.state_size], dtype=dtype)
+                initial_state = get_variable_unsafe('initial_state', initializer=tf.zeros([cell.state_size]),
+                                                    dtype=dtype)
                 initial_state = tf.reshape(tf.tile(initial_state, [batch_size]),
                                            shape=[batch_size, cell.state_size])
             else:
@@ -195,9 +198,10 @@ class MultiRNNCell(rnn_cell.RNNCell):
 
 
 class GRUCell(rnn_cell.RNNCell):
-    def __init__(self, num_units, activation=tf.nn.tanh):
+    def __init__(self, num_units, activation=tf.nn.tanh, initializer=None):
         self._num_units = num_units
         self._activation = activation
+        self._initializer = initializer
 
     @property
     def state_size(self):
@@ -212,20 +216,17 @@ class GRUCell(rnn_cell.RNNCell):
             # we start with bias of 1.0 to not reset and not update
             r = tf.nn.sigmoid(
                 linear(inputs, self._num_units, True, 1.0, scope='W_r') +
-                linear(state, self._num_units, False, scope='U_r',
-                       initializer=orthogonal_initializer())
+                linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)
             )
 
             z = tf.nn.sigmoid(
                 linear(inputs, self._num_units, True, 1.0, scope='W_z') +
-                linear(state, self._num_units, False, scope='U_z',
-                       initializer=orthogonal_initializer())
+                linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)
             )
 
             h_ = self._activation(
                 linear(inputs, self._num_units, True, scope='W') +
-                linear(r * state, self._num_units, False, scope='U',
-                       initializer=orthogonal_initializer())
+                linear(r * state, self._num_units, False, scope='U', initializer=self._initializer)
             )
 
             new_h = z * state + (1 - z) * h_

@@ -2,7 +2,7 @@ import tensorflow as tf
 import functools
 import math
 from tensorflow.python.ops import rnn_cell, rnn
-from translate.rnn import get_variable_unsafe, linear_unsafe, multi_rnn_unsafe
+from translate.rnn import get_variable_unsafe, linear_unsafe, multi_rnn_unsafe, orthogonal_initializer
 from translate.rnn import multi_bidirectional_rnn_unsafe, unsafe_decorator, MultiRNNCell, GRUCell
 from collections import namedtuple
 
@@ -54,7 +54,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                 cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
                 # cell = rnn_cell.LSTMCell(encoder.cell_size, state_is_tuple=False)
             else:
-                cell = GRUCell(encoder.cell_size)
+                cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
 
             if dropout is not None:
                 cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
@@ -95,7 +95,7 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                     cells=[(cell, cell)] * encoder.layers, **parameters)
                 # Like Bahdanau et al., we use the first annotation h_1 of the backward encoder
                 encoder_state_ = encoder_outputs_[:, 0, encoder.cell_size:]
-                # TODO: if multiple layers combine last states with a Maxout layer
+                # TODO: if multiple layers, combine last states with a Maxout layer
             else:
                 encoder_outputs_, encoder_state_ = multi_rnn_unsafe(
                     cells=[cell] * encoder.layers, **parameters)
@@ -170,7 +170,8 @@ def compute_energy(hidden, state, attn_size, **kwargs):
     batch_size = tf.shape(hidden)[0]
     time_steps = tf.shape(hidden)[1]
 
-    initializer = tf.random_normal_initializer(stddev=0.001)
+    # initializer = tf.random_normal_initializer(stddev=0.001)   # same as Bahdanau et al.
+    initializer = None
     y = linear_unsafe(state, attn_size, True, scope='W_a', initializer=initializer)
     y = tf.reshape(y, [-1, 1, attn_size])
 
@@ -364,7 +365,7 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
         cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
         # cell = rnn_cell.LSTMCell(decoder.cell_size, state_is_tuple=False)
     else:
-        cell = GRUCell(decoder.cell_size)
+        cell = GRUCell(decoder.cell_size, initializer=orthogonal_initializer())
 
     if dropout is not None:
         cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
@@ -520,7 +521,7 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
     if decoder.use_lstm:
         cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
     else:
-        cell = GRUCell(decoder.cell_size)
+        cell = GRUCell(decoder.cell_size, initializer=orthogonal_initializer())
 
     if dropout is not None:
         cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
@@ -574,7 +575,7 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
         return new_output, beam_tensors(state, new_state, output)
 
 
-def sequence_loss(logits, targets, weights, average_across_timesteps=True, average_across_batch=True,
+def sequence_loss(logits, targets, weights, average_across_timesteps=False, average_across_batch=True,
                   softmax_loss_function=None):
     time_steps = tf.shape(targets)[0]
     batch_size = tf.shape(targets)[1]

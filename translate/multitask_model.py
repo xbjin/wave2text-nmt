@@ -65,9 +65,12 @@ class MultiTaskModel(BaseTranslationModel):
                     step_time_ = model_.time / model_.steps
                     perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
 
-                    utils.log('{} step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
+                    # utils.log('{} step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
+                    #     model_.name, model_.global_step.eval(sess), model_.learning_rate.eval(),
+                    #     step_time_, perplexity))
+                    utils.log('{} step {} learning rate {:.4f} step-time {:.2f} loss {:.2f}'.format(
                         model_.name, model_.global_step.eval(sess), model_.learning_rate.eval(),
-                        step_time_, perplexity))
+                        step_time_, loss_))
 
                     if len(model_.previous_losses) > 2 and loss_ > max(model_.previous_losses[-3:]):
                         sess.run(model_.learning_rate_decay_op)
@@ -110,7 +113,7 @@ class MultiTaskModel(BaseTranslationModel):
 
                 self.manage_best_checkpoints(self.global_step, score)
 
-            if 0 < max_steps < self.global_step:
+            if 0 < max_steps <= self.global_step:
                 utils.log('finished training')
                 return
 

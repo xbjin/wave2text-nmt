@@ -123,7 +123,8 @@ class TranslationModel(BaseTranslationModel):
         utils.debug('reading training data')
         train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, max_size=max_train_size,
                                        binary_input=self.binary_input, character_level=self.character_level)
-        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=read_ahead)
+        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=read_ahead,
+                                                              shuffle=False)
 
         utils.debug('reading development data')
         dev_sets = [
@@ -160,7 +161,8 @@ class TranslationModel(BaseTranslationModel):
             eval_loss /= sum(map(len, dev_batches))
 
             perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-            utils.log("  eval: perplexity {:.2f}".format(perplexity))
+            # utils.log("  eval: perplexity {:.2f}".format(perplexity))
+            utils.log("  eval: loss {:.2f}".format(eval_loss))
 
     def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
         # TODO: merge this with read_dataset

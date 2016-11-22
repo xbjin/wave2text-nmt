@@ -324,15 +324,16 @@ def cycling_batch_iterator(data, batch_size):
     :param batch_size: the size of a batch
     :return: an iterator which yields batches (indefinitely)
     """
-    while True:
-        random.shuffle(data)
+    random.shuffle(data)
 
+    while True:
+        # random.shuffle(data)
         batch_count = len(data) // batch_size
         for i in range(batch_count):
             yield data[i * batch_size:(i + 1) * batch_size]
 
 
-def read_ahead_batch_iterator(data, batch_size, read_ahead=10):
+def read_ahead_batch_iterator(data, batch_size, read_ahead=10, shuffle=True):
     """
     Same iterator as `cycling_batch_iterator`, except that it reads a number of batches
     at once, and sorts their content according to their size.
@@ -355,7 +356,8 @@ def read_ahead_batch_iterator(data, batch_size, read_ahead=10):
         batches = [next(iterator) for _ in range(read_ahead)]
         data_ = sorted(sum(batches, []), key=lambda lines: len(lines[-1]))
         batches = [data_[i * batch_size:(i + 1) * batch_size] for i in range(read_ahead)]
-        random.shuffle(batches)
+        if shuffle:
+            random.shuffle(batches)
         for batch in batches:
             yield batch
 
