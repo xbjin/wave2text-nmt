@@ -270,7 +270,7 @@ def read_binary_features(filename):
 
 
 def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
-                 character_level=None, sort_by_length=False):
+                 character_level=None, sort_by_length=False, max_seq_len=None):
     data_set = []
 
     line_reader = read_lines(paths, extensions, binary_input=binary_input)
@@ -290,6 +290,8 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
             ]
 
         if not all(inputs):  # skip empty inputs
+            continue
+        if max_seq_len and any(len(inputs_) > max_seq_len for inputs_ in inputs):
             continue
 
         data_set.append(inputs)  # TODO: filter too long

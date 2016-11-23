@@ -401,7 +401,8 @@ class Seq2SeqModel(object):
         if self.max_input_len is not None:
             max_input_len = [min(len_, self.max_input_len) for len_ in max_input_len]
         # maximum output length in this batch
-        max_output_len = min(max(len(data_[-1]) for data_ in data), self.max_output_len)
+        max_output_len = min(max(len(data_[-1]) for data_ in data),
+                             self.max_output_len)
 
         for *src_sentences, trg_sentence in data:
             for i, (encoder, src_sentence) in enumerate(zip(self.encoders, src_sentences)):
@@ -410,8 +411,8 @@ class Seq2SeqModel(object):
                     # instead of a sequence of indices
                     pad = np.zeros([encoder.embedding_size], dtype=np.float32)
                 else:
-                    pad = utils.PAD_ID
-                    # pad = utils.EOS_ID
+                    # pad = utils.PAD_ID
+                    pad = utils.EOS_ID
 
                 # pad sequences so that all sequences in the same batch have the same length
                 src_sentence = src_sentence[:max_input_len[i]]
@@ -432,8 +433,8 @@ class Seq2SeqModel(object):
             else:
                 decoder_pad_size = max_output_len - len(trg_sentence)
                 decoder_input_length.append(len(trg_sentence) + 1)
-                trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [utils.PAD_ID] * decoder_pad_size
-                # trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [-1] * decoder_pad_size
+                # trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [utils.PAD_ID] * decoder_pad_size
+                trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [-1] * decoder_pad_size
                 decoder_inputs.append(trg_sentence)
 
         # convert lists to numpy arrays
@@ -447,10 +448,11 @@ class Seq2SeqModel(object):
         # time-major vectors: shape is (time, batch_size)
         batch_decoder_inputs = np.array(decoder_inputs)[:, :-1].T  # with BOS symbol, without EOS symbol
         batch_targets = np.array(decoder_inputs)[:, 1:].T  # without BOS symbol, with EOS symbol
-        batch_weights = (batch_targets != utils.PAD_ID).astype(np.float32)  # PAD symbols don't count for training
+        # batch_weights = (batch_targets != utils.PAD_ID).astype(np.float32)  # PAD symbols don't count for training
+        batch_weights = (batch_targets != -1).astype(np.float32)  # PAD symbols don't count for training
 
-        # batch_decoder_inputs[batch_decoder_inputs == -1] = utils.EOS_ID
-        # batch_targets[batch_targets == -1] = utils.EOS_ID
+        batch_decoder_inputs[batch_decoder_inputs == -1] = utils.EOS_ID
+        batch_targets[batch_targets == -1] = utils.EOS_ID
 
         return (batch_encoder_inputs,
                 batch_decoder_inputs,

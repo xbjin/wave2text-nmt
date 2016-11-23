@@ -54,7 +54,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                 cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
                 # cell = rnn_cell.LSTMCell(encoder.cell_size, state_is_tuple=False)
             else:
-                cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
+                # cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
+                cell = GRUCell(encoder.cell_size)
 
             if dropout is not None:
                 cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
