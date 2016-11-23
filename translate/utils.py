@@ -326,7 +326,7 @@ def cycling_batch_iterator(data, batch_size):
     :param batch_size: the size of a batch
     :return: an iterator which yields batches (indefinitely)
     """
-    random.shuffle(data)
+    # random.shuffle(data)
 
     while True:
         # random.shuffle(data)

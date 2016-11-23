@@ -27,8 +27,6 @@ max_dev_size: 2000
 
 encoders:
   - name: en
-    vocab_size: 30000
 
 decoder:
     name: fr
-    vocab_size: 30000
