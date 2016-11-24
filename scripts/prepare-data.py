@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from itertools import islice
-from random import shuffle
 from contextlib import contextmanager
 from collections import Counter
 import argparse
@@ -11,6 +10,7 @@ import logging
 import sys
 import shutil
 import codecs
+import random
 
 
 help_msg = """\
@@ -35,17 +35,16 @@ This example will create 6 files in `output/`: train.fr, train.en, test.fr,\
  `data/news-dev`. These three output corpora will be shuffled.
 """
 
-_PAD = '_PAD'
-_GO = '_GO'
-_EOS = '_EOS'
-_UNK = '_UNK'
+_GO = '<S>'
+_EOS = '</S>'
+_UNK = '<UNK>'
 
-_START_VOCAB = [_PAD, _GO, _EOS, _UNK]
+_START_VOCAB = [_GO, _EOS, _UNK]
 
-PAD_ID = 0
-GO_ID = 1
-EOS_ID = 2
-UNK_ID = 3
+# PAD_ID = 0
+GO_ID = 0
+EOS_ID = 1
+UNK_ID = 2
 
 temporary_files = []
 
@@ -189,7 +188,7 @@ def process_corpus(filenames, args):
 
         if args.shuffle:
             all_lines = list(all_lines)  # not lazy anymore
-            shuffle(all_lines)
+            random.shuffle(all_lines)
 
         for lines in all_lines:  # keeps it lazy if no shuffle
             for line, output_file in zip(lines, output_files):
@@ -378,6 +377,7 @@ if __name__ == '__main__':
     parser.add_argument('--escape-special-chars', nargs='*', help='escape special characters')
     parser.add_argument('--unescape-special-chars', nargs='*', help='unescape special characters')
     parser.add_argument('--shuffle', help='shuffle the corpus', action='store_true')
+    parser.add_argument('--seed', type=int)
 
     parser.add_argument('--normalize-moses', help='remove | symbols '
                         '(used as delimiters by moses)', action='store_true')
@@ -461,6 +461,8 @@ if __name__ == '__main__':
         os.path.join(args.output_dir, corpus_prefix)
         for corpus_prefix in output_corpora_prefix
     ]
+
+    random.seed(args.seed)
 
     try:
         # list of temporary files for each corpus (dev, test, train)

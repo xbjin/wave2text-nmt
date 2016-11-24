@@ -14,16 +14,14 @@ from collections import namedtuple
 from contextlib import contextmanager
 
 # special vocabulary symbols
-_PAD = "_PAD"
-_BOS = "_GO"
-_EOS = "_EOS"
-_UNK = "_UNK"
-_START_VOCAB = [_PAD, _BOS, _EOS, _UNK]
+_BOS = "<S>"
+_EOS = "</S>"
+_UNK = "<UNK>"
+_START_VOCAB = [_BOS, _EOS, _UNK]
 
-PAD_ID = 0
-BOS_ID = 1
-EOS_ID = 2
-UNK_ID = 3
+BOS_ID = 0
+EOS_ID = 1
+UNK_ID = 2
 
 
 @contextmanager
