@@ -428,7 +428,7 @@ class Seq2SeqModel(object):
             if decoding:
                 # maximum output length doesn't account for the final EOS symbol
                 decoder_input_length.append(self.max_output_len + 1)
-                decoder_inputs.append([utils.BOS_ID] + [utils.PAD_ID] * (self.max_output_len + 1))
+                decoder_inputs.append([utils.BOS_ID] + [utils.EOS_ID] * (self.max_output_len + 1))
                 # decoder_inputs.append([utils.BOS_ID] + [-1] * (self.max_output_len + 1))
             else:
                 decoder_pad_size = max_output_len - len(trg_sentence)
