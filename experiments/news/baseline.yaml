@@ -9,8 +9,6 @@ steps_per_checkpoint: 1000
 steps_per_eval: 4000
 max_steps: 0
 optimizer: 'adam'
-learning_rate: 0.001
-num_samples: 0
 
 data_dir: experiments/news/data
 model_dir: experiments/news/baseline
@@ -18,8 +16,6 @@ log_file: experiments/news/baseline/log.txt
 
 encoders:
   - name: fr
-    vocab_size: 30000
 
 decoder:
     name: en
-    vocab_size: 30000

@@ -165,7 +165,7 @@ class Seq2SeqModel(object):
             elif optimizer.lower() == 'adagrad':
                 opt = tf.train.AdagradOptimizer(learning_rate=learning_rate)
             elif optimizer.lower() == 'adam':
-                opt = tf.train.AdamOptimizer(learning_rate=learning_rate)
+                opt = tf.train.AdamOptimizer(learning_rate=0.001)
             else:
                 opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
 

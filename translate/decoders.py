@@ -54,8 +54,8 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                 cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
                 # cell = rnn_cell.LSTMCell(encoder.cell_size, state_is_tuple=False)
             else:
-                # cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
-                cell = GRUCell(encoder.cell_size)
+                cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
+                # cell = GRUCell(encoder.cell_size)
 
             if dropout is not None:
                 cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
@@ -479,7 +479,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
             output_ = tf.maximum(*tf.split(1, 2, output_))
 
             # with tf.device('/cpu:0'):
-            output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
+            # output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
+            output_ = linear_unsafe(output_, decoder.embedding_size, False, scope='softmax0')
+            output_ = linear_unsafe(output_, output_size, True, scope='softmax1')
 
             output_ta = output_ta.write(time, output_)
             return time + 1, new_state, new_output, context_vector, new_weights, output_ta, weights_ta

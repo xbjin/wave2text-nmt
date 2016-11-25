@@ -43,7 +43,11 @@ class MultiTaskModel(BaseTranslationModel):
             # those parameters are used to track the progress of each task
             model.loss, model.time, model.steps = 0, 0, 0
             model.previous_losses = []
-            self.global_step += model.global_step.eval(sess)
+            global_step = model.global_step.eval(sess)
+            for _ in range(global_step):   # read all the data up to this step
+                next(model.batch_iterator)
+
+            self.global_step += global_step
 
         utils.log('starting training')
         while True:

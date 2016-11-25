@@ -17,7 +17,6 @@ from contextlib import contextmanager
 _BOS = "<S>"
 _EOS = "</S>"
 _UNK = "<UNK>"
-_START_VOCAB = [_BOS, _EOS, _UNK]
 
 BOS_ID = 0
 EOS_ID = 1
