@@ -6,6 +6,7 @@ import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument('log_files', nargs='+')
+parser.add_argument('--output')
 
 args = parser.parse_args()
 
@@ -21,21 +22,25 @@ for i, log_file in enumerate(args.log_files, 1):
             if m:
                 current_step = int(m.group(1))
 
-            m = re.search(r'eval: perplexity (.*)', line)
+            m = re.search(r'eval: loss (.*)', line)
             if m:
                 perplexity = float(m.group(1))
                 dev_perplexities.append((current_step, perplexity))
                 continue
 
-            m = re.search(r'perplexity (.*)', line)
+            m = re.search(r'loss (.*)', line)
             if m:
                 perplexity = float(m.group(1))
                 train_perplexities.append((current_step, perplexity))
                 continue
 
-    plt.plot(*zip(*dev_perplexities), label='model {} dev'.format(i))
-    plt.plot(*zip(*train_perplexities), label='model {} train'.format(i))
+    name = 'model {}'.format(i) if len(args.log_files) > 1 else ''
+    plt.plot(*zip(*dev_perplexities), label=' '.join([name, 'dev loss']))
+    plt.plot(*zip(*train_perplexities), label=' '.join([name, 'train loss']))
 
 legend = plt.legend(loc='upper center', shadow=True)
 
-plt.show()
+if args.output is not None:
+    plt.savefig(args.output)
+else:
+    plt.show()

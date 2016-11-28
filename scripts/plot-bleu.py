@@ -6,6 +6,7 @@ import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument('log_files', nargs='+')
+parser.add_argument('--output')
 
 args = parser.parse_args()
 
@@ -20,7 +21,7 @@ for i, log_file in enumerate(args.log_files, 1):
             if m:
                 current_step = int(m.group(1))
 
-            m = re.search(r'bleu=(\d+\.\d+)', line)
+            m = re.search(r'score=(\d+\.\d+)', line)
             if m:
                 bleu_score = float(m.group(1))
                 bleu_scores.append((current_step, bleu_score))
@@ -35,7 +36,13 @@ for i, log_file in enumerate(args.log_files, 1):
     # new_x = np.linspace(x.min(), x.max(), 100)
     # new_y = spline(x, y, new_x)
     # plt.plot(new_x, new_y)
-    plt.plot(*zip(*bleu_scores), label='model {}'.format(i))
+
+    name = 'model {}'.format(i) if len(args.log_files) > 1 else ''
+    plt.plot(*zip(*bleu_scores), label=' '.join([name, 'dev BLEU']))
 
 legend = plt.legend(loc='upper center', shadow=True)
-plt.show()
+
+if args.output is not None:
+    plt.savefig(args.output)
+else:
+    plt.show()
