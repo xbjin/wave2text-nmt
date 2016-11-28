@@ -77,11 +77,12 @@ class BaseTranslationModel(object):
 class TranslationModel(BaseTranslationModel):
     def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
                  learning_rate_decay_factor, batch_size, keep_best=1,
-                 load_embeddings=None, optimizer='sgd', **kwargs):
+                 load_embeddings=None, optimizer='sgd', max_input_len=None, **kwargs):
         self.batch_size = batch_size
         self.src_ext = [encoder.get('ext') or encoder.name for encoder in encoders]
         self.trg_ext = decoder.get('ext') or decoder.name
         self.extensions = self.src_ext + [self.trg_ext]
+        self.max_input_len = max_input_len
 
         encoders_and_decoder = encoders + [decoder]
         self.binary_input = [encoder_or_decoder.binary for encoder_or_decoder in encoders_and_decoder]
@@ -112,7 +113,7 @@ class TranslationModel(BaseTranslationModel):
         # main model
         utils.debug('creating model {}'.format(name))
         self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, optimizer=optimizer,
-                                  **kwargs)
+                                  max_input_len=max_input_len, **kwargs)
 
         super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
 
@@ -122,7 +123,8 @@ class TranslationModel(BaseTranslationModel):
     def read_data(self, max_train_size, max_dev_size, read_ahead=10):
         utils.debug('reading training data')
         train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, max_size=max_train_size,
-                                       binary_input=self.binary_input, character_level=self.character_level)   # FIXME
+                                       binary_input=self.binary_input, character_level=self.character_level,
+                                       max_seq_len=self.max_input_len)
         self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=read_ahead,
                                                               shuffle=False)
 

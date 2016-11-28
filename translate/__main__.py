@@ -129,7 +129,7 @@ def main(args=None):
     # TODO: independent model dir for each task
     task_parameters = [
         'data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio', 'lm_file', 'learning_rate',
-        'learning_rate_decay_factor', 'max_output_len', 'encoders', 'decoder'
+        'learning_rate_decay_factor', 'max_input_len', 'max_output_len', 'encoders', 'decoder'
     ]
 
     # in case no task is defined (standard mono-task settings), define a "main" task
@@ -193,8 +193,15 @@ def main(args=None):
         model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
+    parameter_count = 0
     for var in tf.all_variables():
         utils.log('  {} {}'.format(var.name, var.get_shape()))
+
+        v = 1
+        for d in var.get_shape():
+            v *= d.value
+        parameter_count += v
+    utils.log('number of parameters: {}'.format(parameter_count))
 
     tf_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     tf_config.gpu_options.allow_growth = config.allow_growth

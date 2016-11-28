@@ -570,9 +570,11 @@ def beam_search_decoder(decoder_input, initial_state, attention_states, encoders
         new_output = linear_unsafe([new_output, decoder_input, context_vector], decoder.cell_size, True,
                                 scope='maxout')
         new_output = tf.maximum(*tf.split(1, 2, new_output))
-        new_output = linear_unsafe(new_output, output_size, True, scope='output_projection')
+        # new_output = linear_unsafe(new_output, output_size, True, scope='output_projection')
         # with tf.variable_scope('attention_output_projection'):
         #    output = linear_unsafe([cell_output, new_attns], output_size, True)
+        new_output = linear_unsafe(new_output, decoder.embedding_size, False, scope='softmax0')
+        new_output = linear_unsafe(new_output, output_size, True, scope='softmax1')
 
         beam_tensors = namedtuple('beam_tensors', 'state new_state prev_output')
         return new_output, beam_tensors(state, new_state, output)

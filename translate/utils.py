@@ -284,10 +284,11 @@ def read_dataset(paths, extensions, vocabs, max_size=None, binary_input=None,
             if vocab is not None and isinstance(input_, str)
             else input_
             for input_, vocab, ext, char_level in zip(inputs, vocabs, extensions, character_level)
-            ]
+        ]
 
         if not all(inputs):  # skip empty inputs
             continue
+        # skip lines that are too long
         if max_seq_len and any(len(inputs_) > max_seq_len for inputs_ in inputs):
             continue
 

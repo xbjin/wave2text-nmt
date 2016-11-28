@@ -401,8 +401,7 @@ class Seq2SeqModel(object):
         if self.max_input_len is not None:
             max_input_len = [min(len_, self.max_input_len) for len_ in max_input_len]
         # maximum output length in this batch
-        max_output_len = min(max(len(data_[-1]) for data_ in data),
-                             self.max_output_len)
+        max_output_len = min(max(len(data_[-1]) for data_ in data), self.max_output_len)
 
         for *src_sentences, trg_sentence in data:
             for i, (encoder, src_sentence) in enumerate(zip(self.encoders, src_sentences)):
@@ -411,29 +410,23 @@ class Seq2SeqModel(object):
                     # instead of a sequence of indices
                     pad = np.zeros([encoder.embedding_size], dtype=np.float32)
                 else:
-                    # pad = utils.PAD_ID
                     pad = utils.EOS_ID
 
                 # pad sequences so that all sequences in the same batch have the same length
                 src_sentence = src_sentence[:max_input_len[i]]
-                encoder_pad = [pad] * (max_input_len[i] - len(src_sentence))
-                # reversing the input used to give better results (not sure this is still the case with attention)
-                # reversed_sentence = list(reversed(src_sentence)) + encoder_pad
-                reversed_sentence = src_sentence + encoder_pad
+                encoder_pad = [pad] * (1 + max_input_len[i] - len(src_sentence))
 
-                encoder_inputs[i].append(reversed_sentence)
-                encoder_input_length[i].append(len(src_sentence))
+                encoder_inputs[i].append(src_sentence + encoder_pad)
+                encoder_input_length[i].append(len(src_sentence) + 1)
 
             trg_sentence = trg_sentence[:max_output_len]
             if decoding:
                 # maximum output length doesn't account for the final EOS symbol
                 decoder_input_length.append(self.max_output_len + 1)
                 decoder_inputs.append([utils.BOS_ID] + [utils.EOS_ID] * (self.max_output_len + 1))
-                # decoder_inputs.append([utils.BOS_ID] + [-1] * (self.max_output_len + 1))
             else:
                 decoder_pad_size = max_output_len - len(trg_sentence)
                 decoder_input_length.append(len(trg_sentence) + 1)
-                # trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [utils.PAD_ID] * decoder_pad_size
                 trg_sentence = [utils.BOS_ID] + trg_sentence + [utils.EOS_ID] + [-1] * decoder_pad_size
                 decoder_inputs.append(trg_sentence)
 
