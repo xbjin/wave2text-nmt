@@ -89,8 +89,8 @@ class BaseTranslationModel(object):
                     utils.debug(var_name)
 
                     var_ = variables[var_name]
-                    assert (tuple(x.value for x in var_.get_shape()) == value.shape,
-                            'wrong shape for var: {}'.format(var_name))
+                    assert tuple(x.value for x in var_.get_shape()) == value.shape, \
+                           'wrong shape for var: {}'.format(var_name)
                     sess.run(var_.assign(value))
 
             utils.log('read {} variables'.format(sum(len(var_names) for var_names, _, _ in block_vars)))

@@ -152,7 +152,7 @@ def bleu_score(hypotheses, references, script_dir):
     try:
         p = subprocess.Popen([bleu_script, f.name], stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=open('/dev/null', 'w'))
-        output, _ = p.communicate('\n'.join(hypotheses).encode())
+        output, _ = p.communicate(('\n'.join(hypotheses) + '\n').encode())
     finally:
         os.unlink(f.name)
 

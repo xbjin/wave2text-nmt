@@ -18,6 +18,7 @@
 import numpy as np
 import tensorflow as tf
 import re
+import zlib
 
 from translate import utils
 from translate import decoders
@@ -187,7 +188,7 @@ class Seq2SeqModel(object):
 
         self.beam_output = tf.nn.softmax(self.beam_output)
 
-    def step(self, session, data, forward_only=False, align=False):
+    def step(self, session, data, forward_only=False, align=False, debug=False):
         if self.dropout is not None:
             session.run(self.dropout_on)
 
@@ -204,6 +205,21 @@ class Seq2SeqModel(object):
         input_feed[self.decoder_inputs] = decoder_inputs
         input_feed[self.decoder_input_length] = decoder_input_length
         input_feed[self.targets] = targets
+
+        if debug:
+            tf.get_variable_scope().reuse_variables()
+            print('\n'.join(
+                [' '.join([var_.name, str(zlib.adler32(var_.eval(session).tostring()))])
+                 for var_ in tf.all_variables()]))
+
+            state = session.run(self.encoder_state, input_feed)
+            states = session.run(self.attention_states, input_feed)
+            cost = session.run(self.loss, input_feed)
+            gradient_norms = session(self.gradient_norms, input_feed)
+
+            state_hash = zlib.adler32(state.tostring())
+
+            import pdb; pdb.set_trace()
 
         output_feed = {'loss': self.loss}
         if not forward_only:
