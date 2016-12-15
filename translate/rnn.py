@@ -216,17 +216,17 @@ class GRUCell(rnn_cell.RNNCell):
             # we start with bias of 1.0 to not reset and not update
             r = tf.nn.sigmoid(
                 linear(inputs, self._num_units, True, 1.0, scope='W_r') +
-                linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)
+                linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)    # state to gates
             )
 
             z = tf.nn.sigmoid(
                 linear(inputs, self._num_units, True, 1.0, scope='W_z') +
-                linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)
+                linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)    # state to gates
             )
 
             h_ = self._activation(
                 linear(inputs, self._num_units, True, scope='W') +
-                linear(r * state, self._num_units, False, scope='U', initializer=self._initializer)
+                linear(r * state, self._num_units, False, scope='U', initializer=self._initializer)  # state to state
             )
 
             new_h = z * state + (1 - z) * h_

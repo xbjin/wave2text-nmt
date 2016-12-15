@@ -42,8 +42,8 @@ class BaseTranslationModel(object):
                     os.remove(path)
                 except OSError:
                     pass
-                # make symbolic links to best model
-                os.symlink('{}-{}'.format(path, step), path)
+                # copy of best model
+                shutil.copy('{}-{}'.format(path, step), path)
 
             best_scores = sorted(best_scores + [(score, step)], reverse=True)
 
@@ -80,7 +80,8 @@ class BaseTranslationModel(object):
             variables = {var_.name[:-2]: var_ for var_ in tf.all_variables()}
 
             for var_names, axis, value in block_vars:
-                value = np.squeeze(value)
+                if 'decoder_en/attention_fr/v_a' in var_names:
+                    value = np.squeeze(value)
 
                 sections = [variables[name].get_shape()[axis].value for name in var_names]
                 values = np.split(value, sections[:-1], axis=axis)
@@ -89,6 +90,7 @@ class BaseTranslationModel(object):
                     utils.debug(var_name)
 
                     var_ = variables[var_name]
+                    print(var_.get_shape(), value.shape)
                     assert tuple(x.value for x in var_.get_shape()) == value.shape, \
                            'wrong shape for var: {}'.format(var_name)
                     sess.run(var_.assign(value))
@@ -177,7 +179,8 @@ class TranslationModel(BaseTranslationModel):
         raise NotImplementedError('use MultiTaskModel')
 
     def train_step(self, sess):
-        return self.model.step(sess, next(self.batch_iterator)).loss
+        res = self.model.step(sess, next(self.batch_iterator))
+        return res.loss, res.gradient
 
     def eval_step(self, sess):
         # compute perplexity on dev set
@@ -188,7 +191,7 @@ class TranslationModel(BaseTranslationModel):
             )
             eval_loss /= sum(map(len, dev_batches))
 
-            perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+            # perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
             # utils.log("  eval: perplexity {:.2f}".format(perplexity))
             utils.log("  eval: loss {:.2f}".format(eval_loss))
 

@@ -7,6 +7,9 @@ from translate.rnn import multi_bidirectional_rnn_unsafe, unsafe_decorator, Mult
 from collections import namedtuple
 
 
+globals_ = {}
+
+
 def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, **kwargs):
     """
     Build multiple encoders according to the configuration in `encoders`, reading from `encoder_inputs`.
@@ -57,8 +60,9 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                 cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
                 # cell = GRUCell(encoder.cell_size)
 
-            if dropout is not None:
-                cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
+            globals_['encoder_cell'] = cell
+            # if dropout is not None:
+            #     cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
 
             embedding = embedding_variables[i]
 
@@ -83,7 +87,9 @@ def multi_encoder(encoder_inputs, encoders, encoder_input_length, dropout=None, 
                 encoder_inputs_ = tf.reshape(flat_inputs,
                                              tf.pack([batch_size, time_steps, flat_inputs.get_shape()[1].value]))
 
-            sequence_length = encoder_input_length_
+            # Contrary to Theano's RNN implementation, states after the sequence length are zero
+            # (while Theano repeats last state)
+            sequence_length = encoder_input_length_   # TODO
             parameters = dict(
                 inputs=encoder_inputs_, sequence_length=sequence_length, time_pooling=encoder.time_pooling,
                 pooling_avg=encoder.pooling_avg, dtype=tf.float32, swap_memory=encoder.swap_memory,
@@ -474,19 +480,21 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
                 new_output, new_state = call_cell()
 
             # maxout layer
-            output_ = linear_unsafe([new_output, input_, context_vector], decoder.cell_size, True,
-                                    scope='maxout')  # U_o, V_o and C_o parameters
-            output_ = tf.maximum(*tf.split(1, 2, output_))
+            # output_ = linear_unsafe([new_output, input_, context_vector], decoder.cell_size, True,
+            #                         scope='maxout')  # U_o, V_o and C_o parameters
+            # output_ = tf.maximum(*tf.split(1, 2, output_))
 
             # with tf.device('/cpu:0'):
             # output_ = linear_unsafe(output_, output_size, True, scope='output_projection')   # W_o
-            output_ = linear_unsafe(output_, decoder.embedding_size, False, scope='softmax0')
-            output_ = linear_unsafe(output_, output_size, True, scope='softmax1')
+            # output_ = linear_unsafe(output_, decoder.embedding_size, False, scope='softmax0')
+            # output_ = linear_unsafe(output_, output_size, True, scope='softmax1')
+            output_ = linear_unsafe([new_output, input_, context_vector], decoder.cell_size, False, scope='maxout')
+            output_ = linear_unsafe(output_, output_size, True, scope='softmax')
 
             output_ta = output_ta.write(time, output_)
             return time + 1, new_state, new_output, context_vector, new_weights, output_ta, weights_ta
 
-        _, _, _, _, _, output_final_ta, weights_final = tf.while_loop(
+        _, new_state, new_output, _, _, output_final_ta, weights_final = tf.while_loop(
             cond=lambda time, *_: time < time_steps,
             body=_time_step,
             loop_vars=(time, state, output, attns, weights, output_ta, weights_ta),
@@ -494,90 +502,9 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoders,
             swap_memory=decoder.swap_memory)
 
         outputs = output_final_ta.pack()
-        # shape (time_steps, encoders, batch_size, input_time_steps)
-        weights = tf.slice(weights_final.pack(), [1, 0, 0, 0], [-1, -1, -1, -1])
-        return outputs, weights
 
-
-def beam_search_decoder(decoder_input, initial_state, attention_states, encoders, decoder, output_projection=None,
-                        dropout=None, **kwargs):
-    """
-    Same as `attention_decoder`, except that it only performs one step of the decoder.
-
-    :param decoder_input: tensor of size (batch_size), corresponding to the previous output of the decoder
-    :return:
-      current output of the decoder
-      tuple of (state, new_state, attn_weights, new_attn_weights, attns, new_attns)
-    """
-    # TODO: code refactoring with `attention_decoder`
-    if decoder.get('embedding') is not None:
-        embedding_initializer = decoder.embedding
-        embedding_shape = None
-    else:
-        embedding_initializer = None
-        embedding_shape = [decoder.vocab_size, decoder.embedding_size]
-
-    with tf.device('/cpu:0'):
-        embedding = get_variable_unsafe('embedding_{}'.format(decoder.name),
-                                        shape=embedding_shape,
-                                        initializer=embedding_initializer)
-    if decoder.use_lstm:
-        cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
-    else:
-        cell = GRUCell(decoder.cell_size, initializer=orthogonal_initializer())
-
-    if dropout is not None:
-        cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
-
-    if decoder.layers > 1:
-        cell = MultiRNNCell([cell] * decoder.layers, residual_connections=decoder.residual_connections)
-
-    if output_projection is None:
-        output_size = decoder.vocab_size
-    else:
-        output_size = cell.output_size
-        proj_weights = tf.convert_to_tensor(output_projection[0], dtype=tf.float32)
-        proj_weights.get_shape().assert_is_compatible_with([cell.output_size, decoder.vocab_size])
-        proj_biases = tf.convert_to_tensor(output_projection[1], dtype=tf.float32)
-        proj_biases.get_shape().assert_is_compatible_with([decoder.vocab_size])
-
-    with tf.variable_scope('decoder_{}'.format(decoder.name)):
-        decoder_input = tf.nn.embedding_lookup(embedding, decoder_input)
-
-        attn_lengths = [tf.shape(states)[1] for states in attention_states]
-        attn_size = sum(states.get_shape()[2].value for states in attention_states)
-        hidden_states = [tf.expand_dims(states, 2) for states in attention_states]
-        attention_ = functools.partial(multi_attention, hidden_states=hidden_states, encoders=encoders)
-        batch_size = tf.shape(decoder_input)[0]
-        state_size = cell.state_size
-
-        # if initial_state is not None:
-        if dropout is not None:
-            initial_state = tf.nn.dropout(initial_state, dropout)
-
-        state = tf.nn.tanh(
-            linear_unsafe(initial_state, cell.state_size, True, scope='initial_state_projection')
-        )
-
-        weights = [tf.zeros(tf.pack([batch_size, length])) for length in attn_lengths]
-        # attns = tf.zeros(tf.pack([batch_size, attn_size]), dtype=tf.float32)
-        output = tf.zeros(tf.pack([batch_size, cell.output_size]), dtype=tf.float32)
-
-        context_vector, new_weights = attention_(output, prev_weights=weights)
-        x = tf.concat(1, [decoder_input, context_vector])
-        new_output, new_state = unsafe_decorator(cell)(x, state)
-
-        new_output = linear_unsafe([new_output, decoder_input, context_vector], decoder.cell_size, True,
-                                scope='maxout')
-        new_output = tf.maximum(*tf.split(1, 2, new_output))
-        # new_output = linear_unsafe(new_output, output_size, True, scope='output_projection')
-        # with tf.variable_scope('attention_output_projection'):
-        #    output = linear_unsafe([cell_output, new_attns], output_size, True)
-        new_output = linear_unsafe(new_output, decoder.embedding_size, False, scope='softmax0')
-        new_output = linear_unsafe(new_output, output_size, True, scope='softmax1')
-
-        beam_tensors = namedtuple('beam_tensors', 'state new_state prev_output')
-        return new_output, beam_tensors(state, new_state, output)
+        beam_tensors = namedtuple('beam_tensors', 'state new_state output new_output')
+        return outputs, weights, beam_tensors(state, new_state, output, new_output)
 
 
 def sequence_loss(logits, targets, weights, average_across_timesteps=False, average_across_batch=True,
