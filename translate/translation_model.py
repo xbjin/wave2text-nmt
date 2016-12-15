@@ -4,6 +4,7 @@ import pickle
 import time
 import sys
 import math
+import numpy as np
 import shutil
 from translate import utils
 from translate.seq2seq_model import Seq2SeqModel
@@ -41,8 +42,8 @@ class BaseTranslationModel(object):
                     os.remove(path)
                 except OSError:
                     pass
-                # make symbolic links to best model
-                os.symlink('{}-{}'.format(path, step), path)
+                # copy of best model
+                shutil.copy('{}-{}'.format(path, step), path)
 
             best_scores = sorted(best_scores + [(score, step)], reverse=True)
 
@@ -60,120 +61,164 @@ class BaseTranslationModel(object):
             for score_, step_ in scores:
                 f.write('{} {}\n'.format(score_, step_))
 
-    def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
+    def initialize(self, sess, checkpoints=None, reset=False, init_from_blocks=None):
         sess.run(tf.initialize_all_variables())
         if checkpoints:  # load partial checkpoints
             for checkpoint in checkpoints:  # checkpoint files to load
                 load_checkpoint(sess, None, checkpoint,
                                 blacklist=('learning_rate', 'global_step', 'dropout_keep_prob'))
         elif not reset:
-            blacklist = ('learning_rate', 'dropout_keep_prob') if reset_learning_rate else ()
-            load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
+            load_checkpoint(sess, self.checkpoint_dir, blacklist=())
+
+        if init_from_blocks is not None:
+            utils.log('initializing variables from block')
+            with open(init_from_blocks, 'rb') as f:
+                block_vars = pickle.load(f, encoding='latin1')
+
+            variables = {var_.name[:-2]: var_ for var_ in tf.all_variables()}
+
+            for var_names, axis, value in block_vars:
+                if 'decoder_en/attention_fr/v_a' in var_names:
+                    value = np.squeeze(value)
+
+                sections = [variables[name].get_shape()[axis].value for name in var_names]
+                values = np.split(value, sections[:-1], axis=axis)
+
+                for var_name, value in zip(var_names, values):
+                    utils.debug(var_name)
+
+                    var_ = variables[var_name]
+                    print(var_.get_shape(), value.shape)
+                    assert tuple(x.value for x in var_.get_shape()) == value.shape, \
+                           'wrong shape for var: {}'.format(var_name)
+                    sess.run(var_.assign(value))
+
+            utils.log('read {} variables'.format(sum(len(var_names) for var_names, _, _ in block_vars)))
+
 
     def save(self, sess):
         save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
 
 
 class TranslationModel(BaseTranslationModel):
-    def __init__(self, name, encoders, decoder, checkpoint_dir, learning_rate,
-                 learning_rate_decay_factor, batch_size, keep_best=1,
-                 load_embeddings=None, optimizer='sgd', **kwargs):
+    def __init__(self, name, encoder, decoder, checkpoint_dir, learning_rate,
+                 batch_size, keep_best=1,
+                 optimizer='sgd', max_input_len=None, **kwargs):
         self.batch_size = batch_size
-        self.src_ext = [encoder.get('ext') or encoder.name for encoder in encoders]
-        self.trg_ext = decoder.get('ext') or decoder.name
-        self.extensions = self.src_ext + [self.trg_ext]
-
-        encoders_and_decoder = encoders + [decoder]
-        self.binary_input = [encoder_or_decoder.binary for encoder_or_decoder in encoders_and_decoder]
-        self.character_level = [encoder_or_decoder.character_level for encoder_or_decoder in encoders_and_decoder]
-
+        src_ext = encoder.get('ext') or encoder.name
+        trg_ext = decoder.get('ext') or decoder.name
+        self.extensions = [src_ext, trg_ext]
+        self.max_input_len = max_input_len
         self.learning_rate = tf.Variable(learning_rate, trainable=False, name='learning_rate', dtype=tf.float32)
-
-        if optimizer == 'sgd':
-            self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * learning_rate_decay_factor)
-        else:
-            self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate)
 
         with tf.device('/cpu:0'):
             self.global_step = tf.Variable(0, trainable=False, name='global_step')
 
         self.filenames = utils.get_filenames(extensions=self.extensions, **kwargs)
-        # TODO: check that filenames exist
+
         utils.debug('reading vocabularies')
         self._read_vocab()
-
-        for encoder_or_decoder, vocab in zip(encoders + [decoder], self.vocabs):
-            if encoder_or_decoder.vocab_size <= 0:
-                encoder_or_decoder.vocab_size = len(vocab.reverse)
-
-        # this adds an `embedding' attribute to each encoder and decoder
-        utils.read_embeddings(self.filenames.embeddings, encoders + [decoder], load_embeddings, self.vocabs)
+        if encoder.vocab_size <= 0:
+            encoder.vocab_size = len(self.vocabs[0].reverse)
+        if decoder.vocab_size <= 0:
+            decoder.vocab_size = len(self.vocabs[1].reverse)
 
         # main model
         utils.debug('creating model {}'.format(name))
-        self.model = Seq2SeqModel(encoders, decoder, self.learning_rate, self.global_step, optimizer=optimizer,
-                                  **kwargs)
+        self.model = Seq2SeqModel(encoder, decoder, self.learning_rate, self.global_step, optimizer=optimizer,
+                                  max_input_len=max_input_len, **kwargs)
 
         super(TranslationModel, self).__init__(name, checkpoint_dir, keep_best)
 
         self.batch_iterator = None
         self.dev_batches = None
 
-    def read_data(self, max_train_size, max_dev_size):
+    def read_data(self, max_train_size, max_dev_size, read_ahead=10):
         utils.debug('reading training data')
-        train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, max_size=max_train_size,
-                                       binary_input=self.binary_input, character_level=self.character_level)
-        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=10)
+        train_set = utils.read_dataset(self.filenames.train, self.vocabs, max_size=max_train_size,
+                                       max_seq_len=self.max_input_len)
+        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=read_ahead,
+                                                              shuffle=False)
 
         utils.debug('reading development data')
-        dev_sets = [
-            utils.read_dataset(dev, self.extensions, self.vocabs, max_size=max_dev_size,
-                               binary_input=self.binary_input, character_level=self.character_level)
-            for dev in self.filenames.dev
-        ]
+        dev_set = utils.read_dataset(self.filenames.dev, self.vocabs, max_size=max_dev_size)
         # subset of the dev set whose perplexity is periodically evaluated
-        self.dev_batches = [utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1) for dev_set in dev_sets]
+        self.dev_batches = utils.get_batches(dev_set, batch_size=self.batch_size, batches=-1)
 
     def _read_vocab(self):
         # don't try reading vocabulary for encoders that take pre-computed features
         self.vocabs = [
-            utils.initialize_vocabulary(vocab_path) if not binary else None
-            for ext, vocab_path, binary in zip(self.extensions, self.filenames.vocab, self.binary_input)
+            utils.initialize_vocabulary(vocab_path)
+            for ext, vocab_path in zip(self.extensions, self.filenames.vocab)
         ]
-        self.src_vocab = self.vocabs[:-1]
-        self.trg_vocab = self.vocabs[-1]
-        self.ngrams = self.filenames.lm_path and utils.read_ngrams(self.filenames.lm_path, self.trg_vocab.vocab)
+        self.src_vocab, self.trg_vocab = self.vocabs
 
-    def train(self, *args, **kwargs):
-        raise NotImplementedError('use MultiTaskModel')
+    def train(self, sess, beam_size, steps_per_checkpoint, steps_per_eval=None, max_train_size=None,
+              max_dev_size=None, eval_output=None, max_steps=0, script_dir='scripts', read_ahead=10, eval_burn_in=0,
+              **kwargs):
+        utils.log('reading training and development data')
+
+        self.read_data(max_train_size, max_dev_size, read_ahead=read_ahead)
+        loss, time_, steps = 0, 0, 0
+
+        global_step = self.global_step.eval(sess)
+        for _ in range(global_step):   # read all the data up to this step
+            next(self.batch_iterator)
+
+        utils.log('starting training')
+        while True:
+            start_time = time.time()
+            loss += self.train_step(sess)
+            time_ += (time.time() - start_time)
+            steps += 1
+            global_step = self.global_step.eval(sess)
+
+            if steps_per_checkpoint and global_step % steps_per_checkpoint == 0:
+
+                loss_ = loss / steps
+                step_time_ = time_ / steps
+
+                utils.log('{} step {} step-time {:.2f} loss {:.2f}'.format(
+                    self.name, global_step, step_time_, loss_))
+
+                loss, time_, steps = 0, 0, 0
+                self.eval_step(sess)
+                self.save(sess)
+
+            if steps_per_eval and global_step % steps_per_eval == 0 and 0 <= eval_burn_in <= global_step:
+                if eval_output is None:
+                    output = None
+                else:
+                    output = '{}.{}.{}'.format(eval_output, self.name, self.global_step.eval(sess))
+
+                score = self.evaluate(
+                    sess, beam_size, on_dev=True, output=output, script_dir=script_dir, max_dev_size=max_dev_size)
+                self.manage_best_checkpoints(global_step, score)
+
+            if 0 < max_steps <= global_step:
+                utils.log('finished training')
+                return
 
     def train_step(self, sess):
-        return self.model.step(sess, next(self.batch_iterator)).loss
+        return self.model.step(sess, next(self.batch_iterator))
 
     def eval_step(self, sess):
         # compute perplexity on dev set
-        for dev_batches in self.dev_batches:
-            eval_loss = sum(
-                self.model.step(sess, batch, forward_only=True).loss * len(batch)
-                for batch in dev_batches
-            )
-            eval_loss /= sum(map(len, dev_batches))
+        eval_loss = sum(
+            self.model.step(sess, batch, forward_only=True) * len(batch)
+            for batch in self.dev_batches
+        )
+        eval_loss /= sum(map(len, self.dev_batches))
 
-            perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-            utils.log("  eval: perplexity {:.2f}".format(perplexity))
+        utils.log("  eval: loss {:.2f}".format(eval_loss))
 
-    def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):
-        # TODO: merge this with read_dataset
-        token_ids = [
-            utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
-            if vocab is not None else sentence  # when `sentence` is not a sentence but a vector...
-            for vocab, sentence, char_level in zip(self.vocabs, src_sentences, self.character_level)
-        ]
+    def _decode_sentence(self, sess, src_sentence, beam_size=1, remove_unk=False):
+        token_ids = utils.sentence_to_token_ids(src_sentence, self.src_vocab.vocab)
 
         if beam_size <= 1 and not isinstance(sess, list):
-            trg_token_ids, _ = self.model.greedy_decoding(sess, token_ids)
+            trg_token_ids = self.model.greedy_decoding(sess, token_ids)
         else:
-            hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size, ngrams=self.ngrams)
+            hypotheses, scores = self.model.beam_search_decoding(sess, token_ids, beam_size)
             trg_token_ids = hypotheses[0]  # first hypothesis is the highest scoring one
 
         # remove EOS symbols from output
@@ -186,61 +231,16 @@ class TranslationModel(BaseTranslationModel):
         if remove_unk:
             trg_tokens = [token for token in trg_tokens if token != utils._UNK]
 
-        if self.character_level[-1]:
-            return ''.join(trg_tokens)
-        else:
-            return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
-
-    def align(self, sess, output=None, wav_files=None, **kwargs):
-        if len(self.src_ext) != 1:
-            raise NotImplementedError
-
-        if len(self.filenames.test) != len(self.extensions):
-            raise Exception('wrong number of input files')
-
-        for line_id, lines in enumerate(utils.read_lines(self.filenames.test, self.extensions, self.binary_input)):
-            token_ids = [
-                utils.sentence_to_token_ids(sentence, vocab.vocab, character_level=char_level)
-                if vocab is not None else sentence
-                for vocab, sentence, char_level in zip(self.vocabs, lines, self.character_level)
-            ]
-
-            _, weights = self.model.step(sess, data=[token_ids], forward_only=True, align=True)
-            trg_tokens = [self.trg_vocab.reverse[i] if i < len(self.trg_vocab.reverse) else utils._UNK
-                          for i in token_ids[-1]]
-
-            weights = weights.squeeze()[:len(trg_tokens), ::-1].T
-
-            max_len = weights.shape[0]
-
-            if self.binary_input[0]:
-                src_tokens = None
-            else:
-                src_tokens = lines[0].split()[:max_len]
-
-            if wav_files is not None:
-                wav_file = wav_files[line_id]
-            else:
-                wav_file = None
-
-            output_file = '{}.{}.svg'.format(output, line_id + 1) if output is not None else None
-            utils.heatmap(src_tokens, trg_tokens, weights.T, wav_file=wav_file, output_file=output_file)
+        return ' '.join(trg_tokens).replace('@@ ', '')  # merge subword units
 
     def decode(self, sess, beam_size, output=None, remove_unk=False, **kwargs):
         utils.log('starting decoding')
-
-        # empty `test` means that we read from standard input, which is not possible with multiple encoders
-        assert len(self.src_ext) == 1 or self.filenames.test
-        # we can't read binary data from standard input
-        assert self.filenames.test or self.src_ext[0] not in self.binary_input
-        # check that there is the right number of files for decoding
-        assert not self.filenames.test or len(self.filenames.test) == len(self.src_ext)
 
         output_file = None
         try:
             output_file = sys.stdout if output is None else open(output, 'w')
 
-            for lines in utils.read_lines(self.filenames.test, self.src_ext, self.binary_input):
+            for lines in utils.read_lines(self.filenames.test):
                 trg_sentence = self._decode_sentence(sess, lines, beam_size, remove_unk)
                 output_file.write(trg_sentence + '\n')
                 output_file.flush()
@@ -248,75 +248,57 @@ class TranslationModel(BaseTranslationModel):
             if output_file is not None:
                 output_file.close()
 
-    def evaluate(self, sess, beam_size, score_function, on_dev=True, output=None, remove_unk=False,
-                 auxiliary_score_function=None, script_dir='scripts', **kwargs):
+    def evaluate(self, sess, beam_size, on_dev=True, output=None, remove_unk=False, max_dev_size=None,
+                 script_dir='scripts', **kwargs):
         """
-        :param score_function: name of the scoring function used to score and rank models
-          (typically 'bleu_score')
         :param on_dev: if True, evaluate the dev corpus, otherwise evaluate the test corpus
         :param output: save the hypotheses to this file
         :param remove_unk: remove the UNK symbols from the output
-        :param auxiliary_score_function: optional scoring function used to display a more
-          detailed summary.
+        :param max_dev_size: maximum number of lines to read from dev files
         :param script_dir: parameter of scoring functions
-        :return: scores of each corpus to evaluate
+        :return: score
         """
         utils.log('starting decoding')
         assert on_dev or len(self.filenames.test) == len(self.extensions)
 
-        filenames = self.filenames.dev if on_dev else [self.filenames.test]
+        filenames = self.filenames.dev if on_dev else self.filenames.test
 
-        # convert `output` into a list, for zip
-        if isinstance(output, str):
-            output = [output]
-        elif output is None:
-            output = [None] * len(filenames)
+        lines = list(utils.read_lines(filenames))
+        if on_dev and max_dev_size:
+            lines = lines[:max_dev_size]
 
-        scores = []
+        hypotheses = []
+        references = []
 
-        for filenames_, output_ in zip(filenames, output):  # evaluation on multiple corpora
-            lines = list(utils.read_lines(filenames_, self.extensions, self.binary_input))
+        output_file = None
+        try:
+            output_file = open(output, 'w') if output is not None else None
 
-            hypotheses = []
-            references = []
-
-            try:
-                output_file = open(output_, 'w') if output_ is not None else None
-
-                for *src_sentences, trg_sentence in lines:
-                    hypotheses.append(self._decode_sentence(sess, src_sentences, beam_size, remove_unk))
-                    references.append(trg_sentence.strip().replace('@@ ', ''))
-                    if output_file is not None:
-                        output_file.write(hypotheses[-1] + '\n')
-                        output_file.flush()
-
-            finally:
+            for src_sentence, trg_sentence in lines:
+                hypotheses.append(self._decode_sentence(sess, src_sentence, beam_size, remove_unk))
+                references.append(trg_sentence.strip().replace('@@ ', ''))
                 if output_file is not None:
-                    output_file.close()
+                    output_file.write(hypotheses[-1] + '\n')
+                    output_file.flush()
 
-            # main scoring function (used to choose which checkpoints to keep)
-            # default is utils.bleu_score
-            score, score_summary = getattr(utils, score_function)(hypotheses, references, script_dir)
+        finally:
+            if output_file is not None:
+                output_file.close()
 
-            # optionally use an auxiliary function to get different scoring information
-            if auxiliary_score_function is not None and auxiliary_score_function != score_function:
-                try:
-                    _, score_summary = getattr(utils, auxiliary_score_function)(hypotheses, references, script_dir)
-                except:
-                    pass
+        # main scoring function (used to choose which checkpoints to keep)
+        # default is utils.bleu_score
+        score, score_summary = utils.bleu_score(hypotheses, references, script_dir)
 
-            # print the scoring information
-            score_info = []
-            if self.name is not None:
-                score_info.append(self.name)
-            score_info.append('score={}'.format(score))
-            if score_summary:
-                score_info.append(score_summary)
+        # print the scoring information
+        score_info = []
+        if self.name is not None:
+            score_info.append(self.name)
+        score_info.append('score={}'.format(score))
+        if score_summary:
+            score_info.append(score_summary)
 
-            utils.log(' '.join(map(str, score_info)))
-            scores.append(score)
-
-        return scores
+        utils.log(' '.join(map(str, score_info)))
+        return score
 
 
 def load_checkpoint(sess, checkpoint_dir, filename=None, blacklist=()):

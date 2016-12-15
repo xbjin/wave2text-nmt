@@ -17,18 +17,16 @@ import shutil
 from pprint import pformat
 from operator import itemgetter
 from translate import utils
-from translate.multitask_model import MultiTaskModel
+from translate.translation_model import TranslationModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument('config', help='load a configuration file in the YAML format')
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help="reset model (don't load any checkpoint)", action='store_true')
-parser.add_argument('--reset-learning-rate', help='reset learning rate', action='store_true')
 parser.add_argument('--purge', help='remove previous model files', action='store_true')
 
 # Available actions (exclusive)
 parser.add_argument('--decode', help='translate this corpus (one filename for each encoder)', nargs='*')
-parser.add_argument('--align', help='translate and show alignments by the attention mechanism', nargs=2)
 parser.add_argument('--eval', help='compute BLEU score on this corpus (source files and target file)', nargs='+')
 parser.add_argument('--train', help='train an NMT model', action='store_true')
 
@@ -38,33 +36,10 @@ parser.add_argument('--no-gpu', action='store_true', help='run on CPU')
 
 # Decoding options (to avoid having to edit the config file)
 parser.add_argument('--beam-size', type=int)
-parser.add_argument('--ensemble', action='store_const', const=True)
-parser.add_argument('--lm-file')
 parser.add_argument('--checkpoints', nargs='+')
-parser.add_argument('--lm-weight', type=float)
-parser.add_argument('--len-normalization', type=float)
 parser.add_argument('--output')
 parser.add_argument('--max-steps', type=int)
 parser.add_argument('--remove-unk', action='store_const', const=True)
-parser.add_argument('--wav-files', nargs='*')
-
-"""
-Benchmarks:
-- replicate Jean et al. (2015)'s results
-- replicate speech recognition results
-- replicate the experiments of the WMT paper on neural post-editing
-
-TODO:
-- reading files as a stream when decoding (useful for large files)
-- symbolic beam-search
-- possibility to build an encoder with 1 bi-directional layer, and several uni-directional layers
-- pre-load data on GPU for small datasets
-- mixture of Adam and SGD training
-- decay learning rate after a certain number of epochs
-- possibility to run model on several GPUs
-- copy vocab and config to model dir
-- rename scopes to nicer names
-"""
 
 
 def main(args=None):
@@ -78,7 +53,7 @@ def main(args=None):
         config = utils.AttrDict(yaml.safe_load(f))
         # command-line parameters have higher precedence than config file
         for k, v in vars(args).items():
-            if v is not None and (k in default_config or k in ('decode', 'eval', 'output', 'align')):
+            if v is not None and (k in default_config or k in ('decode', 'eval', 'output')):
                 config[k] = v
 
         # set default values for parameters that are not defined
@@ -88,8 +63,8 @@ def main(args=None):
     # enforce parameter constraints
     assert config.steps_per_eval % config.steps_per_checkpoint == 0, (
         'steps-per-eval should be a multiple of steps-per-checkpoint')
-    assert args.decode is not None or args.eval or args.train or args.align, (
-        'you need to specify at least one action (decode, eval, align, or train)')
+    assert args.decode is not None or args.eval or args.train, (
+        'you need to specify at least one action (decode, eval, or train)')
 
     if args.purge:
         utils.log('deleting previous model')
@@ -109,54 +84,22 @@ def main(args=None):
 
     # list of encoder and decoder parameter names (each encoder and decoder can have a different value
     # for those parameters)
-    model_parameters = [
-        'cell_size', 'layers', 'vocab_size', 'embedding_size', 'attention_filters', 'attention_filter_length',
-        'use_lstm', 'time_pooling', 'attention_window_size', 'dynamic', 'binary', 'character_level', 'bidir',
-        'load_embeddings', 'pooling_avg', 'swap_memory', 'parallel_iterations', 'input_layers',
-        'residual_connections'
-    ]
-    # TODO: independent model dir for each task
-    task_parameters = [
-        'data_dir', 'train_prefix', 'dev_prefix', 'vocab_prefix', 'ratio', 'lm_file', 'learning_rate',
-        'learning_rate_decay_factor', 'max_output_len', 'encoders', 'decoder'
-    ]
+    model_parameters = ['cell_size', 'layers', 'vocab_size', 'embedding_size', 'use_lstm', 'bidir', 'swap_memory',
+        'parallel_iterations', 'attn_size']
 
-    # in case no task is defined (standard mono-task settings), define a "main" task
-    config.setdefault(
-        'tasks', [{'encoders': config.encoders, 'decoder': config.decoder, 'name': 'main', 'ratio': 1.0}]
-    )
-    config.tasks = [utils.AttrDict(task) for task in config.tasks]
+    config.encoder = utils.AttrDict(config.encoder)
+    config.decoder = utils.AttrDict(config.decoder)
 
-    for task in config.tasks:
-        for parameter in task_parameters:
-            task.setdefault(parameter, config.get(parameter))
-
-        if isinstance(task.dev_prefix, str):  # for back-compatibility with old config files
-            task.dev_prefix = [task.dev_prefix]
-
-        # convert dicts to AttrDicts for convenience
-        task.encoders = [utils.AttrDict(encoder) for encoder in task.encoders]
-        task.decoder = utils.AttrDict(task.decoder)
-
-        for encoder_or_decoder in task.encoders + [task.decoder]:
-            # move parameters all the way up from base level to encoder/decoder level:
-            # default values for encoder/decoder parameters can be defined at the task level and base level
-            # default values for tasks can be defined at the base level
-            for parameter in model_parameters:
-                if parameter in encoder_or_decoder:
-                    continue
-                elif parameter in task:
-                    encoder_or_decoder[parameter] = task[parameter]
-                else:
-                    encoder_or_decoder[parameter] = config.get(parameter)
+    for parameter in model_parameters:
+        if parameter not in config.encoder:
+            config.encoder[parameter] = config.get(parameter)
+        if parameter not in config.decoder:
+            config.decoder[parameter] = config.get(parameter)
 
     # log parameters
     utils.log('program arguments')
     for k, v in sorted(config.items(), key=itemgetter(0)):
-        if k == 'tasks':
-            utils.log('  {:<20}\n{}'.format(k, pformat(v)))
-        elif k not in model_parameters and k not in task_parameters:
-            utils.log('  {:<20} {}'.format(k, pformat(v)))
+        utils.log('  {:<20} {}'.format(k, pformat(v)))
 
     device = None
     if args.no_gpu:
@@ -169,16 +112,28 @@ def main(args=None):
 
     with tf.device(device):
         checkpoint_dir = os.path.join(config.model_dir, 'checkpoints')
-        initializer = None  # default initializer
-        # all parameters except source embeddings and bias variables are initialized with this
-        # initializer = tf.random_normal_initializer(stddev=0.1)   # TODO: try this one
-        with tf.variable_scope('seq2seq', initializer=initializer):
-            decode_only = args.decode is not None or args.eval or args.align  # exempt from creating gradient ops
-            model = MultiTaskModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
+        # All parameters except recurrent connexions and attention parameters are initialized with this.
+        # Recurrent connexions are initialized with orthogonal matrices, and the parameters of the attention model
+        # with a standard deviation of 0.001
+        if config.weight_scale:
+            initializer = tf.random_normal_initializer(stddev=config.weight_scale)
+        else:
+            initializer = None
+
+        tf.get_variable_scope().set_initializer(initializer)
+        decode_only = args.decode is not None or args.eval  # exempt from creating gradient ops
+        model = TranslationModel(name='main', checkpoint_dir=checkpoint_dir, decode_only=decode_only, **config)
 
     utils.log('model parameters ({})'.format(len(tf.all_variables())))
+    parameter_count = 0
     for var in tf.all_variables():
         utils.log('  {} {}'.format(var.name, var.get_shape()))
+
+        v = 1
+        for d in var.get_shape():
+            v *= d.value
+        parameter_count += v
+    utils.log('number of parameters: {}'.format(parameter_count))
 
     tf_config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     tf_config.gpu_options.allow_growth = config.allow_growth
@@ -187,19 +142,14 @@ def main(args=None):
     with tf.Session(config=tf_config) as sess:
         best_checkpoint = os.path.join(checkpoint_dir, 'best')
 
-        if config.ensemble and (args.eval or args.decode is not None):
-            # create one session for each model in the ensemble
-            sess = [tf.Session() for _ in config.checkpoints]
-            for sess_, checkpoint in zip(sess, config.checkpoints):
-                model.initialize(sess_, [checkpoint], reset=True)
-        elif (not config.checkpoints and not args.reset and (args.eval or args.decode is not None or args.align)
+        if (not config.checkpoints and not args.reset and (args.eval or args.decode is not None)
               and os.path.isfile(best_checkpoint)):
             # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
             # try to load the best checkpoint)
             model.initialize(sess, [best_checkpoint], reset=True)
         else:
             # loads last checkpoint, unless `reset` is true
-            model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
+            model.initialize(sess, config.checkpoints, reset=args.reset)
 
         # Inspect variables:
         # tf.get_variable_scope().reuse_variables()
@@ -209,8 +159,6 @@ def main(args=None):
             model.decode(sess, **config)
         elif args.eval:
             model.evaluate(sess, on_dev=False, **config)
-        elif args.align:
-            model.align(sess, wav_files=args.wav_files, **config)
         elif args.train:
             eval_output = os.path.join(config.model_dir, 'eval')
             try:
