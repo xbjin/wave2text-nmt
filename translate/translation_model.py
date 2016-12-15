@@ -61,7 +61,7 @@ class BaseTranslationModel(object):
             for score_, step_ in scores:
                 f.write('{} {}\n'.format(score_, step_))
 
-    def initialize(self, sess, checkpoints=None, reset=False, init_from_blocks=None):
+    def initialize(self, sess, checkpoints=None, reset=False, pickle_file=None):
         sess.run(tf.initialize_all_variables())
         if checkpoints:  # load partial checkpoints
             for checkpoint in checkpoints:  # checkpoint files to load
@@ -70,30 +70,26 @@ class BaseTranslationModel(object):
         elif not reset:
             load_checkpoint(sess, self.checkpoint_dir, blacklist=())
 
-        if init_from_blocks is not None:
+        if pickle_file is not None:
             utils.log('initializing variables from block')
-            with open(init_from_blocks, 'rb') as f:
+            with open(pickle_file, 'rb') as f:
                 block_vars = pickle.load(f, encoding='latin1')
 
             variables = {var_.name[:-2]: var_ for var_ in tf.all_variables()}
 
-            for var_names, axis, value in block_vars:
-                if 'decoder_en/attention_fr/v_a' in var_names:
+            for var_name, value in block_vars:
+                if var_name == 'decoder_en/attention_fr/v_a':
                     value = np.squeeze(value)
 
-                sections = [variables[name].get_shape()[axis].value for name in var_names]
-                values = np.split(value, sections[:-1], axis=axis)
+                utils.debug(var_name)
+                var_ = variables[var_name]
 
-                for var_name, value in zip(var_names, values):
-                    utils.debug(var_name)
+                assert tuple(x.value for x in var_.get_shape()) == value.shape, \
+                    'wrong shape for var: {}'.format(var_name)
 
-                    var_ = variables[var_name]
-                    print(var_.get_shape(), value.shape)
-                    assert tuple(x.value for x in var_.get_shape()) == value.shape, \
-                           'wrong shape for var: {}'.format(var_name)
-                    sess.run(var_.assign(value))
+                sess.run(var_.assign(value))
 
-            utils.log('read {} variables'.format(sum(len(var_names) for var_names, _, _ in block_vars)))
+            utils.log('read {} variables'.format(len(block_vars)))
 
 
     def save(self, sess):

@@ -40,6 +40,7 @@ parser.add_argument('--checkpoints', nargs='+')
 parser.add_argument('--output')
 parser.add_argument('--max-steps', type=int)
 parser.add_argument('--remove-unk', action='store_const', const=True)
+parser.add_argument('--pickle-file')
 
 
 def main(args=None):
@@ -146,10 +147,10 @@ def main(args=None):
               and os.path.isfile(best_checkpoint)):
             # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
             # try to load the best checkpoint)
-            model.initialize(sess, [best_checkpoint], reset=True)
+            model.initialize(sess, [best_checkpoint], reset=True, pickle_file=args.pickle_file)
         else:
             # loads last checkpoint, unless `reset` is true
-            model.initialize(sess, config.checkpoints, reset=args.reset)
+            model.initialize(sess, config.checkpoints, reset=args.reset, pickle_file=args.pickle_file)
 
         # Inspect variables:
         # tf.get_variable_scope().reuse_variables()

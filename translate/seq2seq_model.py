@@ -127,6 +127,12 @@ class Seq2SeqModel(object):
             self.targets: targets
         }
 
+        tf.get_variable_scope().reuse_variables()
+        states = session.run(self.attention_states, input_feed)
+        loss = session.run(self.loss, input_feed)
+        # import pdb; pdb.set_trace()
+
+
         output_feed = {'loss': self.loss}
         if not forward_only:
             output_feed['updates'] = self.updates

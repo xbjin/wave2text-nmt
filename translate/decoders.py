@@ -91,7 +91,7 @@ def compute_energy(hidden, state, attn_size, **kwargs):
 
 
 def attention(state, hidden_states, encoder, scope=None, **kwargs):
-    with tf.variable_scope(scope or 'attention'):
+    with tf.variable_scope(scope or 'attention_{}'.format(encoder.name)):
         e = compute_energy(hidden_states, state, attn_size=encoder.attn_size)
         weights = tf.nn.softmax(e)
 
@@ -153,8 +153,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
         flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
         decoder_inputs = tf.reshape(flat_inputs, tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
 
-        hidden_states = tf.expand_dims(attention_states, 2)
-
         if dropout is not None:
             initial_state = tf.nn.dropout(initial_state, dropout)
 
@@ -180,11 +178,10 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
                              lambda: input_)
             input_.set_shape(decoder_inputs.get_shape()[1:])
 
-            context_vector = attention(output, hidden_states=hidden_states, encoder=encoder)
-            x = tf.concat(1, [input_, context_vector])
-            # x = input_
+            context_vector = attention(output, hidden_states=tf.expand_dims(attention_states, 2), encoder=encoder)
+            # x = tf.concat(1, [input_, context_vector])
 
-            call_cell = lambda: cell(x, state)
+            call_cell = lambda: cell(input_, state, attn=context_vector)
 
             new_output, new_state = rnn._rnn_step(
                 time=time,
@@ -197,8 +194,13 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
                 state_size=state_size,
                 skip_conditionals=True)
 
-            output_ = linear([new_output, input_, context_vector], decoder.cell_size, False, scope='maxout')
-            # output_ = linear([new_output, input_], decoder.cell_size, False, scope='maxout')
+            # output_ = linear([new_output, input_, context_vector], decoder.cell_size, False, scope='maxout')
+
+            output_1 = linear(new_output, decoder.cell_size, False, scope='maxout_1')
+            output_2 = linear(input_, decoder.cell_size, False, scope='maxout_2')
+            output_3 = linear(context_vector, decoder.cell_size, False, scope='maxout_3')
+            output_ = output_1 + output_2 + output_3
+
             output_ = linear(output_, decoder.vocab_size, True, scope='softmax')
 
             output_ta = output_ta.write(time, output_)

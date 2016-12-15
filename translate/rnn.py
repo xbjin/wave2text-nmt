@@ -124,25 +124,44 @@ class GRUCell(rnn_cell.RNNCell):
     def output_size(self):
         return self._num_units
 
-    def __call__(self, inputs, state, scope=None):
+    def __call__(self, inputs, state, scope=None, attn=None):
         with tf.variable_scope(scope or type(self).__name__):
             # we start with bias of 1.0 to not reset and not update
-            r = tf.nn.sigmoid(
-                linear(inputs, self._num_units, True, 1.0, scope='W_r') +
-                linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)    # state to gates
-            )
+            state_to_gates = linear(state, self._num_units * 2, False, scope='state_to_gates', initializer=self._initializer)
 
-            z = tf.nn.sigmoid(
-                linear(inputs, self._num_units, True, 1.0, scope='W_z') +
-                linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)    # state to gates
-            )
+            input_to_gates = linear(inputs, self._num_units * 2, True, 1.0, scope='input_to_gates')
 
-            h_ = self._activation(
-                linear(inputs, self._num_units, True, scope='W') +
-                linear(r * state, self._num_units, False, scope='U', initializer=self._initializer)  # state to state
-            )
+            if attn is not None:
+                input_to_gates += linear(attn, self._num_units * 2, False, 1.0, scope='attn_to_gates')
+
+            gates = tf.nn.sigmoid(state_to_gates + input_to_gates)
+
+            r = gates[:,:self._num_units]
+            z = gates[:,self._num_units:]
+
+            # state_to_state = linear(state, self._num_units, )
+
+            # r = tf.nn.sigmoid(
+            #     linear(inputs, self._num_units, True, 1.0, scope='W_r') +
+            #     linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)    # state to gates
+            # )
+            #
+            # z = tf.nn.sigmoid(
+            #     linear(inputs, self._num_units, True, 1.0, scope='W_z') +
+            #     linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)    # state to gates
+            # )
+
+            state_to_state = linear(r * state, self._num_units, False, scope='state_to_state',
+                                    initializer=self._initializer)
+
+            input_to_state = linear(inputs, self._num_units, True, scope='input_to_state')
+            if attn is not None:
+                input_to_state += linear(attn, self._num_units, False, scope='attn_to_state')
+
+            h_ = self._activation(input_to_state + state_to_state)
 
             new_h = z * state + (1 - z) * h_
+
         return new_h, new_h
 
 
