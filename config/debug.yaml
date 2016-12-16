@@ -1,0 +1,37 @@
+# Really small model on BTEC for debugging purposes
+
+dropout_rate: 0.0
+cell_size: 32
+attn_size: 32
+embedding_size: 32
+
+layers: 1
+bidir: False
+use_lstm: False
+steps_per_checkpoint: 200
+steps_per_eval: 400
+eval_burn_in: 0
+max_steps: 20000
+max_output_len: 32
+max_input_len: 8
+feed_previous: 0.0
+
+data_dir: data/btec
+model_dir: models/debug
+# log_file: models/debug/log.txt
+max_dev_size: 0
+batch_size: 1
+read_ahead: 1
+
+optimizer: 'sgd'
+learning_rate: 1.0
+weight_scale: 0.1
+max_gradient_norm: 1.0
+parallel_iterations: 1
+swap_memory: False
+
+encoder:
+    name: fr
+
+decoder:
+    name: en

@@ -237,7 +237,7 @@ class TranslationModel(BaseTranslationModel):
             output_file = sys.stdout if output is None else open(output, 'w')
 
             for lines in utils.read_lines(self.filenames.test):
-                trg_sentence = self._decode_sentence(sess, lines, beam_size, remove_unk)
+                trg_sentence = self._decode_sentence(sess, lines[0], beam_size, remove_unk)
                 output_file.write(trg_sentence + '\n')
                 output_file.flush()
         finally:

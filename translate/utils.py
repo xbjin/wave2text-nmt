@@ -78,7 +78,7 @@ def initialize_vocabulary(vocabulary_path):
         raise ValueError("vocabulary file %s not found", vocabulary_path)
 
 
-def sentence_to_token_ids(sentence, vocabulary, character_level=False):
+def sentence_to_token_ids(sentence, vocabulary):
     """
     Convert a string to list of integers representing token-ids.
 
@@ -92,8 +92,7 @@ def sentence_to_token_ids(sentence, vocabulary, character_level=False):
         not as a string of words
     :return: a list of integers, the token-ids for the sentence.
     """
-    sentence = sentence.rstrip('\n') if character_level else sentence.split()
-    return [vocabulary.get(w, UNK_ID) for w in sentence]
+    return [vocabulary.get(w, UNK_ID) for w in sentence.split()]
 
 
 def get_filenames(data_dir, extensions, train_prefix, dev_prefix, vocab_prefix, **kwargs):
