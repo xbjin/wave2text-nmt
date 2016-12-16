@@ -129,40 +129,29 @@ class GRUCell(rnn_cell.RNNCell):
             # we start with bias of 1.0 to not reset and not update
             state_to_gates = linear(state, self._num_units * 2, False, scope='state_to_gates', initializer=self._initializer)
 
-            input_to_gates = linear(inputs, self._num_units * 2, True, 1.0, scope='input_to_gates')
+            # FIXME: initialization to 0?
+            input_to_gates = linear(inputs, self._num_units * 2, True, scope='input_to_gates')
 
             if attn is not None:
-                input_to_gates += linear(attn, self._num_units * 2, False, 1.0, scope='attn_to_gates')
+                input_to_gates += linear(attn, self._num_units * 2, False, scope='attn_to_gates')
 
             gates = tf.nn.sigmoid(state_to_gates + input_to_gates)
 
-            r = gates[:,:self._num_units]
-            z = gates[:,self._num_units:]
+            update = gates[:,:self._num_units]
+            reset = gates[:,self._num_units:]
 
-            # state_to_state = linear(state, self._num_units, )
-
-            # r = tf.nn.sigmoid(
-            #     linear(inputs, self._num_units, True, 1.0, scope='W_r') +
-            #     linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)    # state to gates
-            # )
-            #
-            # z = tf.nn.sigmoid(
-            #     linear(inputs, self._num_units, True, 1.0, scope='W_z') +
-            #     linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)    # state to gates
-            # )
-
-            state_to_state = linear(r * state, self._num_units, False, scope='state_to_state',
+            state_to_state = linear(reset * state, self._num_units, False, scope='state_to_state',
                                     initializer=self._initializer)
 
             input_to_state = linear(inputs, self._num_units, True, scope='input_to_state')
             if attn is not None:
                 input_to_state += linear(attn, self._num_units, False, scope='attn_to_state')
 
-            h_ = self._activation(input_to_state + state_to_state)
+            new_state = self._activation(input_to_state + state_to_state)
 
-            new_h = z * state + (1 - z) * h_
+            new_state = update * new_state + (1 - update) * state
 
-        return new_h, new_h
+        return new_state, new_state
 
 
 def linear(args, output_size, bias, bias_start=0.0, scope=None, initializer=None):

@@ -17,9 +17,11 @@
 
 import numpy as np
 import tensorflow as tf
+import math
 
 from translate import utils, decoders
 from collections import namedtuple
+from translate.decoders import globals_
 
 
 class Seq2SeqModel(object):
@@ -76,11 +78,10 @@ class Seq2SeqModel(object):
         self.decoder_input_length = tf.placeholder(tf.int64, shape=[None],
                                                    name='decoder_{}_length'.format(decoder.name))
 
-        parameters = dict(encoder=encoder, decoder=decoder, dropout=self.dropout)
+        parameters = dict(encoder=encoder, decoder=decoder, dropout=self.dropout,
+                          encoder_input_length=self.encoder_input_length)
 
-        self.attention_states, self.encoder_state = decoders.build_encoder(
-            self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
-        )
+        self.attention_states, self.encoder_state = decoders.build_encoder(self.encoder_inputs, **parameters)
 
         self.outputs, self.beam_tensors = decoders.attention_decoder(
             attention_states=self.attention_states, initial_state=self.encoder_state,
@@ -127,11 +128,37 @@ class Seq2SeqModel(object):
             self.targets: targets
         }
 
-        tf.get_variable_scope().reuse_variables()
-        states = session.run(self.attention_states, input_feed)
-        loss = session.run(self.loss, input_feed)
-        # import pdb; pdb.set_trace()
+        debug = False
 
+        if debug:
+            tf.get_variable_scope().reuse_variables()
+            states = session.run(self.attention_states, input_feed)
+            embedded_inputs = session.run(globals_['embedded_inputs'], input_feed)
+            loss = session.run(self.loss, input_feed)
+
+
+            input_to_gates_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_gates/Matrix').eval()
+            input_to_gates_bias = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_gates/Bias').eval()
+            input_to_gates = embedded_inputs.dot(input_to_gates_matrix) + input_to_gates_bias
+
+            input_to_state_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_state/Matrix').eval()
+            input_to_state_bias = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_state/Bias').eval()
+            input_to_state = embedded_inputs.dot(input_to_state_matrix) + input_to_state_bias
+
+            state = tf.get_variable('encoder_fr/forward_1/initial_state').eval()
+            state_to_gates_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/state_to_gates/Matrix').eval()
+            state_to_state_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/state_to_state/Matrix').eval()
+
+            state_to_gates = state.dot(state_to_gates_matrix)
+
+            def sigmoid(x):
+                return 1 / (1 + np.exp(-x))
+
+            gates = sigmoid(state_to_gates + input_to_gates[0, 0])
+            weights = session.run(self.beam_tensors.weights, input_feed)
+            # energy = session.run(globals_['energy'], input_feed)
+
+            import pdb; pdb.set_trace()
 
         output_feed = {'loss': self.loss}
         if not forward_only:
