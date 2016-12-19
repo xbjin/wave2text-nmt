@@ -214,7 +214,6 @@ class Seq2SeqModel(object):
 
         # for initial state projection
         state = session.run(self.beam_tensors.state, {self.encoder_state: state})
-        output = None
 
         for i in range(self.max_output_len):
             batch_size = decoder_input.shape[0]
@@ -226,11 +225,8 @@ class Seq2SeqModel(object):
                 self.attention_states: attn_states.repeat(batch_size, axis=0)
             }
 
-            if i > 0:
-                input_feed[self.beam_tensors.output] = output
-
-            output_feed = [self.beam_tensors.new_output, self.beam_output, self.beam_tensors.new_state]
-            output, decoder_output, decoder_state = session.run(output_feed, input_feed)
+            output_feed = [self.beam_output, self.beam_tensors.new_state]
+            decoder_output, decoder_state = session.run(output_feed, input_feed)
 
             scores_ = scores[:, None] - np.log(decoder_output)
             scores_ = scores_.flatten()
@@ -242,7 +238,6 @@ class Seq2SeqModel(object):
             new_hypotheses = []
             new_scores = []
             new_state = []
-            new_output = []
             new_input = []
 
             for flat_id, hyp_id, token_id in zip(flat_ids, hyp_ids, token_ids_):
@@ -258,14 +253,12 @@ class Seq2SeqModel(object):
                     new_hypotheses.append(hypothesis)
 
                     new_state.append(decoder_state[hyp_id])
-                    new_output.append(output[hyp_id])
 
                     new_scores.append(score)
                     new_input.append(token_id)
 
             hypotheses = new_hypotheses
             state = np.array(new_state)
-            output = np.array(new_output)
             scores = np.array(new_scores)
             decoder_input = np.array(new_input, dtype=np.int32)
 
