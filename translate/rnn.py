@@ -129,8 +129,8 @@ class GRUCell(rnn_cell.RNNCell):
             # we start with bias of 1.0 to not reset and not update
             state_to_gates = linear(state, self._num_units * 2, False, scope='state_to_gates', initializer=self._initializer)
 
-            # FIXME: initialization to 0?
-            input_to_gates = linear(inputs, self._num_units * 2, True, scope='input_to_gates')
+            # FIXME: initialization to 1?
+            input_to_gates = linear(inputs, self._num_units * 2, False, scope='input_to_gates')   # FIXME
 
             if attn is not None:
                 input_to_gates += linear(attn, self._num_units * 2, False, scope='attn_to_gates')
@@ -143,7 +143,7 @@ class GRUCell(rnn_cell.RNNCell):
             state_to_state = linear(reset * state, self._num_units, False, scope='state_to_state',
                                     initializer=self._initializer)
 
-            input_to_state = linear(inputs, self._num_units, True, scope='input_to_state')
+            input_to_state = linear(inputs, self._num_units, False, scope='input_to_state')    # FIXME
             if attn is not None:
                 input_to_state += linear(attn, self._num_units, False, scope='attn_to_state')
 

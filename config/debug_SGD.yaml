@@ -1,12 +1,12 @@
 # Really small model on BTEC for debugging purposes
 
 dropout_rate: 0.0
-cell_size: 256
-attn_size: 256
-embedding_size: 128
+cell_size: 512
+attn_size: 512
+embedding_size: 256
 
 layers: 1
-bidir: False
+bidir: True
 use_lstm: False
 steps_per_checkpoint: 500
 steps_per_eval: 1000
@@ -18,7 +18,7 @@ feed_previous: 0.0
 
 data_dir: data/btec
 model_dir: models/debug_SGD
-# log_file: models/debug_SGD/log.txt
+log_file: models/debug_SGD/log.txt
 max_dev_size: 0
 batch_size: 32
 read_ahead: 10

@@ -299,7 +299,10 @@ class Seq2SeqModel(object):
         # maximum input length in this batch
         max_input_len = min(max(len(sentence) for sentence in src_sentences), self.max_input_len)
         # maximum output length in this batch
-        max_output_len = min(max(len(sentence) for sentence in trg_sentences), self.max_output_len, 2 * max_input_len)
+        max_output_len = min(max(len(sentence) for sentence in trg_sentences), self.max_output_len)
+
+        if decoding:
+            max_output_len = min(max_output_len, 2 * max_input_len)
 
         for src_sentence, trg_sentence in zip(src_sentences, trg_sentences):
             # pad sequences so that all sequences in the same batch have the same length
