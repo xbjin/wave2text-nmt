@@ -183,46 +183,44 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
         output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps - 1, clear_after_read=False)
         input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False).unpack(decoder_inputs)
 
-        weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps - 1)
+        # weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps - 1)
 
         output = tf.zeros(tf.pack([batch_size, cell.output_size]), dtype=tf.float32)
 
-        def _time_step(time, state, output, output_ta, weights_ta):
-            input_ = input_ta.read(time + 1)
+        def _time_step(time, state, output, output_ta):
             r = tf.random_uniform([])
-            input_ = tf.cond(tf.logical_and(time > 0, r < feed_previous),
-                             lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta.read(time - 1))),
-                             lambda: input_)
-            input_.set_shape(decoder_inputs.get_shape()[1:])
-
-            context_vector, weights, mask, e = attention(state, hidden_states=tf.expand_dims(attention_states, 2),
-                                                 encoder=encoder, encoder_input_length=encoder_input_length)
-
-            # x = tf.concat(1, [input_, context_vector])
-
-            call_cell = lambda: cell(input_, state, attn=context_vector)
-
-            # FIXME: duplicate code here
             input_ = tf.cond(tf.logical_and(time > 0, r < feed_previous),
                              lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta.read(time - 1))),
                              lambda: input_ta.read(time))
             input_.set_shape(decoder_inputs.get_shape()[1:])
 
-            output_1 = linear(state, decoder.cell_size, True, scope='maxout_1')
-            output_2 = linear(input_ta.read(time), decoder.cell_size, False, scope='maxout_2')
-            output_3 = linear(context_vector, decoder.cell_size, False, scope='maxout_3')
+            context_vector, weights, mask, e = attention(state, hidden_states=tf.expand_dims(attention_states, 2),
+                                                         encoder=encoder, encoder_input_length=encoder_input_length)
 
-            output_ = output_1 + output_2 + output_3
+            # output_1 = linear(state, decoder.cell_size, True, scope='maxout_1')
+            # output_2 = linear(input_, decoder.cell_size, False, scope='maxout_2')
+            # output_3 = linear(context_vector, decoder.cell_size, False, scope='maxout_3')
+
+            # output_ = output_1 + output_2 + output_3
             #
             # output_ = linear(output_, decoder.vocab_size, True, scope='softmax')
 
             # maxout layer
-            # output_ = linear([new_output, input_, context_vector], decoder.cell_size, True, scope='maxout')
+            output_ = linear([state, input_, context_vector], decoder.cell_size, True, scope='maxout')
             output_ = tf.maximum(*tf.split(1, 2, output_))
             output_ = linear(output_, decoder.embedding_size, False, scope='softmax0')
             output_ = linear(output_, decoder.vocab_size, True, scope='softmax1')
 
             output_ta = output_ta.write(time, output_)
+
+            input_ = tf.cond(tf.logical_and(time > 0, r < feed_previous),
+                             lambda: tf.stop_gradient(extract_argmax_and_embed(output_)),
+                             lambda: input_ta.read(time + 1))
+            input_.set_shape(decoder_inputs.get_shape()[1:])
+
+            # x = tf.concat(1, [input_, context_vector])
+
+            call_cell = lambda: cell(input_, state, attn=context_vector)
 
             new_output, new_state = rnn._rnn_step(
                 time=time,
@@ -235,22 +233,19 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
                 state_size=state_size,
                 skip_conditionals=True)
 
-            weights_ta = weights_ta.write(time, new_state)
+            return time + 1, new_state, new_output, output_ta
 
-            return time + 1, new_state, new_output, output_ta, weights_ta
-
-        _, new_state, new_output, output_final_ta, weights_final_ta = tf.while_loop(
-            cond=lambda time, *_: time < time_steps - 1,
+        _, new_state, new_output, output_final_ta = tf.while_loop(
+            cond=lambda time, *_: time < time_steps + 1,
             body=_time_step,
-            loop_vars=(time, state, output, output_ta, weights_ta),
+            loop_vars=(time, state, output, output_ta),
             parallel_iterations=decoder.parallel_iterations,
             swap_memory=decoder.swap_memory)
 
         outputs = output_final_ta.pack()
-        weights = weights_final_ta.pack()
 
-        beam_tensors = namedtuple('beam_tensors', 'state new_state output new_output weights')
-        return outputs, beam_tensors(state, new_state, output, new_output, weights)
+        beam_tensors = namedtuple('beam_tensors', 'state new_state output new_output')
+        return outputs, beam_tensors(state, new_state, output, new_output)
 
 
 def sequence_loss(logits, targets, weights, average_across_timesteps=False, average_across_batch=True):

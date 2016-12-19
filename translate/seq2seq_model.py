@@ -151,6 +151,8 @@ class Seq2SeqModel(object):
 
             state_to_gates = state.dot(state_to_gates_matrix)
 
+            initial_state = session.run(self.beam_tensors.state, input_feed)
+
             def sigmoid(x):
                 return 1 / (1 + np.exp(-x))
 
@@ -328,13 +330,16 @@ class Seq2SeqModel(object):
         batch_encoder_inputs = np.array(encoder_inputs, np.int32)
 
         # time-major vectors: shape is (time, batch_size)
-        batch_decoder_inputs = np.array(decoder_inputs)[:, :-1].T  # with BOS symbol, without EOS symbol
+        # batch_decoder_inputs = np.array(decoder_inputs)[:, :-1].T  # with BOS symbol, without EOS symbol
+        batch_decoder_inputs = np.array(decoder_inputs).T  # with BOS symbol, without EOS symbol
         batch_targets = np.array(decoder_inputs)[:, 1:].T  # without BOS symbol, with EOS symbol
         # batch_weights = (batch_targets != utils.PAD_ID).astype(np.float32)  # PAD symbols don't count for training
         batch_weights = (batch_targets != -1).astype(np.float32)  # PAD symbols don't count for training
 
         batch_decoder_inputs[batch_decoder_inputs == -1] = utils.EOS_ID
         batch_targets[batch_targets == -1] = utils.EOS_ID
+
+        # batch_decoder_inputs = batch_targets
 
         return (batch_encoder_inputs,
                 batch_decoder_inputs,
