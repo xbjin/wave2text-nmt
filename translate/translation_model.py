@@ -15,7 +15,8 @@ class BaseTranslationModel(object):
         self.name = name
         self.keep_best = keep_best
         self.checkpoint_dir = checkpoint_dir
-        self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
+        self.saver = tf.train.Saver(max_to_keep=100, keep_checkpoint_every_n_hours=5,
+                                    write_version=tf.train.SaverDef.V1)
 
     def manage_best_checkpoints(self, step, score):
         score_filename = os.path.join(self.checkpoint_dir, 'scores.txt')

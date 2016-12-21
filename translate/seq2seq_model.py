@@ -21,7 +21,6 @@ import math
 
 from translate import utils, decoders
 from collections import namedtuple
-from translate.decoders import globals_
 
 
 class Seq2SeqModel(object):
@@ -128,40 +127,6 @@ class Seq2SeqModel(object):
             self.targets: targets
         }
 
-        debug = False
-
-        if debug:
-            tf.get_variable_scope().reuse_variables()
-            states = session.run(self.attention_states, input_feed)
-            embedded_inputs = session.run(globals_['embedded_inputs'], input_feed)
-            loss = session.run(self.loss, input_feed)
-
-
-            input_to_gates_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_gates/Matrix').eval()
-            input_to_gates_bias = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_gates/Bias').eval()
-            input_to_gates = embedded_inputs.dot(input_to_gates_matrix) + input_to_gates_bias
-
-            input_to_state_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_state/Matrix').eval()
-            input_to_state_bias = tf.get_variable('encoder_fr/forward_1/GRUCell/input_to_state/Bias').eval()
-            input_to_state = embedded_inputs.dot(input_to_state_matrix) + input_to_state_bias
-
-            state = tf.get_variable('encoder_fr/forward_1/initial_state').eval()
-            state_to_gates_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/state_to_gates/Matrix').eval()
-            state_to_state_matrix = tf.get_variable('encoder_fr/forward_1/GRUCell/state_to_state/Matrix').eval()
-
-            state_to_gates = state.dot(state_to_gates_matrix)
-
-            initial_state = session.run(self.beam_tensors.state, input_feed)
-
-            def sigmoid(x):
-                return 1 / (1 + np.exp(-x))
-
-            gates = sigmoid(state_to_gates + input_to_gates[0, 0])
-            weights = session.run(self.beam_tensors.weights, input_feed)
-            # energy = session.run(globals_['energy'], input_feed)
-
-            import pdb; pdb.set_trace()
-
         output_feed = {'loss': self.loss}
         if not forward_only:
             output_feed['updates'] = self.updates
@@ -219,6 +184,7 @@ class Seq2SeqModel(object):
             batch_size = decoder_input.shape[0]
 
             input_feed = {
+                self.encoder_input_length: np.tile(encoder_input_length, batch_size),
                 self.beam_tensors.state: state,
                 self.decoder_inputs: np.reshape(decoder_input, [1, batch_size]),
                 self.decoder_input_length: [1] * batch_size,
@@ -323,16 +289,12 @@ class Seq2SeqModel(object):
         batch_encoder_inputs = np.array(encoder_inputs, np.int32)
 
         # time-major vectors: shape is (time, batch_size)
-        # batch_decoder_inputs = np.array(decoder_inputs)[:, :-1].T  # with BOS symbol, without EOS symbol
-        batch_decoder_inputs = np.array(decoder_inputs).T  # with BOS symbol, without EOS symbol
+        batch_decoder_inputs = np.array(decoder_inputs)[:, :-1].T  # with BOS symbol, without EOS symbol
         batch_targets = np.array(decoder_inputs)[:, 1:].T  # without BOS symbol, with EOS symbol
-        # batch_weights = (batch_targets != utils.PAD_ID).astype(np.float32)  # PAD symbols don't count for training
         batch_weights = (batch_targets != -1).astype(np.float32)  # PAD symbols don't count for training
 
         batch_decoder_inputs[batch_decoder_inputs == -1] = utils.EOS_ID
         batch_targets[batch_targets == -1] = utils.EOS_ID
-
-        # batch_decoder_inputs = batch_targets
 
         return (batch_encoder_inputs,
                 batch_decoder_inputs,

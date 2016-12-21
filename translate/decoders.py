@@ -7,9 +7,6 @@ from translate.rnn import multi_bidirectional_rnn, GRUCell
 from collections import namedtuple
 
 
-globals_ = dict()
-
-
 def build_encoder(encoder_inputs, encoder, encoder_input_length, dropout=None, **kwargs):
     """
     :param encoder_inputs: tensor of shape (batch_size, input_length)
@@ -35,7 +32,6 @@ def build_encoder(encoder_inputs, encoder, encoder_input_length, dropout=None, *
             cell = rnn_cell.BasicLSTMCell(encoder.cell_size, state_is_tuple=False)
         else:
             cell = GRUCell(encoder.cell_size, initializer=orthogonal_initializer())
-            # cell = rnn_cell.BasicRNNCell(encoder.cell_size)
 
         if dropout is not None:
             cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
@@ -48,8 +44,6 @@ def build_encoder(encoder_inputs, encoder, encoder_input_length, dropout=None, *
 
         encoder_inputs = tf.reshape(flat_inputs,
                                     tf.pack([batch_size, time_steps, flat_inputs.get_shape()[1].value]))
-
-        globals_['embedded_inputs'] = encoder_inputs
 
         # Contrary to Theano's RNN implementation, states after the sequence length are zero
         # (while Theano repeats last state)
@@ -67,7 +61,7 @@ def build_encoder(encoder_inputs, encoder, encoder_input_length, dropout=None, *
             encoder_state = encoder_outputs[:, 0, encoder.cell_size:]
         else:
             encoder_outputs, encoder_state = multi_rnn(cells=[cell] * encoder.layers, **parameters)
-            encoder_state = encoder_outputs[:, 0, :]   # FIXME
+            encoder_state = encoder_outputs[:, 0, :]
 
         return encoder_outputs, encoder_state
 
@@ -77,12 +71,10 @@ def compute_energy(hidden, state, attn_size, **kwargs):
     batch_size = tf.shape(hidden)[0]
     time_steps = tf.shape(hidden)[1]
 
-    # initializer = tf.random_normal_initializer(stddev=0.001)   # same as Bahdanau et al.
-    initializer = None
-    y = linear(state, attn_size, True, scope='W_a', initializer=initializer)
+    y = linear(state, attn_size, True, scope='W_a')
     y = tf.reshape(y, [-1, 1, attn_size])
 
-    k = tf.get_variable('U_a', [input_size, attn_size], initializer=initializer)
+    k = tf.get_variable('U_a', [input_size, attn_size])
 
     # dot product between tensors requires reshaping
     hidden = tf.reshape(hidden, tf.pack([tf.mul(batch_size, time_steps), input_size]))
@@ -100,26 +92,21 @@ def attention(state, hidden_states, encoder, encoder_input_length, scope=None, *
         e = compute_energy(hidden_states, state, attn_size=encoder.attn_size)
         e = e - tf.reduce_max(e, reduction_indices=(1,), keep_dims=True)
 
-        # batch_size * time_steps
-        # TODO: check this mask stuff
         mask = tf.sequence_mask(tf.cast(encoder_input_length, tf.int32), tf.shape(hidden_states)[1],
                                 dtype=tf.float32)
         exp = tf.exp(e) * mask
         weights = exp / tf.reduce_sum(exp, reduction_indices=(-1,), keep_dims=True)
 
-        # weights = tf.nn.softmax(e)
-        # weights = weights * mask
-
         shape = tf.shape(weights)
         shape = tf.pack([shape[0], shape[1], 1, 1])
 
-        return tf.reduce_sum(tf.reshape(weights, shape) * hidden_states, [1, 2]), weights, mask, e
+        return tf.reduce_sum(tf.reshape(weights, shape) * hidden_states, [1, 2])
 
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, decoder, encoder_input_length,
                       decoder_input_length=None, output_projection=None, dropout=None, feed_previous=0.0, **kwargs):
     """
-    :param decoder_inputs: tensor of shape (batch_size, output_length)
+    :param decoder_inputs: tensor of shape (output_length, batch_size)
     :param initial_state: initial state of the decoder (usually the final state of the encoder),
       as a tensor of shape (batch_size, initial_state_size). This state is mapped to the
       correct state size for the decoder.
@@ -144,7 +131,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
         cell = rnn_cell.BasicLSTMCell(decoder.cell_size, state_is_tuple=False)
     else:
         cell = GRUCell(decoder.cell_size, initializer=orthogonal_initializer())
-        # cell = rnn_cell.BasicRNNCell(decoder.cell_size)
 
     if dropout is not None:
         cell = rnn_cell.DropoutWrapper(cell, input_keep_prob=dropout)
@@ -164,10 +150,6 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
         batch_size = input_shape[1]
         state_size = cell.state_size
 
-        flat_inputs = tf.reshape(decoder_inputs, [tf.mul(batch_size, time_steps)])
-        flat_inputs = tf.nn.embedding_lookup(embedding, flat_inputs)
-        decoder_inputs = tf.reshape(flat_inputs, tf.pack([time_steps, batch_size, flat_inputs.get_shape()[1].value]))
-
         if dropout is not None:
             initial_state = tf.nn.dropout(initial_state, dropout)
 
@@ -180,22 +162,29 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
         time = tf.constant(0, dtype=tf.int32, name='time')
 
         zero_output = tf.zeros(tf.pack([batch_size, cell.output_size]), tf.float32)
-        output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps - 1, clear_after_read=False)
-        input_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False).unpack(decoder_inputs)
+        output_ta = tf.TensorArray(dtype=tf.float32, size=time_steps, clear_after_read=False)
+        input_ta = tf.TensorArray(dtype=tf.int32, size=time_steps, clear_after_read=False).unpack(decoder_inputs)
 
-        weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps - 1)
+        weights_ta = tf.TensorArray(dtype=tf.float32, size=time_steps)
 
         def _time_step(time, state, output_ta, weights_ta):
             r = tf.random_uniform([])
 
-            context_vector, weights, mask, e = attention(state, hidden_states=tf.expand_dims(attention_states, 2),
-                                                 encoder=encoder, encoder_input_length=encoder_input_length)
+            context_vector = attention(state, hidden_states=tf.expand_dims(attention_states, 2),
+                                       encoder=encoder, encoder_input_length=encoder_input_length)
 
-            # FIXME: duplicate code here
+            def lookup(input_symbol):
+                return tf.where(
+                    tf.equal(input_symbol, 0),     # FIXME
+                    tf.zeros(tf.pack([batch_size, decoder.embedding_size])),
+                    tf.nn.embedding_lookup(embedding, input_symbol),
+                )
+
             input_ = tf.cond(tf.logical_and(time > 0, r < feed_previous),
                              lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta.read(time - 1))),
-                             lambda: input_ta.read(time))
-            input_.set_shape(decoder_inputs.get_shape()[1:])
+                             lambda: lookup(input_ta.read(time)))
+
+            input_.set_shape([None, decoder.embedding_size])
 
             output_1 = linear(state, decoder.cell_size, True, scope='maxout_1')
             output_2 = linear(input_, decoder.cell_size, False, scope='maxout_2')
@@ -203,22 +192,21 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
 
             output_ = output_1 + output_2 + output_3
 
-            output_ = tf.maximum(*tf.split(1, 2, output_))
+            output_ = tf.reduce_max(tf.reshape(output_, tf.pack([batch_size, decoder.cell_size // 2, 2])), axis=2)
+
             output_ = linear(output_, decoder.embedding_size, False, scope='softmax0')
             output_ = linear(output_, decoder.vocab_size, True, scope='softmax1')
 
-            # output_ = linear([new_output, input_, context_vector], decoder.cell_size, True, scope='maxout')
-            # output_ = linear(output_, decoder.vocab_size, True, scope='softmax')
-
+            weights_ta = weights_ta.write(time, input_)  # - bias
             output_ta = output_ta.write(time, output_)
 
-            input_ = tf.cond(tf.logical_and(time > 0, r < feed_previous),
-                             lambda: tf.stop_gradient(extract_argmax_and_embed(output_ta.read(time - 1))),
-                             lambda: input_ta.read(time + 1))
-            input_.set_shape(decoder_inputs.get_shape()[1:])
+            input_ = tf.cond(tf.logical_or(r < feed_previous, time >= time_steps - 1),
+                             lambda: tf.stop_gradient(extract_argmax_and_embed(output_)),
+                             lambda: lookup(input_ta.read(time + 1)))
+            input_.set_shape([None, decoder.embedding_size])
 
             call_cell = lambda: cell(input_, state, attn=context_vector)
-            _, new_state = rnn._rnn_step(
+            new_output, new_state = rnn._rnn_step(
                 time=time,
                 sequence_length=sequence_length,
                 min_sequence_length=min_sequence_length,
@@ -229,12 +217,11 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, encoder, 
                 state_size=state_size,
                 skip_conditionals=True)
 
-            weights_ta = weights_ta.write(time, new_state)
 
             return time + 1, new_state, output_ta, weights_ta
 
         _, new_state, output_final_ta, weights_final_ta = tf.while_loop(
-            cond=lambda time, *_: time < time_steps - 1,
+            cond=lambda time, *_: time < time_steps,
             body=_time_step,
             loop_vars=(time, state, output_ta, weights_ta),
             parallel_iterations=decoder.parallel_iterations,

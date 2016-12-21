@@ -6,29 +6,29 @@ attn_size: 256
 embedding_size: 128
 
 layers: 1
-bidir: False
+bidir: True
 use_lstm: False
 steps_per_checkpoint: 200
 steps_per_eval: 400
 eval_burn_in: 0
-max_steps: 20000
-max_output_len: 32
-max_input_len: 26
+max_steps: 400
+max_output_len: 25
+max_input_len: 25
 feed_previous: 0.0
 
 data_dir: data/btec
 model_dir: models/debug
-# log_file: models/debug/log.txt
+# log_file: models/debug_SGD/log.txt
 max_dev_size: 0
 batch_size: 32
 read_ahead: 10
+dev_prefix: dev.500
 
 optimizer: 'sgd'
 learning_rate: 1.0
-weight_scale: 0.1
 max_gradient_norm: 1.0
-parallel_iterations: 1
-swap_memory: False
+
+weight_scale: 0.1
 
 encoder:
     name: fr
