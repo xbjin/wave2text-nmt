@@ -158,8 +158,11 @@ def bleu_score(hypotheses, references, script_dir):
 
     output = output.decode()
 
-    m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
-    bleu, penalty, ratio = [float(m.group(i)) for i in range(1, 4)]
+    try:
+        m = re.match(r'BLEU = ([^,]*).*BP=([^,]*), ratio=([^,]*)', output)
+        bleu, penalty, ratio = [float(m.group(i)) for i in range(1, 4)]
+    except:
+        bleu, penalty, ratio = 0.0, 0.0, 0.0
 
     return bleu, 'penalty={} ratio={}'.format(penalty, ratio)
 
@@ -315,7 +318,7 @@ def random_batch_iterator(data, batch_size):
         yield random.sample(data, batch_size)
 
 
-def cycling_batch_iterator(data, batch_size):
+def cycling_batch_iterator(data, batch_size, shuffle=True, allow_smaller=True):
     """
     Indefinitely cycle through a dataset and yield batches (the dataset is shuffled
     at each new epoch)
@@ -324,11 +327,15 @@ def cycling_batch_iterator(data, batch_size):
     :param batch_size: the size of a batch
     :return: an iterator which yields batches (indefinitely)
     """
-    # random.shuffle(data)
-
     while True:
-        # random.shuffle(data)
+        if shuffle:
+            random.shuffle(data)
+
         batch_count = len(data) // batch_size
+
+        if allow_smaller and batch_count * batch_size < len(data):
+            batch_count += 1
+
         for i in range(batch_count):
             yield data[i * batch_size:(i + 1) * batch_size]
 
@@ -347,7 +354,7 @@ def read_ahead_batch_iterator(data, batch_size, read_ahead=10, shuffle=True):
       mean faster training, but less random behavior)
     :return: an iterator which yields batches (indefinitely)
     """
-    iterator = cycling_batch_iterator(data, batch_size)
+    iterator = cycling_batch_iterator(data, batch_size, shuffle=shuffle)
     if read_ahead <= 1:
         while True:
             yield next(iterator)
@@ -360,6 +367,27 @@ def read_ahead_batch_iterator(data, batch_size, read_ahead=10, shuffle=True):
             random.shuffle(batches)
         for batch in batches:
             yield batch
+
+
+def read_ahead_batch_iterator_blocks(data, batch_size, read_ahead=10, shuffle=True):
+    random.shuffle(data)
+
+    while True:
+        batch_count = len(data) // batch_size
+        batches = [data[i * batch_size:(i + 1) * batch_size] for i in range(batch_count + 1)]
+
+        while True:
+            batches_ = batches[:read_ahead]
+            batches = batches[read_ahead:]
+
+            if not batches_:
+                break
+
+            data_ = sorted(sum(batches_, []), key=lambda lines: len(lines[-1]))
+            for i in range(read_ahead):
+                batch = data_[i * batch_size:(i + 1) * batch_size]
+                if batch:
+                    yield batch
 
 
 def get_batches(data, batch_size, batches=10, allow_smaller=True):

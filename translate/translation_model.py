@@ -15,7 +15,8 @@ class BaseTranslationModel(object):
         self.name = name
         self.keep_best = keep_best
         self.checkpoint_dir = checkpoint_dir
-        self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5)
+        self.saver = tf.train.Saver(max_to_keep=3, keep_checkpoint_every_n_hours=5,
+                                    write_version=tf.train.SaverDef.V1)
 
     def manage_best_checkpoints(self, step, score):
         score_filename = os.path.join(self.checkpoint_dir, 'scores.txt')
@@ -61,8 +62,7 @@ class BaseTranslationModel(object):
             for score_, step_ in scores:
                 f.write('{} {}\n'.format(score_, step_))
 
-    def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False,
-                   init_from_blocks=None):
+    def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
         sess.run(tf.initialize_all_variables())
         if checkpoints:  # load partial checkpoints
             for checkpoint in checkpoints:  # checkpoint files to load
@@ -71,32 +71,6 @@ class BaseTranslationModel(object):
         elif not reset:
             blacklist = ('learning_rate', 'dropout_keep_prob') if reset_learning_rate else ()
             load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
-
-        if init_from_blocks is not None:
-            utils.log('initializing variables from block')
-            with open(init_from_blocks, 'rb') as f:
-                block_vars = pickle.load(f, encoding='latin1')
-
-            variables = {var_.name[:-2]: var_ for var_ in tf.all_variables()}
-
-            for var_names, axis, value in block_vars:
-                if 'decoder_en/attention_fr/v_a' in var_names:
-                    value = np.squeeze(value)
-
-                sections = [variables[name].get_shape()[axis].value for name in var_names]
-                values = np.split(value, sections[:-1], axis=axis)
-
-                for var_name, value in zip(var_names, values):
-                    utils.debug(var_name)
-
-                    var_ = variables[var_name]
-                    print(var_.get_shape(), value.shape)
-                    assert tuple(x.value for x in var_.get_shape()) == value.shape, \
-                           'wrong shape for var: {}'.format(var_name)
-                    sess.run(var_.assign(value))
-
-            utils.log('read {} variables'.format(sum(len(var_names) for var_names, _, _ in block_vars)))
-
 
     def save(self, sess):
         save_checkpoint(sess, self.saver, self.checkpoint_dir, self.global_step)
@@ -153,8 +127,8 @@ class TranslationModel(BaseTranslationModel):
         train_set = utils.read_dataset(self.filenames.train, self.extensions, self.vocabs, max_size=max_train_size,
                                        binary_input=self.binary_input, character_level=self.character_level,
                                        max_seq_len=self.max_input_len)
-        self.batch_iterator = utils.read_ahead_batch_iterator(train_set, self.batch_size, read_ahead=read_ahead,
-                                                              shuffle=False)
+        self.batch_iterator = utils.read_ahead_batch_iterator_blocks(train_set, self.batch_size, read_ahead=read_ahead,
+                                                                     shuffle=False)
 
         utils.debug('reading development data')
         dev_sets = [
@@ -179,8 +153,7 @@ class TranslationModel(BaseTranslationModel):
         raise NotImplementedError('use MultiTaskModel')
 
     def train_step(self, sess):
-        res = self.model.step(sess, next(self.batch_iterator))
-        return res.loss, res.gradient
+        return self.model.step(sess, next(self.batch_iterator)).loss
 
     def eval_step(self, sess):
         # compute perplexity on dev set
@@ -191,8 +164,6 @@ class TranslationModel(BaseTranslationModel):
             )
             eval_loss /= sum(map(len, dev_batches))
 
-            # perplexity = math.exp(eval_loss) if eval_loss < 300 else float('inf')
-            # utils.log("  eval: perplexity {:.2f}".format(perplexity))
             utils.log("  eval: loss {:.2f}".format(eval_loss))
 
     def _decode_sentence(self, sess, src_sentences, beam_size=1, remove_unk=False):

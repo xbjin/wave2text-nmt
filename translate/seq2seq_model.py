@@ -18,13 +18,10 @@
 import numpy as np
 import tensorflow as tf
 import re
-import zlib
 
 from translate import utils
 from translate import decoders
 from collections import namedtuple
-from translate.decoders import globals_, get_variable_unsafe, unsafe_decorator
-from translate.rnn import linear_unsafe
 
 from tensorflow.python.ops import variable_scope
 
@@ -124,15 +121,10 @@ class Seq2SeqModel(object):
                                                    name='decoder_{}_length'.format(decoder.name))
 
         parameters = dict(encoders=encoders, decoder=decoder, dropout=self.dropout,
-                          output_projection=output_projection)
+                          output_projection=output_projection,
+                          encoder_input_length=self.encoder_input_length)
 
-        self.attention_states, self.encoder_state = decoders.multi_encoder(
-            self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
-        )
-        # self.attention_states, self.encoder_state = decoders.mixer_encoder(
-        #     self.encoder_inputs, encoder_input_length=self.encoder_input_length, **parameters
-        # )
-
+        self.attention_states, self.encoder_state = decoders.multi_encoder(self.encoder_inputs, **parameters)
         decoder = decoders.attention_decoder if attention else decoders.decoder
 
         self.outputs, self.attention_weights, self.beam_tensors = decoder(
@@ -192,48 +184,17 @@ class Seq2SeqModel(object):
 
         batch = self.get_batch(data)
         encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length, decoder_input_length = batch
-        tf.get_variable_scope().reuse_variables()
 
-        input_feed = {}
+        input_feed = {
+            self.target_weights: target_weights,
+            self.decoder_inputs: decoder_inputs,
+            self.decoder_input_length: decoder_input_length,
+            self.targets: targets
+        }
+
         for i in range(self.encoder_count):
             input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
             input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
-
-        input_feed[self.target_weights] = target_weights
-        input_feed[self.decoder_inputs] = decoder_inputs
-        input_feed[self.decoder_input_length] = decoder_input_length
-        input_feed[self.targets] = targets
-
-        if debug:
-            tf.get_variable_scope().reuse_variables()
-            print('\n'.join(
-                [' '.join([var_.name, str(zlib.adler32(var_.eval(session).tostring()))])
-                 for var_ in tf.all_variables()]))
-
-            state = session.run(self.encoder_state, input_feed)
-            states = session.run(self.attention_states, input_feed)
-            cost = session.run(self.loss, input_feed)
-            gradient_norms = session.run(self.gradient_norms, input_feed)
-
-            state_hash = zlib.adler32(state.tostring())
-            import pdb; pdb.set_trace()
-
-            # initial_state = get_variable_unsafe('encoder_fr/forward_1/initial_state')
-            # initial_state = tf.reshape(tf.tile(initial_state, [8]), [8, 16])
-            #
-            # cell = globals_['encoder_cell']
-            #
-            # encoder_inputs_ = self.encoder_inputs[0][:,0]
-            # embedding = get_variable_unsafe('embedding_fr')
-            # input_ = tf.nn.embedding_lookup(embedding, encoder_inputs_)
-            #
-            # import pdb; pdb.set_trace()
-            #
-            # output_, _ = unsafe_decorator(cell)(input_, initial_state, scope='encoder_fr/forward_1/GRUCell')
-            #
-            # x = session.run(output_, input_feed)
-            #
-            # import pdb; pdb.set_trace()
 
         output_feed = {'loss': self.loss, 'gradient': self.gradient_norms}
         if not forward_only:
@@ -242,8 +203,7 @@ class Seq2SeqModel(object):
             output_feed['attn_weights'] = self.attention_weights
 
         res = session.run(output_feed, input_feed)
-        return namedtuple('output', 'loss attn_weights gradient')(res['loss'], res.get('attn_weights'),
-                                                                  res.get('gradient'))
+        return namedtuple('output', 'loss attn_weights')(res['loss'], res.get('attn_weights'))
 
     def greedy_decoding(self, session, token_ids):
         if self.dropout is not None:
@@ -252,16 +212,17 @@ class Seq2SeqModel(object):
         batch = self.get_batch([token_ids + [[]]], decoding=True)
         encoder_inputs, decoder_inputs, targets, target_weights, encoder_input_length, decoder_input_length = batch
 
-        input_feed = {}
+        input_feed = {
+            self.target_weights: target_weights,
+            self.decoder_inputs: decoder_inputs,
+            self.decoder_input_length: decoder_input_length,
+            self.targets: targets,
+            self.feed_previous: 1.0
+        }
+
         for i in range(self.encoder_count):
             input_feed[self.encoder_input_length[i]] = encoder_input_length[i]
             input_feed[self.encoder_inputs[i]] = encoder_inputs[i]
-
-        input_feed[self.target_weights] = target_weights
-        input_feed[self.decoder_inputs] = decoder_inputs
-        input_feed[self.decoder_input_length] = decoder_input_length
-        input_feed[self.targets] = targets
-        input_feed[self.feed_previous] = 1.0
 
         outputs, attn_weights = session.run([self.outputs, self.attention_weights], input_feed)
         return [int(np.argmax(logit, axis=1)) for logit in outputs], attn_weights  # greedy decoder
@@ -480,7 +441,6 @@ class Seq2SeqModel(object):
         # time-major vectors: shape is (time, batch_size)
         batch_decoder_inputs = np.array(decoder_inputs)[:, :-1].T  # with BOS symbol, without EOS symbol
         batch_targets = np.array(decoder_inputs)[:, 1:].T  # without BOS symbol, with EOS symbol
-        # batch_weights = (batch_targets != utils.PAD_ID).astype(np.float32)  # PAD symbols don't count for training
         batch_weights = (batch_targets != -1).astype(np.float32)  # PAD symbols don't count for training
 
         batch_decoder_inputs[batch_decoder_inputs == -1] = utils.EOS_ID

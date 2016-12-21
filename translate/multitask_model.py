@@ -41,7 +41,7 @@ class MultiTaskModel(BaseTranslationModel):
         for model in self.models:
             model.read_data(max_train_size, max_dev_size, read_ahead=read_ahead)
             # those parameters are used to track the progress of each task
-            model.loss, model.time, model.steps, model.gradient = 0, 0, 0, 0
+            model.loss, model.time, model.steps = 0, 0, 0
             model.previous_losses = []
             global_step = model.global_step.eval(sess)
             for _ in range(global_step):   # read all the data up to this step
@@ -55,9 +55,8 @@ class MultiTaskModel(BaseTranslationModel):
             model = self.models[i]
 
             start_time = time.time()
-            loss, gradient = model.train_step(sess)
+            loss = model.train_step(sess)
             model.loss += loss
-            model.gradient += gradient
 
             model.time += (time.time() - start_time)
             model.steps += 1
@@ -69,22 +68,17 @@ class MultiTaskModel(BaseTranslationModel):
                         continue
 
                     loss_ = model_.loss / model_.steps
-                    gradient_ = model_.gradient / model_.steps
                     step_time_ = model_.time / model_.steps
-                    perplexity = math.exp(loss_) if loss_ < 300 else float('inf')
 
-                    # utils.log('{} step {} learning rate {:.4f} step-time {:.2f} perplexity {:.2f}'.format(
-                    #     model_.name, model_.global_step.eval(sess), model_.learning_rate.eval(),
-                    #     step_time_, perplexity))
-                    utils.log('{} step {} learning rate {:.4f} step-time {:.2f} loss {:.2f} gradient {:.2f}'.format(
+                    utils.log('{} step {} learning rate {:.4f} step-time {:.2f} loss {:.2f}'.format(
                         model_.name, model_.global_step.eval(sess), model_.learning_rate.eval(),
-                        step_time_, loss_, gradient_))
+                        step_time_, loss_))
 
                     if len(model_.previous_losses) > 2 and loss_ > max(model_.previous_losses[-3:]):
                         sess.run(model_.learning_rate_decay_op)
 
                     model_.previous_losses.append(loss_)
-                    model_.loss, model_.time, model_.steps, model_.gradient = 0, 0, 0, 0
+                    model_.loss, model_.time, model_.steps = 0, 0, 0
                     model_.eval_step(sess)
 
                 self.save(sess)

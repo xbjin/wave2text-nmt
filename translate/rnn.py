@@ -214,23 +214,21 @@ class GRUCell(rnn_cell.RNNCell):
     def __call__(self, inputs, state, scope=None):
         with tf.variable_scope(scope or type(self).__name__):
             # we start with bias of 1.0 to not reset and not update
-            r = tf.nn.sigmoid(
-                linear(inputs, self._num_units, True, 1.0, scope='W_r') +
-                linear(state, self._num_units, False, scope='U_r', initializer=self._initializer)    # state to gates
-            )
+            state_to_gates = linear(state, self._num_units * 2, False, scope='state_to_gates',
+                                    initializer=self._initializer)
+            input_to_gates = linear(inputs, self._num_units * 2, True, scope='input_to_gates')
 
-            z = tf.nn.sigmoid(
-                linear(inputs, self._num_units, True, 1.0, scope='W_z') +
-                linear(state, self._num_units, False, scope='U_z', initializer=self._initializer)    # state to gates
-            )
+            gates = tf.nn.sigmoid(state_to_gates + input_to_gates)
+            update = gates[:, :self._num_units]
+            reset = gates[:, self._num_units:]
 
-            h_ = self._activation(
-                linear(inputs, self._num_units, True, scope='W') +
-                linear(r * state, self._num_units, False, scope='U', initializer=self._initializer)  # state to state
-            )
+            state_to_state = linear(state, self._num_units, False, scope='state_to_state',
+                                    initializer=self._initializer)
+            input_to_state = linear(inputs, self._num_units, True, scope='input_to_state')
+            new_state = self._activation(reset * state_to_state + input_to_state)
 
-            new_h = z * state + (1 - z) * h_
-        return new_h, new_h
+            new_state = update * new_state + (1 - update) * state
+        return new_state, new_state
 
 
 def linear(args, output_size, bias, bias_start=0.0, scope=None, initializer=None):

@@ -47,7 +47,6 @@ parser.add_argument('--output')
 parser.add_argument('--max-steps', type=int)
 parser.add_argument('--remove-unk', action='store_const', const=True)
 parser.add_argument('--wav-files', nargs='*')
-parser.add_argument('--init-from-blocks', help='initialize variables with blocks model')
 
 """
 Benchmarks:
@@ -75,7 +74,6 @@ TODO:
 - decay learning rate after a certain number of epochs
 - possibility to run model on several GPUs
 - copy vocab and config to model dir
-- rename scopes to nicer names
 """
 
 
@@ -223,8 +221,7 @@ def main(args=None):
             model.initialize(sess, [best_checkpoint], reset=True)
         else:
             # loads last checkpoint, unless `reset` is true
-            model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate,
-                             init_from_blocks=args.init_from_blocks)
+            model.initialize(sess, config.checkpoints, reset=args.reset, reset_learning_rate=args.reset_learning_rate)
 
         # Inspect variables:
         # tf.get_variable_scope().reuse_variables()
