@@ -64,12 +64,14 @@ class BaseTranslationModel(object):
 
     def initialize(self, sess, checkpoints=None, reset=False, reset_learning_rate=False):
         sess.run(tf.initialize_all_variables())
+        blacklist = ('dropout_keep_prob',)
+        if reset_learning_rate:
+            blacklist += ('learning_rate',)
+        
         if checkpoints:  # load partial checkpoints
             for checkpoint in checkpoints:  # checkpoint files to load
-                load_checkpoint(sess, None, checkpoint,
-                                blacklist=('learning_rate', 'global_step', 'dropout_keep_prob'))
+                load_checkpoint(sess, None, checkpoint, blacklist=blacklist)
         elif not reset:
-            blacklist = ('learning_rate', 'dropout_keep_prob') if reset_learning_rate else ()
             load_checkpoint(sess, self.checkpoint_dir, blacklist=blacklist)
 
     def save(self, sess):
