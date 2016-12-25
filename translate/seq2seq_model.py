@@ -273,6 +273,10 @@ class Seq2SeqModel(object):
                 }
                 for state_ in state
             ]
+            
+            for feed in input_feed:
+                for i in range(self.encoder_count):
+                    feed[self.encoder_input_length[i]] = encoder_input_length[i]
 
             if i > 0:
                 for input_feed_, output_ in zip(input_feed, output):
