@@ -34,7 +34,7 @@ class MultiTaskModel(BaseTranslationModel):
 
     def train(self, sess, beam_size, steps_per_checkpoint, score_function, steps_per_eval=None, max_train_size=None,
               max_dev_size=None, eval_output=None, max_steps=0, auxiliary_score_function=None, script_dir='scripts',
-              read_ahead=10, eval_burn_in=0, **kwargs):
+              read_ahead=10, eval_burn_in=0, decay_if_no_progress=5, **kwargs):
         utils.log('reading training and development data')
 
         self.global_step = 0
@@ -73,9 +73,10 @@ class MultiTaskModel(BaseTranslationModel):
                     utils.log('{} step {} learning rate {:.4f} step-time {:.2f} loss {:.2f}'.format(
                         model_.name, model_.global_step.eval(sess), model_.learning_rate.eval(),
                         step_time_, loss_))
-
-                    if len(model_.previous_losses) > 2 and loss_ > max(model_.previous_losses[-3:]):
-                        sess.run(model_.learning_rate_decay_op)
+                    
+                    if decay_if_no_progress and len(model_.previous_losses) > decay_if_no_progress:
+                        if loss_ >= max(model_.previous_losses):
+                            sess.run(model_.learning_rate_decay_op)
 
                     model_.previous_losses.append(loss_)
                     model_.loss, model_.time, model_.steps = 0, 0, 0

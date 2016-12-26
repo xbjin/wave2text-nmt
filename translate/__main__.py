@@ -24,6 +24,7 @@ parser.add_argument('config', help='load a configuration file in the YAML format
 parser.add_argument('-v', '--verbose', help='verbose mode', action='store_true')
 parser.add_argument('--reset', help="reset model (don't load any checkpoint)", action='store_true')
 parser.add_argument('--reset-learning-rate', help='reset learning rate', action='store_true')
+parser.add_argument('--learning-rate', type=float, help='custom learning rate (triggers `reset-learning-rate`)')
 parser.add_argument('--purge', help='remove previous model files', action='store_true')
 
 # Available actions (exclusive)
@@ -86,9 +87,13 @@ def main(args=None):
 
     with open(args.config) as f:
         config = utils.AttrDict(yaml.safe_load(f))
+        
+        if args.learning_rate is not None:
+            args.reset_learning_rate = True
+        
         # command-line parameters have higher precedence than config file
         for k, v in vars(args).items():
-            if v is not None and (k in default_config or k in ('decode', 'eval', 'output', 'align')):
+            if v is not None:
                 config[k] = v
 
         # set default values for parameters that are not defined
@@ -214,7 +219,7 @@ def main(args=None):
             sess = [tf.Session() for _ in config.checkpoints]
             for sess_, checkpoint in zip(sess, config.checkpoints):
                 model.initialize(sess_, [checkpoint], reset=True)
-        elif (not config.checkpoints and not args.reset and (args.eval or args.decode is not None or args.align)
+        elif (not config.checkpoints and (args.eval or args.decode is not None or args.align)
               and os.path.isfile(best_checkpoint)):
             # in decoding and evaluation mode, unless specified otherwise (by `checkpoints` or `reset` parameters,
             # try to load the best checkpoint)
@@ -232,7 +237,7 @@ def main(args=None):
         elif args.eval:
             model.evaluate(sess, on_dev=False, **config)
         elif args.align:
-            model.align(sess, wav_files=args.wav_files, **config)
+            model.align(sess, **config)
         elif args.train:
             eval_output = os.path.join(config.model_dir, 'eval')
             try:
