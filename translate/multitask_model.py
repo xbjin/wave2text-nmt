@@ -74,8 +74,8 @@ class MultiTaskModel(BaseTranslationModel):
                         model_.name, model_.global_step.eval(sess), model_.learning_rate.eval(),
                         step_time_, loss_))
                     
-                    if decay_if_no_progress and len(model_.previous_losses) > decay_if_no_progress:
-                        if loss_ >= max(model_.previous_losses):
+                    if decay_if_no_progress and len(model_.previous_losses) >= decay_if_no_progress:
+                        if loss_ >= max(model_.previous_losses[:decay_if_no_progress]):
                             sess.run(model_.learning_rate_decay_op)
 
                     model_.previous_losses.append(loss_)

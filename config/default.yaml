@@ -8,6 +8,8 @@ decay_after_n_epoch: null
 decay_if_no_progress: 3  # measure average loss over this many checkpoints, and decay if no progress
 sgd_after_n_epoch: null  # use SGD optimizer after this many epochs (instead of adam/adadelta)
 
+# TODO: batch iteration parameters (random, shuffle, standard, read_ahead)
+
 # training parameters
 max_gradient_norm: 5.0   # clip gradients to this norm
 dropout_rate: 0.0        # dropout rate applied to the RNN units
