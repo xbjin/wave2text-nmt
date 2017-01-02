@@ -1,7 +1,7 @@
 
 dropout_rate: 0.0
-cell_size: 1024
-embedding_size: 1024
+cell_size: 512
+embedding_size: 512
 layers: 2
 bidir: True
 use_lstm: True

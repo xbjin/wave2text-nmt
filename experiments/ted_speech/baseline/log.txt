@@ -1,0 +1,197 @@
+01/02 15:46:02 /home/chengzhu/work/seq2seq/translate/__main__.py experiments/ted_speech/baseline.yaml --train -v
+01/02 15:46:02 commit hash 4a866ac5931b64620988dd74f4c113f042c77b63
+01/02 15:46:02 program arguments
+01/02 15:46:02   allow_growth         True
+01/02 15:46:02   attention            True
+01/02 15:46:02   auxiliary_score_function None
+01/02 15:46:02   batch_size           4
+01/02 15:46:02   beam_size            1
+01/02 15:46:02   checkpoints          []
+01/02 15:46:02   dropout_rate         0.5
+01/02 15:46:02   embedding_prefix     'vectors'
+01/02 15:46:02   ensemble             False
+01/02 15:46:02   feed_previous        0.0
+01/02 15:46:02   freeze_variables     []
+01/02 15:46:02   gpu_id               0
+01/02 15:46:02   keep_best            4
+01/02 15:46:02   len_normalization    1.0
+01/02 15:46:02   lm_weight            0.2
+01/02 15:46:02   log_file             'experiments/ted_speech/baseline/log.txt'
+01/02 15:46:02   max_dev_size         0
+01/02 15:46:02   max_gradient_norm    5.0
+01/02 15:46:02   max_input_len        600
+01/02 15:46:02   max_steps            20000
+01/02 15:46:02   max_train_size       0
+01/02 15:46:02   mem_fraction         1.0
+01/02 15:46:02   model_dir            'experiments/ted_speech/baseline'
+01/02 15:46:02   no_gpu               False
+01/02 15:46:02   num_samples          512
+01/02 15:46:02   optimizer            'adam'
+01/02 15:46:02   output               None
+01/02 15:46:02   remove_unk           False
+01/02 15:46:02   score_function       'bleu_score'
+01/02 15:46:02   script_dir           'scripts'
+01/02 15:46:02   steps_per_checkpoint 500
+01/02 15:46:02   steps_per_eval       2000
+01/02 15:46:02   tasks               
+[{'data_dir': 'experiments/ted_speech/data',
+  'decoder': {'attention_filter_length': 0,
+              'attention_filters': 0,
+              'attention_window_size': 0,
+              'bidir': True,
+              'binary': False,
+              'cell_size': 256,
+              'character_level': False,
+              'dynamic': None,
+              'embedding_size': 256,
+              'input_layers': [],
+              'layers': 2,
+              'load_embeddings': [],
+              'name': 'en',
+              'parallel_iterations': 32,
+              'pooling_avg': False,
+              'residual_connections': False,
+              'swap_memory': True,
+              'time_pooling': None,
+              'use_lstm': True,
+              'vocab_size': 124},
+  'dev_prefix': ['dev'],
+  'encoders': [{'attention_filter_length': 25,
+                'attention_filters': 1,
+                'attention_window_size': 0,
+                'bidir': True,
+                'binary': True,
+                'cell_size': 256,
+                'character_level': False,
+                'dynamic': None,
+                'embedding_size': 41,
+                'input_layers': [256, 256],
+                'layers': 3,
+                'load_embeddings': [],
+                'name': 'feats41',
+                'parallel_iterations': 32,
+                'pooling_avg': True,
+                'residual_connections': False,
+                'swap_memory': True,
+                'time_pooling': [2, 2],
+                'use_lstm': True,
+                'vocab_size': 0}],
+  'learning_rate': 0.001,
+  'learning_rate_decay_factor': 0.99,
+  'lm_file': None,
+  'max_output_len': 25,
+  'name': 'main',
+  'ratio': 1.0,
+  'train_prefix': 'train',
+  'vocab_prefix': 'vocab'}]
+01/02 15:46:02 creating model
+01/02 15:46:02 using device: None
+01/02 15:46:02 reading vocabularies
+01/02 15:46:02 creating model main
+01/02 15:46:11 model parameters (98)
+01/02 15:46:11   seq2seq/learning_rate:0 ()
+01/02 15:46:11   seq2seq/global_step:0 ()
+01/02 15:46:11   seq2seq/dropout_keep_prob:0 ()
+01/02 15:46:11   seq2seq/multi_encoder/feats41/input_layer_0/Matrix:0 (41, 256)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/input_layer_0/Bias:0 (256,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/input_layer_1/Matrix:0 (256, 256)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/input_layer_1/Bias:0 (256,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_FW_0/BasicLSTMCell/Linear/Matrix:0 (512, 1024)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_FW_0/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_BW_0/BasicLSTMCell/Linear/Matrix:0 (512, 1024)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_BW_0/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_FW_1/BasicLSTMCell/Linear/Matrix:0 (768, 1024)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_FW_1/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_BW_1/BasicLSTMCell/Linear/Matrix:0 (768, 1024)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_BW_1/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_FW_2/BasicLSTMCell/Linear/Matrix:0 (768, 1024)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_FW_2/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_BW_2/BasicLSTMCell/Linear/Matrix:0 (768, 1024)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/MultiBiRNN_BW_2/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/multi_encoder/feats41/bidir_projection/Matrix:0 (512, 256)
+01/02 15:46:11   seq2seq/embedding_en:0 (124, 256)
+01/02 15:46:11   seq2seq/decoder_en/initial_state_projection/Matrix:0 (1536, 1024)
+01/02 15:46:11   seq2seq/decoder_en/MultiRNNCell/Cell0/BasicLSTMCell/Linear/Matrix:0 (512, 1024)
+01/02 15:46:11   seq2seq/decoder_en/MultiRNNCell/Cell0/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/decoder_en/MultiRNNCell/Cell1/BasicLSTMCell/Linear/Matrix:0 (512, 1024)
+01/02 15:46:11   seq2seq/decoder_en/MultiRNNCell/Cell1/BasicLSTMCell/Linear/Bias:0 (1024,)
+01/02 15:46:11   seq2seq/decoder_en/attention/filter_feats41:0 (51, 1, 1, 1)
+01/02 15:46:11   seq2seq/decoder_en/attention/U_feats41:0 (1, 256)
+01/02 15:46:11   seq2seq/decoder_en/attention/Linear/Matrix:0 (1024, 256)
+01/02 15:46:11   seq2seq/decoder_en/attention/Linear/Bias:0 (256,)
+01/02 15:46:11   seq2seq/decoder_en/attention/W_feats41:0 (256, 256)
+01/02 15:46:11   seq2seq/decoder_en/attention/V_feats41:0 (256,)
+01/02 15:46:11   seq2seq/decoder_en/attention_output_projection/Linear/Matrix:0 (512, 124)
+01/02 15:46:11   seq2seq/decoder_en/attention_output_projection/Linear/Bias:0 (124,)
+01/02 15:46:11   seq2seq/beta1_power:0 ()
+01/02 15:46:11   seq2seq/beta2_power:0 ()
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_0/Matrix/Adam:0 (41, 256)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_0/Matrix/Adam_1:0 (41, 256)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_0/Bias/Adam:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_0/Bias/Adam_1:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_1/Matrix/Adam:0 (256, 256)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_1/Matrix/Adam_1:0 (256, 256)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_1/Bias/Adam:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/input_layer_1/Bias/Adam_1:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_0/BasicLSTMCell/Linear/Matrix/Adam:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_0/BasicLSTMCell/Linear/Matrix/Adam_1:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_0/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_0/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_0/BasicLSTMCell/Linear/Matrix/Adam:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_0/BasicLSTMCell/Linear/Matrix/Adam_1:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_0/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_0/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_1/BasicLSTMCell/Linear/Matrix/Adam:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_1/BasicLSTMCell/Linear/Matrix/Adam_1:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_1/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_1/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_1/BasicLSTMCell/Linear/Matrix/Adam:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_1/BasicLSTMCell/Linear/Matrix/Adam_1:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_1/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_1/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_2/BasicLSTMCell/Linear/Matrix/Adam:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_2/BasicLSTMCell/Linear/Matrix/Adam_1:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_2/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_FW_2/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_2/BasicLSTMCell/Linear/Matrix/Adam:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_2/BasicLSTMCell/Linear/Matrix/Adam_1:0 (768, 1024)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_2/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/MultiBiRNN_BW_2/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/bidir_projection/Matrix/Adam:0 (512, 256)
+01/02 15:46:11   seq2seq/seq2seq/multi_encoder/feats41/bidir_projection/Matrix/Adam_1:0 (512, 256)
+01/02 15:46:11   seq2seq/seq2seq/embedding_en/Adam:0 (124, 256)
+01/02 15:46:11   seq2seq/seq2seq/embedding_en/Adam_1:0 (124, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/initial_state_projection/Matrix/Adam:0 (1536, 1024)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/initial_state_projection/Matrix/Adam_1:0 (1536, 1024)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell0/BasicLSTMCell/Linear/Matrix/Adam:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell0/BasicLSTMCell/Linear/Matrix/Adam_1:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell0/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell0/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell1/BasicLSTMCell/Linear/Matrix/Adam:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell1/BasicLSTMCell/Linear/Matrix/Adam_1:0 (512, 1024)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell1/BasicLSTMCell/Linear/Bias/Adam:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/MultiRNNCell/Cell1/BasicLSTMCell/Linear/Bias/Adam_1:0 (1024,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/filter_feats41/Adam:0 (51, 1, 1, 1)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/filter_feats41/Adam_1:0 (51, 1, 1, 1)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/U_feats41/Adam:0 (1, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/U_feats41/Adam_1:0 (1, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/Linear/Matrix/Adam:0 (1024, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/Linear/Matrix/Adam_1:0 (1024, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/Linear/Bias/Adam:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/Linear/Bias/Adam_1:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/W_feats41/Adam:0 (256, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/W_feats41/Adam_1:0 (256, 256)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/V_feats41/Adam:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention/V_feats41/Adam_1:0 (256,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention_output_projection/Linear/Matrix/Adam:0 (512, 124)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention_output_projection/Linear/Matrix/Adam_1:0 (512, 124)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention_output_projection/Linear/Bias/Adam:0 (124,)
+01/02 15:46:11   seq2seq/seq2seq/decoder_en/attention_output_projection/Linear/Bias/Adam_1:0 (124,)
+01/02 15:46:17 reading training and development data
+01/02 15:46:17 reading training data
+01/02 15:46:17 files: experiments/ted_speech/data/train.feats41 experiments/ted_speech/data/train.en
+01/02 15:46:17 size: 16
+01/02 15:46:17 reading development data
+01/02 15:46:17 files: experiments/ted_speech/data/dev.feats41 experiments/ted_speech/data/dev.en
+01/02 15:46:17 size: 16
+01/02 15:46:17 starting training

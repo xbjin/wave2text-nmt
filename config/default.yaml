@@ -16,7 +16,7 @@ optimizer: 'sgd'         # 'sgd', 'adadelta', 'adagrad' or 'adam'
 
 # model (each one of these settings can be defined specifically in `encoders` and `decoder`, or generally here)
 attention: True          # use an attention mechanism
-batch_size: 64           # training batch size
+batch_size: 4           # training batch size
 cell_size: 1024          # size of the RNN cells
 embedding_size: 1024     # size of the embeddings
 layers: 1                # number of RNN layers per encoder and decoder

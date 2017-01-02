@@ -7,6 +7,7 @@ import math
 import shutil
 from translate import utils
 from translate.seq2seq_model import Seq2SeqModel
+import pdb
 
 
 class BaseTranslationModel(object):
@@ -103,6 +104,10 @@ class TranslationModel(BaseTranslationModel):
         self._read_vocab()
 
         for encoder_or_decoder, vocab in zip(encoders + [decoder], self.vocabs):
+            #pdb.set_trace()
+            if vocab is None:
+                encoder_or_decoder.vocab_size = 0
+                continue
             if encoder_or_decoder.vocab_size <= 0:
                 encoder_or_decoder.vocab_size = len(vocab.reverse)
 
