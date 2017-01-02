@@ -15,6 +15,9 @@ optimizer: 'adam'
 learning_rate: 0.001
 max_steps: 20000
 
+steps_per_checkpoint: 1
+steps_per_eval: 1
+
 train_prefix: train  # Michel, Philippe, Loic, Marion, Helene, Fabienne
 dev_prefix: dev       # different speaker
 
