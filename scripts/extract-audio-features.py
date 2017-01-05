@@ -6,17 +6,20 @@ import numpy as np
 import yaafelib
 import struct
 import sys
+import glob
 from collections import Counter
+import pdb
 
 parser = argparse.ArgumentParser()
-parser.add_argument('filenames', nargs='*', help='audio filenames corresponding to one line each')
+parser.add_argument('wavscp', help='audio filenames corresponding to one line each')
 parser.add_argument('--output', dest='output_file', help='output file')
 parser.add_argument('--derivatives', action='store_true')
 
 args = parser.parse_args()
 
-if not args.filenames:
-    args.filenames = [filename.strip() for filename in sys.stdin]
+filenames = [line.strip() for line in open(args.wavscp, 'r')]
+
+#pdb.set_trace()
 
 parameters = dict(
     step_size=160,  # corresponds to 10 ms (at 16 kHz)
@@ -56,7 +59,7 @@ afp = yaafelib.AudioFileProcessor()
 frame_counter = Counter()
 
 with open(args.output_file, 'wb') as f:
-    for i, filename in enumerate(args.filenames):
+    for i, filename in enumerate(filenames):
         afp.processFile(engine, filename)
         feats_ = engine.readAllOutputs()
         feats = np.concatenate([feats_[k] for k in keys], axis=1)
@@ -69,7 +72,7 @@ with open(args.output_file, 'wb') as f:
             raise Exception
 
         if i == 0:  # write header
-            f.write(struct.pack('ii', len(args.filenames), dim))
+            f.write(struct.pack('ii', len(filenames), dim))
         f.write(struct.pack('i' + 'f' * len(feats), frames, *feats))
 
 
