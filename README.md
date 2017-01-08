@@ -7,4 +7,4 @@ Current work, will build english(wave)-to-chinese(text) neural machine translati
 The highlight of this work:
 - English(wave)-to-chinese(text) end-to-end translation.
 - Develop system over 1000 hours of translated real audio data.
-- To be added more.
+- Other novel ideas will be added later.
