@@ -5,6 +5,6 @@ This work is based on an existing implementation [(seqseq)](https://github.com/e
 Current work, will build english(wave)-to-chinese(text) neural machine translation system.
 
 The highlight of this work:
-- English(wave)-to-chinese(text) end to end translation.
+- English(wave)-to-chinese(text) end-to-end translation.
 - Develop system over 1000 hours of translated real audio data.
 - To be added more.
